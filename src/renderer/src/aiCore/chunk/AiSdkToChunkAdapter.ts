@@ -80,11 +80,20 @@ export class AiSdkToChunkAdapter {
    */
   private async readFullStream(fullStream: ReadableStream<TextStreamPart<ToolSet>>) {
     const reader = fullStream.getReader()
-    const final = {
+    const final: {
+      text: string
+      reasoningContent: string
+      webSearchResults: AISDKWebSearchResult[]
+      reasoningId: string
+      hasThinkingSession: boolean
+      didEndReasoningSegment: boolean
+    } = {
       text: '',
       reasoningContent: '',
       webSearchResults: [],
-      reasoningId: ''
+      reasoningId: '',
+      hasThinkingSession: false,
+      didEndReasoningSegment: false
     }
     this.resetTimingState()
     this.responseStartTimestamp = Date.now()
@@ -125,13 +134,20 @@ export class AiSdkToChunkAdapter {
    * @param final 包含 reasoningContent 的状态对象
    * @returns 是否发送了 THINKING_COMPLETE chunk
    */
-  private emitThinkingCompleteIfNeeded(final: { reasoningContent: string; [key: string]: any }) {
-    if (final.reasoningContent) {
+  private emitThinkingCompleteIfNeeded(final: {
+    reasoningContent: string
+    hasThinkingSession: boolean
+    didEndReasoningSegment: boolean
+    [key: string]: any
+  }) {
+    if (final.hasThinkingSession) {
       this.onChunk({
         type: ChunkType.THINKING_COMPLETE,
-        text: final.reasoningContent
+        text: final.reasoningContent || ''
       })
       final.reasoningContent = ''
+      final.hasThinkingSession = false
+      final.didEndReasoningSegment = false
     }
   }
 
@@ -141,7 +157,14 @@ export class AiSdkToChunkAdapter {
    */
   private convertAndEmitChunk(
     chunk: TextStreamPart<any>,
-    final: { text: string; reasoningContent: string; webSearchResults: AISDKWebSearchResult[]; reasoningId: string }
+    final: {
+      text: string
+      reasoningContent: string
+      webSearchResults: AISDKWebSearchResult[]
+      reasoningId: string
+      hasThinkingSession: boolean
+      didEndReasoningSegment: boolean
+    }
   ) {
     logger.silly(`AI SDK chunk type: ${chunk.type}`, chunk)
     switch (chunk.type) {
@@ -215,15 +238,36 @@ export class AiSdkToChunkAdapter {
         final.text = ''
         break
       case 'reasoning-start':
-        // if (final.reasoningId !== chunk.id) {
+        // OpenAI Responses can emit multiple consecutive reasoning blocks.
+        // For UX, merge consecutive reasoning segments into a single Thinking block.
+        if (final.hasThinkingSession) {
+          if (final.didEndReasoningSegment && final.reasoningContent) {
+            const separator = '\n\n'
+            if (!final.reasoningContent.endsWith(separator)) {
+              final.reasoningContent += separator
+            }
+          }
+          final.didEndReasoningSegment = false
+          break
+        }
+
         final.reasoningId = chunk.id
+        final.hasThinkingSession = true
+        final.didEndReasoningSegment = false
         this.onChunk({
           type: ChunkType.THINKING_START
         })
-        // }
         break
       case 'reasoning-delta':
+        if (!final.hasThinkingSession) {
+          final.hasThinkingSession = true
+          final.didEndReasoningSegment = false
+          this.onChunk({
+            type: ChunkType.THINKING_START
+          })
+        }
         final.reasoningContent += chunk.text || ''
+        final.didEndReasoningSegment = false
         if (chunk.text) {
           this.markFirstTokenIfNeeded()
         }
@@ -233,7 +277,9 @@ export class AiSdkToChunkAdapter {
         })
         break
       case 'reasoning-end':
-        this.emitThinkingCompleteIfNeeded(final)
+        // Don't emit THINKING_COMPLETE here; OpenAI Responses may send multiple reasoning blocks.
+        // We flush on a real boundary (text/tool/finish) to merge consecutive thinking segments.
+        final.didEndReasoningSegment = true
         break
 
       // === 工具调用相关事件（原始 AI SDK 事件，如果没有被中间件处理） ===
@@ -248,14 +294,17 @@ export class AiSdkToChunkAdapter {
       //   this.toolCallHandler.handleToolCallCreated(chunk)
       //   break
       case 'tool-call':
+        this.emitThinkingCompleteIfNeeded(final)
         this.toolCallHandler.handleToolCall(chunk)
         break
 
       case 'tool-error':
+        this.emitThinkingCompleteIfNeeded(final)
         this.toolCallHandler.handleToolError(chunk)
         break
 
       case 'tool-result':
+        this.emitThinkingCompleteIfNeeded(final)
         this.toolCallHandler.handleToolResult(chunk)
         break
 
@@ -323,6 +372,9 @@ export class AiSdkToChunkAdapter {
       }
 
       case 'finish': {
+        const reasoningContentForResponse = final.reasoningContent || ''
+        this.emitThinkingCompleteIfNeeded(final)
+
         // Check if session was cleared (e.g., /clear command) and no text was output
         const sessionCleared = this.getSessionWasCleared?.() ?? false
         if (sessionCleared && !this.hasTextContent) {
@@ -350,7 +402,7 @@ export class AiSdkToChunkAdapter {
         const metrics = this.buildMetrics(chunk.totalUsage)
         const baseResponse = {
           text: final.text || '',
-          reasoning_content: final.reasoningContent || ''
+          reasoning_content: reasoningContentForResponse
         }
 
         this.onChunk({
