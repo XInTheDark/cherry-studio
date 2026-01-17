@@ -1,9 +1,32 @@
+import { resolve } from 'node:path'
+
 import { defineConfig } from 'vitest/config'
 
-import electronViteConfig from './electron.vite.config'
+// NOTE: We intentionally do not import `electron.vite.config.ts` here.
+// That config pulls in the Electron/Vite toolchain which can introduce ESM/CJS interop issues
+// when Vitest loads its config. For tests we only need stable alias resolution.
+const mainAlias = {
+  '@main': resolve('src/main'),
+  '@types': resolve('src/renderer/src/types'),
+  '@shared': resolve('packages/shared'),
+  '@logger': resolve('src/main/services/LoggerService'),
+  '@mcp-trace/trace-core': resolve('packages/mcp-trace/trace-core'),
+  '@mcp-trace/trace-node': resolve('packages/mcp-trace/trace-node')
+}
 
-const mainConfig = (electronViteConfig as any).main
-const rendererConfig = (electronViteConfig as any).renderer
+const rendererAlias = {
+  '@renderer': resolve('src/renderer/src'),
+  '@shared': resolve('packages/shared'),
+  '@types': resolve('src/renderer/src/types'),
+  '@logger': resolve('src/renderer/src/services/LoggerService'),
+  '@mcp-trace/trace-core': resolve('packages/mcp-trace/trace-core'),
+  '@mcp-trace/trace-web': resolve('packages/mcp-trace/trace-web'),
+  '@cherrystudio/ai-core/provider': resolve('packages/aiCore/src/core/providers'),
+  '@cherrystudio/ai-core/built-in/plugins': resolve('packages/aiCore/src/core/plugins/built-in'),
+  '@cherrystudio/ai-core': resolve('packages/aiCore/src'),
+  '@cherrystudio/extension-table-plus': resolve('packages/extension-table-plus/src'),
+  '@cherrystudio/ai-sdk-provider': resolve('packages/ai-sdk-provider/src')
+}
 
 export default defineConfig({
   test: {
@@ -11,9 +34,8 @@ export default defineConfig({
       // 主进程单元测试配置
       {
         extends: true,
-        plugins: mainConfig.plugins,
         resolve: {
-          alias: mainConfig.resolve.alias
+          alias: mainAlias
         },
         test: {
           name: 'main',
@@ -25,9 +47,8 @@ export default defineConfig({
       // 渲染进程单元测试配置
       {
         extends: true,
-        plugins: rendererConfig.plugins.filter((plugin: any) => plugin.name !== 'tailwindcss'),
         resolve: {
-          alias: rendererConfig.resolve.alias
+          alias: rendererAlias
         },
         test: {
           name: 'renderer',

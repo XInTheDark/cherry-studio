@@ -1297,6 +1297,7 @@
     "backup": {
       "file_format": "Ошибка формата файла резервной копии"
     },
+    "base64DataTruncated": "[to be translated]:Base64 image data truncated, size",
     "boundary": {
       "default": {
         "devtools": "Открыть панель отладки",
@@ -1377,6 +1378,8 @@
     "text": "текст",
     "toolInput": "ввод инструмента",
     "toolName": "имя инструмента",
+    "truncated": "[to be translated]:Data truncated, original size",
+    "truncatedBadge": "[to be translated]:Truncated",
     "unknown": "Неизвестная ошибка",
     "usage": "Дозировка",
     "user_message_not_found": "Не удалось найти исходное сообщение пользователя",
@@ -1516,6 +1519,7 @@
     "chunk_size_placeholder": "По умолчанию (не рекомендуется изменять)",
     "chunk_size_too_large": "Размер фрагмента не может превышать модель контекста ({{max_context}})",
     "chunk_size_tooltip": "Размер фрагмента, не превышающий модель контекста",
+    "citations_full_files_enabled": "[to be translated]:Full files mode is enabled: full document contents are provided to the model.",
     "clear_selection": "Очистить выбор",
     "delete": "Удалить",
     "delete_confirm": "Вы уверены, что хотите удалить эту базу знаний?",
@@ -1531,6 +1535,7 @@
     "directory_placeholder": "Введите путь к директории",
     "document_count": "Количество запрошенных документов",
     "document_count_default": "По умолчанию",
+    "document_count_full_files": "[to be translated]:Full files",
     "document_count_help": "Количество запрошенных документов, вместе с ними передается больше информации, но и требуется больше токенов",
     "drag_file": "Перетащите файл сюда",
     "drag_image": "Перетащите изображение сюда",

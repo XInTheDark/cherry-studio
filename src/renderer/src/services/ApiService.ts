@@ -107,6 +107,7 @@ export async function transformMessagesAndFetch(
 ) {
   const { messages, assistant } = request
 
+  let originalPrompt: string | undefined = undefined
   try {
     const { modelMessages, uiMessages } = await ConversationService.prepareMessagesForModel(messages, assistant)
 
@@ -114,7 +115,7 @@ export async function transformMessagesAndFetch(
     assistant.prompt = await replacePromptVariables(assistant.prompt, assistant.model?.name)
 
     // inject knowledge search prompt into model messages
-    await injectUserMessageWithKnowledgeSearchPrompt({
+    const knowledgeInjection = await injectUserMessageWithKnowledgeSearchPrompt({
       modelMessages,
       assistant,
       assistantMsgId: request.assistantMsgId,
@@ -122,6 +123,12 @@ export async function transformMessagesAndFetch(
       blockManager: request.blockManager,
       setCitationBlockId: request.callbacks.setCitationBlockId!
     })
+
+    originalPrompt = assistant.prompt
+    if (knowledgeInjection.systemPromptPrefix) {
+      // Prepend full-files knowledge context for this request only.
+      assistant.prompt = `${knowledgeInjection.systemPromptPrefix}\n\n${assistant.prompt || ''}`.trim()
+    }
 
     await fetchChatCompletion({
       messages: modelMessages,
@@ -133,6 +140,11 @@ export async function transformMessagesAndFetch(
     })
   } catch (error: any) {
     onChunkReceived({ type: ChunkType.ERROR, error })
+  } finally {
+    if (originalPrompt !== undefined) {
+      // Restore the assistant prompt to avoid mutating stored assistant definitions.
+      assistant.prompt = originalPrompt
+    }
   }
 }
 

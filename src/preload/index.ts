@@ -293,6 +293,8 @@ const api = {
       { search, base, results }: { search: string; base: KnowledgeBaseParams; results: KnowledgeSearchResult[] },
       context?: SpanContext
     ) => tracedInvoke(IpcChannel.KnowledgeBase_Rerank, context, { search, base, results }),
+    getDocuments: ({ base, items }: { base: KnowledgeBaseParams; items: KnowledgeItem[] }, context?: SpanContext) =>
+      tracedInvoke(IpcChannel.KnowledgeBase_GetDocuments, context, { base, items }),
     checkQuota: ({ base, userId }: { base: KnowledgeBaseParams; userId: string }) =>
       ipcRenderer.invoke(IpcChannel.KnowledgeBase_Check_Quota, base, userId)
   },

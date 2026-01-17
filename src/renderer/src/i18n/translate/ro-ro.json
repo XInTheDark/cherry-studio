@@ -1297,6 +1297,7 @@
     "backup": {
       "file_format": "Eroare format fișier backup"
     },
+    "base64DataTruncated": "[to be translated]:Base64 image data truncated, size",
     "boundary": {
       "default": {
         "devtools": "Deschide panoul de depanare",
@@ -1377,6 +1378,8 @@
     "text": "Text",
     "toolInput": "Intrare instrument",
     "toolName": "Nume instrument",
+    "truncated": "[to be translated]:Data truncated, original size",
+    "truncatedBadge": "[to be translated]:Truncated",
     "unknown": "Eroare necunoscută",
     "usage": "Utilizare",
     "user_message_not_found": "Nu se poate găsi mesajul original al utilizatorului pentru a retrimite",
@@ -1516,6 +1519,7 @@
     "chunk_size_placeholder": "Implicit (nu se recomandă modificarea)",
     "chunk_size_too_large": "Dimensiunea fragmentului nu poate depăși limita de context a modelului ({{max_context}})",
     "chunk_size_tooltip": "Împarte documentele în fragmente; dimensiunea fiecărui fragment nu trebuie să depășească limita de context a modelului",
+    "citations_full_files_enabled": "[to be translated]:Full files mode is enabled: full document contents are provided to the model.",
     "clear_selection": "Șterge selecția",
     "delete": "Șterge",
     "delete_confirm": "Ești sigur că vrei să ștergi această bază de cunoștințe?",
@@ -1531,6 +1535,7 @@
     "directory_placeholder": "Introdu calea directorului",
     "document_count": "Fragmente de document solicitate",
     "document_count_default": "Implicit",
+    "document_count_full_files": "[to be translated]:Full files",
     "document_count_help": "Cu cât sunt solicitate mai multe fragmente de document, cu atât sunt incluse mai multe informații, dar se consumă mai mulți tokeni",
     "drag_file": "Trage fișierul aici",
     "drag_image": "Trage imaginea aici",

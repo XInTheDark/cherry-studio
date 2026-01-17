@@ -1297,6 +1297,7 @@
     "backup": {
       "file_format": "Λάθος μορφή αρχείου που επιστρέφεται"
     },
+    "base64DataTruncated": "[to be translated]:Base64 image data truncated, size",
     "boundary": {
       "default": {
         "devtools": "Άνοιγμα πίνακα αποσφαλμάτωσης",
@@ -1377,6 +1378,8 @@
     "text": "κείμενο",
     "toolInput": "εισαγωγή εργαλείου",
     "toolName": "Όνομα εργαλείου",
+    "truncated": "[to be translated]:Data truncated, original size",
+    "truncatedBadge": "[to be translated]:Truncated",
     "unknown": "Άγνωστο σφάλμα",
     "usage": "δοσολογία",
     "user_message_not_found": "Αδυναμία εύρεσης της αρχικής μηνύματος χρήστη",
@@ -1516,6 +1519,7 @@
     "chunk_size_placeholder": "Προεπιλογή (δεν συνιστάται να το αλλάξετε)",
     "chunk_size_too_large": "Το μέγεθος μερισμού δεν μπορεί να ξεπεράσει το όριο πλάτους επιρροής του μοντέλου ({{max_context}})",
     "chunk_size_tooltip": "Διαχωρισμός των έγγραφων σε μεριδισμούς, με το μέγεθος κάθε μεριδισμού να μην ξεπεράζει το όριο πλάτους επιρροής του μοντέλου",
+    "citations_full_files_enabled": "[to be translated]:Full files mode is enabled: full document contents are provided to the model.",
     "clear_selection": "Καθαρισμός επιλογής",
     "delete": "Διαγραφή",
     "delete_confirm": "Είστε σίγουρος ότι θέλετε να διαγράψετε αυτή τη βάση γνώσεων;",
@@ -1531,6 +1535,7 @@
     "directory_placeholder": "Εισάγετε το δρομολόγιο του καταλόγου",
     "document_count": "Ποσότητα κειμένων που ζητούνται",
     "document_count_default": "Προεπιλογή",
+    "document_count_full_files": "[to be translated]:Full files",
     "document_count_help": "Όσο μεγαλύτερη είναι η ποσότητα των κειμένων που ζητούνται, τόσο περισσότερες πληροφορίες παρέχονται, αλλά και οι καταναλωτικοί Token επειδή περισσότερα",
     "drag_file": "Βάλτε το αρχείο εδώ",
     "drag_image": "Σύρετε την εικόνα εδώ",

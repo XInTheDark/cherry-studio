@@ -1297,6 +1297,7 @@
     "backup": {
       "file_format": "Backup-Dateiformat fehlerhaft"
     },
+    "base64DataTruncated": "[to be translated]:Base64 image data truncated, size",
     "boundary": {
       "default": {
         "devtools": "Debug-Panel öffnen",
@@ -1377,6 +1378,8 @@
     "text": "Text",
     "toolInput": "Tool-Eingabe",
     "toolName": "Tool-Name",
+    "truncated": "[to be translated]:Data truncated, original size",
+    "truncatedBadge": "[to be translated]:Truncated",
     "unknown": "Unbekannter Fehler",
     "usage": "Nutzung",
     "user_message_not_found": "Ursprüngliche Benutzernachricht nicht gefunden",
@@ -1516,6 +1519,7 @@
     "chunk_size_placeholder": "Standardwert (Änderung nicht empfohlen)",
     "chunk_size_too_large": "Segmentgröße darf Modellkontextlimit ({{max_context}}) nicht überschreiten",
     "chunk_size_tooltip": "Größe jedes Segments beim Aufteilen von Dokumenten, darf das Modellkontextlimit nicht überschreiten",
+    "citations_full_files_enabled": "[to be translated]:Full files mode is enabled: full document contents are provided to the model.",
     "clear_selection": "Auswahl löschen",
     "delete": "Löschen",
     "delete_confirm": "Möchten Sie diese Wissensdatenbank wirklich löschen?",
@@ -1531,6 +1535,7 @@
     "directory_placeholder": "Bitte Verzeichnispfad eingeben",
     "document_count": "Anzahl angeforderter Dokumentfragmente",
     "document_count_default": "Standard",
+    "document_count_full_files": "[to be translated]:Full files",
     "document_count_help": "Mehr Dokumentfragmente bedeuten mehr Informationen, aber auch höheren Token-Verbrauch",
     "drag_file": "Datei hierher ziehen",
     "drag_image": "Bild hierher ziehen",

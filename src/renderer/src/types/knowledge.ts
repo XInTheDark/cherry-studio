@@ -156,3 +156,16 @@ export interface KnowledgeSearchResult {
   score: number
   metadata: Record<string, any>
 }
+
+/**
+ * Full extracted document content stored for "Full files" mode.
+ * Stored in the knowledge base sqlite DB (main process) and fetched on demand by renderer.
+ */
+export type KnowledgeDocument = {
+  uniqueId: string
+  type: KnowledgeItemType
+  source: string
+  displayName?: string
+  content: string
+  updatedAt: number
+}

@@ -1297,6 +1297,7 @@
     "backup": {
       "file_format": "Le format du fichier de sauvegarde est incorrect"
     },
+    "base64DataTruncated": "[to be translated]:Base64 image data truncated, size",
     "boundary": {
       "default": {
         "devtools": "Ouvrir le panneau de débogage",
@@ -1377,6 +1378,8 @@
     "text": "texte",
     "toolInput": "entrée de l'outil",
     "toolName": "Nom de l'outil",
+    "truncated": "[to be translated]:Data truncated, original size",
+    "truncatedBadge": "[to be translated]:Truncated",
     "unknown": "Неизвестная ошибка",
     "usage": "Quantité",
     "user_message_not_found": "Impossible de trouver le message d'utilisateur original",
@@ -1516,6 +1519,7 @@
     "chunk_size_placeholder": "Valeur par défaut (ne pas modifier)",
     "chunk_size_too_large": "La taille de bloc ne peut pas dépasser la limite de contexte du modèle ({{max_context}})",
     "chunk_size_tooltip": "Taille des segments de document, ne doit pas dépasser la limite de contexte du modèle",
+    "citations_full_files_enabled": "[to be translated]:Full files mode is enabled: full document contents are provided to the model.",
     "clear_selection": "Effacer la sélection",
     "delete": "Supprimer",
     "delete_confirm": "Êtes-vous sûr de vouloir supprimer cette base de connaissances ?",
@@ -1531,6 +1535,7 @@
     "directory_placeholder": "Entrez le chemin du répertoire",
     "document_count": "Nombre de fragments de documents demandés",
     "document_count_default": "Par défaut",
+    "document_count_full_files": "[to be translated]:Full files",
     "document_count_help": "Plus vous demandez de fragments de documents, plus d'informations sont fournies, mais plus de jetons sont consommés",
     "drag_file": "Glissez-déposez un fichier ici",
     "drag_image": "Faites glisser l'image ici",

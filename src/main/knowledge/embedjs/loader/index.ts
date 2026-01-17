@@ -12,6 +12,7 @@ import { EpubLoader } from './epubLoader'
 import { OdLoader, OdType } from './odLoader'
 
 const logger = loggerService.withContext('KnowledgeLoader')
+const FULL_TEXT_CHUNK_SIZE = 200_000
 
 // 文件扩展名到加载器类型的映射
 const FILE_LOADER_MAP: Record<string, string> = {
@@ -163,4 +164,114 @@ export async function addFileLoader(
     uniqueIds: [loaderReturn.uniqueId],
     loaderType: loaderReturn.loaderType
   } as LoaderReturn
+}
+
+/**
+ * Extract the full (unembedded) text from a file using the same loader stack used for embedding.
+ *
+ * Notes:
+ * - This is used by "Full files" mode to persist full document contents.
+ * - We intentionally use a large chunkSize and 0 overlap to reduce duplication.
+ * - Some loaders still chunk internally; we join chunks with blank lines.
+ */
+export async function extractFullTextFromFile(file: FileMetadata, base: KnowledgeBaseParams): Promise<string> {
+  const loaderType = FILE_LOADER_MAP[file.ext.toLowerCase()] || 'text'
+  const filePath = file.path
+
+  try {
+    switch (loaderType) {
+      case 'common': {
+        const loader = new LocalPathLoader({
+          path: filePath,
+          chunkSize: Math.max(base.chunkSize ?? 0, FULL_TEXT_CHUNK_SIZE),
+          chunkOverlap: 0
+        }) as any
+
+        const parts: string[] = []
+        for await (const chunk of loader.getUnfilteredChunks()) {
+          if (chunk?.pageContent) parts.push(chunk.pageContent)
+        }
+        return parts.join('\n\n')
+      }
+
+      case 'od': {
+        const loaderMap: Record<string, OdType> = {
+          '.odt': OdType.OdtLoader,
+          '.ods': OdType.OdsLoader,
+          '.odp': OdType.OdpLoader
+        }
+        const odType = loaderMap[file.ext]
+        if (!odType) {
+          throw new Error('Unknown odType')
+        }
+        const loader = new OdLoader({
+          odType,
+          filePath,
+          chunkSize: Math.max(base.chunkSize ?? 0, FULL_TEXT_CHUNK_SIZE),
+          chunkOverlap: 0
+        }) as any
+        const parts: string[] = []
+        for await (const chunk of loader.getUnfilteredChunks()) {
+          if (chunk?.pageContent) parts.push(chunk.pageContent)
+        }
+        return parts.join('\n\n')
+      }
+
+      case 'epub': {
+        const loader = new EpubLoader({
+          filePath,
+          chunkSize: Math.max(base.chunkSize ?? 0, FULL_TEXT_CHUNK_SIZE),
+          chunkOverlap: 0
+        }) as any
+        const parts: string[] = []
+        for await (const chunk of loader.getUnfilteredChunks()) {
+          if (chunk?.pageContent) parts.push(chunk.pageContent)
+        }
+        return parts.join('\n\n')
+      }
+
+      case 'drafts': {
+        // Drafts export loader normalizes the JSON to a simplified form before chunking/embedding.
+        // For full-text mode, a pretty-printed JSON string is sufficient (and stable).
+        const content = await readTextFileWithAutoEncoding(filePath)
+        try {
+          const parsed = JSON.parse(content)
+          return JSON.stringify(parsed, null, 2)
+        } catch {
+          return content
+        }
+      }
+
+      case 'html': {
+        const loader = new WebLoader({
+          urlOrContent: await readTextFileWithAutoEncoding(filePath),
+          chunkSize: Math.max(base.chunkSize ?? 0, FULL_TEXT_CHUNK_SIZE),
+          chunkOverlap: 0
+        }) as any
+        const parts: string[] = []
+        for await (const chunk of loader.getUnfilteredChunks()) {
+          if (chunk?.pageContent) parts.push(chunk.pageContent)
+        }
+        return parts.join('\n\n')
+      }
+
+      case 'json': {
+        const raw = await readTextFileWithAutoEncoding(filePath)
+        try {
+          const parsed = JSON.parse(raw)
+          return JSON.stringify(parsed, null, 2)
+        } catch {
+          return raw
+        }
+      }
+
+      default: {
+        // Text fallback: read file as text (auto encoding).
+        return await readTextFileWithAutoEncoding(filePath)
+      }
+    }
+  } catch (err) {
+    logger.error(`[KnowledgeBase] Failed extracting full text for ${filePath}`, err as Error)
+    throw err
+  }
 }

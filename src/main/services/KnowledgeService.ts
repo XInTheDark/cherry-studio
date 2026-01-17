@@ -22,8 +22,9 @@ import { LibSqlDb } from '@cherrystudio/embedjs-libsql'
 import { SitemapLoader } from '@cherrystudio/embedjs-loader-sitemap'
 import { WebLoader } from '@cherrystudio/embedjs-loader-web'
 import { loggerService } from '@logger'
+import { type KnowledgeDocument, KnowledgeDocumentStore } from '@main/knowledge/documentStore'
 import Embeddings from '@main/knowledge/embedjs/embeddings/Embeddings'
-import { addFileLoader } from '@main/knowledge/embedjs/loader'
+import { addFileLoader, extractFullTextFromFile } from '@main/knowledge/embedjs/loader'
 import { NoteLoader } from '@main/knowledge/embedjs/loader/noteLoader'
 import PreprocessProvider from '@main/knowledge/preprocess/PreprocessProvider'
 import Reranker from '@main/knowledge/reranker/Reranker'
@@ -104,6 +105,7 @@ class KnowledgeService {
   private knowledgeItemProcessingQueueMappingPromise: Map<LoaderTaskOfSet, () => void> = new Map()
   private ragApplications: Map<string, RAGApplication> = new Map()
   private dbInstances: Map<string, LibSqlDb> = new Map()
+  private documentStores: Map<string, KnowledgeDocumentStore> = new Map()
   private static MAXIMUM_WORKLOAD = 80 * MB
   private static MAXIMUM_PROCESSING_ITEM_COUNT = 30
   private static ERROR_LOADER_RETURN: LoaderReturn = {
@@ -117,6 +119,19 @@ class KnowledgeService {
   constructor() {
     this.initStorageDir()
     this.cleanupOnStartup()
+  }
+
+  private getDocumentStore = (baseId: string, dbPath?: string): KnowledgeDocumentStore => {
+    const existing = this.documentStores.get(baseId)
+    if (existing) return existing
+    if (!dbPath) {
+      // Should only happen if called before getRagApplication() has initialized the db.
+      // Fallback to deterministic path.
+      dbPath = this.getDbPath(baseId)
+    }
+    const store = new KnowledgeDocumentStore(dbPath)
+    this.documentStores.set(baseId, store)
+    return store
   }
 
   private initStorageDir = (): void => {
@@ -254,6 +269,8 @@ class KnowledgeService {
       const libSqlDb = new LibSqlDb({ path: dbPath })
       // Save database instance for later closing
       this.dbInstances.set(id, libSqlDb)
+      // Ensure our full-document store exists in the same sqlite file.
+      this.getDocumentStore(id, dbPath)
 
       ragApplication = await new RAGApplicationBuilder()
         .setModel('NO_MODEL')
@@ -277,6 +294,11 @@ class KnowledgeService {
   public reset = async (_: Electron.IpcMainInvokeEvent, base: KnowledgeBaseParams): Promise<void> => {
     const ragApplication = await this.getRagApplication(base)
     await ragApplication.reset()
+    try {
+      await this.getDocumentStore(base.id).reset()
+    } catch (err) {
+      logger.error('Failed to reset knowledge document store', { baseId: base.id, err })
+    }
   }
 
   public async delete(_: Electron.IpcMainInvokeEvent, id: string): Promise<void> {
@@ -315,10 +337,42 @@ class KnowledgeService {
               // Add preprocessing logic
               const fileToProcess: FileMetadata = await this.preprocessing(file, base, item, userId)
 
+              // Best-effort full text extraction (used by "Full files" mode).
+              // Do not fail indexing if extraction for storage fails.
+              let extractedFullText: string | null = null
+              try {
+                extractedFullText = await extractFullTextFromFile(fileToProcess, base)
+              } catch (err) {
+                logger.warn('Failed to extract full text for knowledge document store, continuing with embedding.', {
+                  fileId: file.id,
+                  fileName: file.origin_name,
+                  err
+                })
+              }
+
               // Use processed file for loading
               return addFileLoader(ragApplication, fileToProcess, base, forceReload)
-                .then((result) => {
+                .then(async (result) => {
                   loaderTask.loaderDoneReturn = result
+                  if (result.status !== 'failed' && extractedFullText) {
+                    const doc: KnowledgeDocument = {
+                      uniqueId: result.uniqueId,
+                      type: 'file',
+                      source: fileToProcess.path,
+                      displayName: file.origin_name,
+                      content: extractedFullText,
+                      updatedAt: Date.now()
+                    }
+                    try {
+                      await this.getDocumentStore(base.id).upsert(doc)
+                    } catch (err) {
+                      logger.error('Failed to persist knowledge document content', {
+                        baseId: base.id,
+                        uniqueId: doc.uniqueId,
+                        err
+                      })
+                    }
+                  }
                   return result
                 })
                 .catch((e) => {
@@ -523,12 +577,25 @@ class KnowledgeService {
             ) as Promise<LoaderReturn>
 
             return loaderReturn
-              .then(({ entriesAdded, uniqueId, loaderType }) => {
+              .then(async ({ entriesAdded, uniqueId, loaderType }) => {
                 loaderTask.loaderDoneReturn = {
                   entriesAdded: entriesAdded,
                   uniqueId: uniqueId,
                   uniqueIds: [uniqueId],
                   loaderType: loaderType
+                }
+                try {
+                  const doc: KnowledgeDocument = {
+                    uniqueId,
+                    type: 'note',
+                    source: sourceUrl || 'note',
+                    displayName: item.remark || undefined,
+                    content,
+                    updatedAt: Date.now()
+                  }
+                  await this.getDocumentStore(base.id).upsert(doc)
+                } catch (err) {
+                  logger.error('Failed to persist knowledge note content', { baseId: base.id, uniqueId, err })
                 }
               })
               .catch((err) => {
@@ -660,6 +727,11 @@ class KnowledgeService {
     for (const id of uniqueIds) {
       await ragApplication.deleteLoader(id)
     }
+    try {
+      await this.getDocumentStore(base.id).deleteByUniqueIds(uniqueIds)
+    } catch (err) {
+      logger.error('Failed to delete knowledge documents for loaders', { baseId: base.id, uniqueIds, err })
+    }
   }
 
   @TraceMethod({ spanName: 'RagSearch', tag: 'Knowledge' })
@@ -680,6 +752,66 @@ class KnowledgeService {
       return results
     }
     return await new Reranker(base).rerank(search, results)
+  }
+
+  /**
+   * Returns full document contents for the provided knowledge items.
+   *
+   * This uses the per-KB sqlite DB to persist extracted contents at index time.
+   * For older KBs (created before this feature existed), it will backfill missing entries
+   * from the provided item content (best-effort).
+   */
+  public async getDocuments(
+    _: Electron.IpcMainInvokeEvent,
+    { base, items }: { base: KnowledgeBaseParams; items: KnowledgeItem[] }
+  ): Promise<KnowledgeDocument[]> {
+    await this.getRagApplication(base)
+    const store = this.getDocumentStore(base.id)
+
+    const requested = (items || [])
+      .filter((item) => (item.type === 'file' || item.type === 'note') && typeof item.uniqueId === 'string')
+      .map((item) => ({ uniqueId: item.uniqueId as string, item }))
+
+    const uniqueIds = requested.map((x) => x.uniqueId)
+    if (uniqueIds.length === 0) return []
+
+    const existing = await store.getByUniqueIds(uniqueIds)
+    const existingSet = new Set(existing.map((d) => d.uniqueId))
+    const missing = requested.filter((x) => !existingSet.has(x.uniqueId))
+
+    for (const { uniqueId, item } of missing) {
+      try {
+        if (item.type === 'note') {
+          const content = item.content as string
+          await store.upsert({
+            uniqueId,
+            type: 'note',
+            source: (item as any).sourceUrl || 'note',
+            displayName: item.remark || undefined,
+            content,
+            updatedAt: Date.now()
+          })
+        } else if (item.type === 'file') {
+          const file = item.content as FileMetadata
+          const content = await extractFullTextFromFile(file, base)
+          await store.upsert({
+            uniqueId,
+            type: 'file',
+            source: file.path,
+            displayName: file.origin_name,
+            content,
+            updatedAt: Date.now()
+          })
+        }
+      } catch (err) {
+        logger.error('Failed to backfill knowledge document content', { baseId: base.id, uniqueId, err })
+      }
+    }
+
+    const docs = await store.getByUniqueIds(uniqueIds)
+    const byId = new Map(docs.map((d) => [d.uniqueId, d]))
+    // Preserve user-facing order (matches KB item order).
+    return uniqueIds.map((id) => byId.get(id)).filter((d): d is KnowledgeDocument => !!d)
   }
 
   public getStorageDir = (): string => {

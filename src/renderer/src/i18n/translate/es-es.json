@@ -1297,6 +1297,7 @@
     "backup": {
       "file_format": "Formato de archivo de copia de seguridad incorrecto"
     },
+    "base64DataTruncated": "[to be translated]:Base64 image data truncated, size",
     "boundary": {
       "default": {
         "devtools": "Abrir el panel de depuración",
@@ -1377,6 +1378,8 @@
     "text": "Texto",
     "toolInput": "Herramienta de entrada",
     "toolName": "Nombre de la herramienta",
+    "truncated": "[to be translated]:Data truncated, original size",
+    "truncatedBadge": "[to be translated]:Truncated",
     "unknown": "Error desconocido",
     "usage": "Cantidad de uso",
     "user_message_not_found": "No se pudo encontrar el mensaje original del usuario",
@@ -1516,6 +1519,7 @@
     "chunk_size_placeholder": "Valor predeterminado (no recomendado para modificar)",
     "chunk_size_too_large": "El tamaño de fragmento no puede exceder el límite de contexto del modelo ({{max_context}})",
     "chunk_size_tooltip": "Divide el documento en fragmentos de este tamaño, no debe exceder el límite de contexto del modelo",
+    "citations_full_files_enabled": "[to be translated]:Full files mode is enabled: full document contents are provided to the model.",
     "clear_selection": "Limpiar selección",
     "delete": "Eliminar",
     "delete_confirm": "¿Está seguro de querer eliminar esta base de conocimientos?",
@@ -1531,6 +1535,7 @@
     "directory_placeholder": "Ingrese la ruta del directorio",
     "document_count": "Número de fragmentos de documentos solicitados",
     "document_count_default": "Predeterminado",
+    "document_count_full_files": "[to be translated]:Full files",
     "document_count_help": "Más fragmentos de documentos solicitados significa más información adjunta, pero también consume más tokens",
     "drag_file": "Arrastre archivos aquí",
     "drag_image": "Arrastra la imagen aquí",

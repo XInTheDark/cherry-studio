@@ -1297,6 +1297,7 @@
     "backup": {
       "file_format": "バックアップファイルの形式エラー"
     },
+    "base64DataTruncated": "[to be translated]:Base64 image data truncated, size",
     "boundary": {
       "default": {
         "devtools": "デバッグパネルを開く",
@@ -1377,6 +1378,8 @@
     "text": "テキスト",
     "toolInput": "ツール入力",
     "toolName": "ツール名",
+    "truncated": "[to be translated]:Data truncated, original size",
+    "truncatedBadge": "[to be translated]:Truncated",
     "unknown": "不明なエラー",
     "usage": "用量",
     "user_message_not_found": "元のユーザーメッセージを見つけることができませんでした",
@@ -1516,6 +1519,7 @@
     "chunk_size_placeholder": "デフォルト（変更しないでください）",
     "chunk_size_too_large": "チャンクサイズはモデルのコンテキスト制限を超えることはできません（{{max_context}}）",
     "chunk_size_tooltip": "ドキュメントを分割し、各チャンクのサイズ。モデルのコンテキスト制限を超えないようにしてください。",
+    "citations_full_files_enabled": "[to be translated]:Full files mode is enabled: full document contents are provided to the model.",
     "clear_selection": "選択をクリア",
     "delete": "削除",
     "delete_confirm": "このナレッジベースを削除してもよろしいですか？",
@@ -1531,6 +1535,7 @@
     "directory_placeholder": "ディレクトリパスを入力",
     "document_count": "要求されたドキュメント分段数",
     "document_count_default": "デフォルト",
+    "document_count_full_files": "[to be translated]:Full files",
     "document_count_help": "要求されたドキュメント分段数が多いほど、付随する情報が多くなりますが、トークンの消費量も増加します",
     "drag_file": "ファイルをここにドラッグ",
     "drag_image": "画像をここにドラッグ",
