@@ -16,6 +16,7 @@ import { titleBarOverlayDark, titleBarOverlayLight } from '../config'
 import { configManager } from './ConfigManager'
 import { contextMenu } from './ContextMenu'
 import { initSessionUserAgent } from './WebviewService'
+import { shouldHideAppAfterHidingMiniWindow, shouldUnhideAppBeforeShowingMiniWindow } from './window/miniWindowMacos'
 
 const DEFAULT_MINIWINDOW_WIDTH = 550
 const DEFAULT_MINIWINDOW_HEIGHT = 400
@@ -573,6 +574,17 @@ export class WindowService {
       return
     }
 
+    // macOS: if the app is hidden (Cmd+H / `app.hide()`), calling `BrowserWindow.show()`
+    // can flicker but remain hidden. Explicitly unhide the app before showing miniWindow.
+    const isAppHidden = isMac && typeof app.isHidden === 'function' ? app.isHidden() : false
+    if (shouldUnhideAppBeforeShowingMiniWindow({ isMac, isAppHidden })) {
+      try {
+        app.show()
+      } catch (error) {
+        logger.warn('Failed to unhide app before showing miniWindow:', error as Error)
+      }
+    }
+
     if (this.miniWindow && !this.miniWindow.isDestroyed()) {
       this.wasMainWindowFocused = this.mainWindow?.isFocused() || false
 
@@ -643,12 +655,21 @@ export class WindowService {
       return
     } else if (isMac) {
       this.miniWindow.hide()
+
+      const isMainWindowVisible =
+        !!this.mainWindow && !this.mainWindow.isDestroyed() && typeof this.mainWindow.isVisible === 'function'
+          ? this.mainWindow.isVisible()
+          : false
+
       const majorVersion = parseInt(process.getSystemVersion().split('.')[0], 10)
-      if (majorVersion >= 26) {
-        // on macOS 26+, the popup of the mimiWindow would not change the focus to previous application.
-        return
-      }
-      if (!this.wasMainWindowFocused) {
+      if (
+        shouldHideAppAfterHidingMiniWindow({
+          isMac,
+          macosMajorVersion: majorVersion,
+          wasMainWindowFocused: this.wasMainWindowFocused,
+          isMainWindowVisible
+        })
+      ) {
         app.hide()
       }
       return
