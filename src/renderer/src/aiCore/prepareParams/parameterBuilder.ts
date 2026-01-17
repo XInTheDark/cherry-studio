@@ -41,11 +41,35 @@ import { stepCountIs } from 'ai'
 import { getAiSdkProviderId } from '../provider/factory'
 import { setupToolsConfig } from '../utils/mcp'
 import { buildProviderOptions } from '../utils/options'
+import { getCustomParameters } from '../utils/reasoning'
 import { buildProviderBuiltinWebSearchConfig } from '../utils/websearch'
 import { addAnthropicHeaders } from './header'
 import { getMaxTokens, getTemperature, getTopP } from './modelParameters'
 
 const logger = loggerService.withContext('parameterBuilder')
+
+function parseMaxSteps(value: unknown): number | undefined {
+  // Allow either numeric or numeric string.
+  // Treat <= 0 as invalid (we'll fall back to unlimited).
+  const n = typeof value === 'number' ? value : typeof value === 'string' ? Number(value) : NaN
+  if (!Number.isFinite(n)) return undefined
+  if (n <= 0) return undefined
+  return Math.floor(n)
+}
+
+function resolveMaxSteps(assistant: Assistant): number {
+  // Historically we hard-capped steps to 20 via stopWhen: stepCountIs(20).
+  // Default is now unlimited unless the user explicitly configures it.
+  const customParams = getCustomParameters(assistant)
+
+  // Support both camelCase and snake_case.
+  const configured =
+    parseMaxSteps(customParams.maxSteps) ??
+    parseMaxSteps(customParams.max_steps) ??
+    parseMaxSteps(customParams.stopWhenMaxSteps)
+
+  return configured ?? Number.POSITIVE_INFINITY
+}
 
 type ProviderDefinedTool = Extract<Tool<any, any>, { type: 'provider-defined' }>
 
@@ -235,7 +259,7 @@ export async function buildStreamTextParams(
     abortSignal: options.requestOptions?.signal,
     headers,
     providerOptions,
-    stopWhen: stepCountIs(20),
+    stopWhen: stepCountIs(resolveMaxSteps(assistant)),
     maxRetries: 0
   }
 
