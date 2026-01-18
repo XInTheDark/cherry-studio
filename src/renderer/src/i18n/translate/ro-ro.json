@@ -729,6 +729,10 @@
       "pause": "Pauză",
       "placeholder": "Scrie mesajul tău aici, apasă {{key}} pentru a trimite - @ pentru a selecta modelul, / pentru a include instrumente",
       "placeholder_without_triggers": "Scrie mesajul tău aici, apasă {{key}} pentru a trimite",
+      "screenshot": {
+        "no_sources": "[to be translated]:Unable to capture screenshot. If you're on macOS, enable Screen Recording permission and restart the app.",
+        "permission_required": "[to be translated]:To take a screenshot on macOS, enable Screen Recording in System Settings → Privacy & Security → Screen Recording, then restart the app."
+      },
       "send": "Trimite",
       "settings": "Setări",
       "slash_commands": {

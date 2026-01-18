@@ -10,6 +10,7 @@ export interface UsePasteHandlerOptions {
   setFiles: (updater: (prevFiles: FileMetadata[]) => FileMetadata[]) => void
   onResize?: () => void
   t: TFunction
+  consumeForceTextAsFile?: () => boolean
 }
 
 /**
@@ -43,6 +44,7 @@ export function usePasteHandler(
 ) {
   const handlePaste = useCallback(
     async (event: ClipboardEvent) => {
+      const forceTextAsFile = options.consumeForceTextAsFile?.() ?? false
       return await PasteService.handlePaste(
         event,
         options.supportedExts,
@@ -52,7 +54,8 @@ export function usePasteHandler(
         options.pasteLongTextThreshold ?? 5000,
         text,
         options.onResize ?? (() => {}),
-        options.t
+        options.t,
+        forceTextAsFile
       )
     },
     [text, setText, options]

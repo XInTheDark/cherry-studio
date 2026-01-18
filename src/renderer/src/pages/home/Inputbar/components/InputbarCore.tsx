@@ -4,6 +4,7 @@ import { ActionIconButton } from '@renderer/components/Buttons'
 import type { QuickPanelTriggerInfo } from '@renderer/components/QuickPanel'
 import { QuickPanelReservedSymbol, QuickPanelView, useQuickPanel } from '@renderer/components/QuickPanel'
 import TranslateButton from '@renderer/components/TranslateButton'
+import { isMac } from '@renderer/config/constant'
 import { useRuntime } from '@renderer/hooks/useRuntime'
 import { useSettings } from '@renderer/hooks/useSettings'
 import { useTimer } from '@renderer/hooks/useTimer'
@@ -165,13 +166,20 @@ export const InputbarCore: FC<InputbarCoreProps> = ({
     [onTextChange]
   )
 
+  const forceTextAsFileRef = useRef(false)
+
   const { handlePaste } = usePasteHandler(text, setText, {
     supportedExts,
     setFiles,
     pasteLongTextAsFile,
     pasteLongTextThreshold,
     onResize: resizeTextArea,
-    t
+    t,
+    consumeForceTextAsFile: () => {
+      const shouldForce = forceTextAsFileRef.current
+      forceTextAsFileRef.current = false
+      return shouldForce
+    }
   })
 
   const { handleDragEnter, handleDragLeave, handleDragOver, handleDrop, isDragging } = useFileDragDrop({
@@ -264,6 +272,11 @@ export const InputbarCore: FC<InputbarCoreProps> = ({
 
   const handleKeyDown = useCallback(
     (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
+      if (event.key.toLowerCase() === 'v' && event.shiftKey && (isMac ? event.metaKey : event.ctrlKey)) {
+        forceTextAsFileRef.current = true
+        return
+      }
+
       if (event.key === 'Tab' && inputFocus) {
         event.preventDefault()
         const textArea = textareaRef.current?.resizableTextArea?.textArea
@@ -365,7 +378,8 @@ export const InputbarCore: FC<InputbarCoreProps> = ({
       handleSendMessage,
       setText,
       setTimeoutTimer,
-      setFiles
+      setFiles,
+      forceTextAsFileRef
     ]
   )
 

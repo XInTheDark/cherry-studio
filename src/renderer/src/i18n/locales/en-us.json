@@ -729,6 +729,10 @@
       "pause": "Pause",
       "placeholder": "Type your message here, press {{key}} to send - @ to Select Model, / to Include Tools",
       "placeholder_without_triggers": "Type your message here, press {{key}} to send",
+      "screenshot": {
+        "no_sources": "Unable to capture screenshot. If you're on macOS, enable Screen Recording permission and restart the app.",
+        "permission_required": "To take a screenshot on macOS, enable Screen Recording in System Settings → Privacy & Security → Screen Recording, then restart the app."
+      },
       "send": "Send",
       "settings": "Settings",
       "slash_commands": {

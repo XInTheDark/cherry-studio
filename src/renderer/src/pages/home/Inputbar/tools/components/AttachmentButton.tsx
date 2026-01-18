@@ -1,6 +1,7 @@
 import { loggerService } from '@logger'
 import { ActionIconButton } from '@renderer/components/Buttons'
 import { QuickPanelReservedSymbol, useQuickPanel } from '@renderer/components/QuickPanel'
+import { isMac } from '@renderer/config/constant'
 import { useKnowledgeBases } from '@renderer/hooks/useKnowledge'
 import type { ToolQuickPanelApi } from '@renderer/pages/home/Inputbar/types'
 import type { InputbarScope } from '@renderer/pages/home/Inputbar/types'
@@ -42,14 +43,27 @@ const AttachmentButton: FC<Props> = ({
   const captureScreenshot = useCallback(async () => {
     if (selecting) return
 
+    let didHideWindow = false
+
     try {
       setSelecting(true)
+
+      if (isMac) {
+        const status = await window.api.screenshot.getPermissionStatus()
+        if (status !== 'granted') {
+          logger.warn('Screen capture permission not granted', { status })
+          window.toast.info(t('chat.input.screenshot.permission_required'))
+          return
+        }
+      }
+
       // Hide the active window to avoid capturing it in the screenshot.
       if (scope === 'mini-window') {
         await window.api.miniWindow.hide()
       } else {
         await window.api.windowControls.hide()
       }
+      didHideWindow = true
       await new Promise((resolve) => setTimeout(resolve, 150))
 
       const file = await window.api.screenshot.capturePrimaryScreen()
@@ -59,13 +73,22 @@ const AttachmentButton: FC<Props> = ({
       })
     } catch (error) {
       logger.error('Failed to capture screenshot:', error as Error)
+
+      const message = error instanceof Error ? error.message : String(error)
+      if (message.includes('SCREEN_CAPTURE_NO_SOURCES')) {
+        window.toast.error(t('chat.input.screenshot.no_sources'))
+        return
+      }
+
       window.toast.error(t('chat.input.file_error'))
     } finally {
       try {
-        if (scope === 'mini-window') {
-          await window.api.miniWindow.show()
-        } else {
-          await window.api.windowControls.show()
+        if (didHideWindow) {
+          if (scope === 'mini-window') {
+            await window.api.miniWindow.show()
+          } else {
+            await window.api.windowControls.show()
+          }
         }
       } catch (error) {
         logger.warn('Failed to re-show main window after screenshot:', error as Error)

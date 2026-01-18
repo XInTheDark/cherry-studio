@@ -729,6 +729,10 @@
       "pause": "Pause",
       "placeholder": "Entrez votre message ici...",
       "placeholder_without_triggers": "Tapez votre message ici, appuyez sur {{key}} pour envoyer",
+      "screenshot": {
+        "no_sources": "[to be translated]:Unable to capture screenshot. If you're on macOS, enable Screen Recording permission and restart the app.",
+        "permission_required": "[to be translated]:To take a screenshot on macOS, enable Screen Recording in System Settings → Privacy & Security → Screen Recording, then restart the app."
+      },
       "send": "Envoyer",
       "settings": "Paramètres",
       "slash_commands": {

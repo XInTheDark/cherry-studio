@@ -729,6 +729,10 @@
       "pause": "暫停",
       "placeholder": "在此輸入您的訊息，按 {{key}} 傳送 - @ 選擇模型，/ 包含工具",
       "placeholder_without_triggers": "在此輸入您的訊息，按 {{key}} 傳送",
+      "screenshot": {
+        "no_sources": "[to be translated]:Unable to capture screenshot. If you're on macOS, enable Screen Recording permission and restart the app.",
+        "permission_required": "[to be translated]:To take a screenshot on macOS, enable Screen Recording in System Settings → Privacy & Security → Screen Recording, then restart the app."
+      },
       "send": "傳送",
       "settings": "設定",
       "slash_commands": {

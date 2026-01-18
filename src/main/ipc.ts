@@ -590,6 +590,13 @@ export async function registerIpc(mainWindow: BrowserWindow, app: Electron.App) 
 
   // file
   ipcMain.handle(IpcChannel.File_Open, fileManager.open.bind(fileManager))
+
+  // screenshot
+  ipcMain.handle(IpcChannel.Screenshot_GetPermissionStatus, () => {
+    if (!isMac) return 'not_applicable'
+    // Electron returns values like: 'granted' | 'denied' | 'restricted' | 'not-determined' | 'unknown'
+    return systemPreferences.getMediaAccessStatus('screen')
+  })
   ipcMain.handle(IpcChannel.File_OpenPath, fileManager.openPath.bind(fileManager))
   ipcMain.handle(IpcChannel.File_Save, fileManager.save.bind(fileManager))
   ipcMain.handle(IpcChannel.File_Select, fileManager.selectFile.bind(fileManager))

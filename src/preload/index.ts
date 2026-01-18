@@ -254,6 +254,9 @@ const api = {
     showInFolder: (path: string): Promise<void> => ipcRenderer.invoke(IpcChannel.File_ShowInFolder, path)
   },
   screenshot: {
+    getPermissionStatus: async (): Promise<string> => {
+      return ipcRenderer.invoke(IpcChannel.Screenshot_GetPermissionStatus)
+    },
     /**
      * Captures the primary display as a PNG and persists it into the app file storage.
      * The returned FileMetadata can be used as a normal image attachment.
@@ -281,7 +284,7 @@ const api = {
         sources[0]
 
       if (!source) {
-        throw new Error('No screen sources available for capture')
+        throw new Error('SCREEN_CAPTURE_NO_SOURCES')
       }
 
       const png = source.thumbnail.toPNG()

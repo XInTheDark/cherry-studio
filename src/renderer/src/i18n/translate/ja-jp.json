@@ -729,6 +729,10 @@
       "pause": "一時停止",
       "placeholder": "ここにメッセージを入力し、{{key}} を押して送信...",
       "placeholder_without_triggers": "ここにメッセージを入力し、{{key}} を押して送信...",
+      "screenshot": {
+        "no_sources": "[to be translated]:Unable to capture screenshot. If you're on macOS, enable Screen Recording permission and restart the app.",
+        "permission_required": "[to be translated]:To take a screenshot on macOS, enable Screen Recording in System Settings → Privacy & Security → Screen Recording, then restart the app."
+      },
       "send": "送信",
       "settings": "設定",
       "slash_commands": {

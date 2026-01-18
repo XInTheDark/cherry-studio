@@ -33,13 +33,29 @@ export const handlePaste = async (
   pasteLongTextThreshold?: number,
   text?: string,
   resizeTextArea?: () => void,
-  t?: (key: string) => string
+  t?: (key: string) => string,
+  forceTextAsFile?: boolean
 ): Promise<boolean> => {
   try {
     // 优先处理文本粘贴
     const clipboardText = event.clipboardData?.getData('text')
     if (clipboardText) {
-      // 1. 文本粘贴
+      // 1. 强制文本转文件
+      if (forceTextAsFile) {
+        event.preventDefault()
+
+        const tempFilePath = await window.api.file.createTempFile('pasted_text.txt')
+        await window.api.file.write(tempFilePath, clipboardText)
+        const selectedFile = await window.api.file.get(tempFilePath)
+        if (selectedFile) {
+          setFiles((prevFiles) => [...prevFiles, selectedFile])
+          if (setText && typeof text === 'string') setText(text) // 保持输入框内容不变
+          if (resizeTextArea) setTimeout(() => resizeTextArea(), 50)
+        }
+        return true
+      }
+
+      // 2. 文本粘贴
       if (pasteLongTextAsFile && pasteLongTextThreshold && clipboardText.length > pasteLongTextThreshold) {
         // 长文本直接转文件，阻止默认粘贴
         event.preventDefault()
@@ -49,7 +65,7 @@ export const handlePaste = async (
         const selectedFile = await window.api.file.get(tempFilePath)
         if (selectedFile) {
           setFiles((prevFiles) => [...prevFiles, selectedFile])
-          if (setText && text) setText(text) // 保持输入框内容不变
+          if (setText && typeof text === 'string') setText(text) // 保持输入框内容不变
           if (resizeTextArea) setTimeout(() => resizeTextArea(), 50)
         }
         return true
