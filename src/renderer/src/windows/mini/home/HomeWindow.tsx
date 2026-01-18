@@ -4,8 +4,9 @@ import { isMac } from '@renderer/config/constant'
 import { isGenerateImageModel, isVisionModel } from '@renderer/config/models'
 import { useTheme } from '@renderer/context/ThemeProvider'
 import db from '@renderer/databases'
-import { useAssistant } from '@renderer/hooks/useAssistant'
+import { useAssistant, useDefaultAssistant, useDefaultModel } from '@renderer/hooks/useAssistant'
 import { useSettings } from '@renderer/hooks/useSettings'
+import { useTextareaResize } from '@renderer/hooks/useTextareaResize'
 import i18n from '@renderer/i18n'
 import { InputbarCore } from '@renderer/pages/home/Inputbar/components/InputbarCore'
 import {
@@ -14,8 +15,10 @@ import {
   useInputbarToolsInternalDispatch,
   useInputbarToolsState
 } from '@renderer/pages/home/Inputbar/context/InputbarToolsProvider'
-import AttachmentButton from '@renderer/pages/home/Inputbar/tools/components/AttachmentButton'
-import type { InputbarScope, ToolQuickPanelApi } from '@renderer/pages/home/Inputbar/types'
+import InputbarTools from '@renderer/pages/home/Inputbar/InputbarTools'
+import KnowledgeBaseInput from '@renderer/pages/home/Inputbar/KnowledgeBaseInput'
+import MentionModelsInput from '@renderer/pages/home/Inputbar/MentionModelsInput'
+import type { InputbarScope } from '@renderer/pages/home/Inputbar/types'
 import { fetchChatCompletion } from '@renderer/services/ApiService'
 import { getDefaultTopic } from '@renderer/services/AssistantService'
 import { ConversationService } from '@renderer/services/ConversationService'
@@ -96,22 +99,24 @@ const HomeWindow: FC<{ draggable?: boolean }> = ({ draggable = true }) => {
         onTextChange: (updater) => actionsRef.current.onTextChange(updater),
         toggleExpanded: (next) => actionsRef.current.toggleExpanded(next)
       }}>
-      <HomeWindowInner draggable={draggable} />
+      <HomeWindowInner draggable={draggable} actionsRef={actionsRef} />
     </InputbarToolsProvider>
   )
 }
 
-const HomeWindowInner: FC<{ draggable: boolean }> = ({ draggable }) => {
+const HomeWindowInner: FC<{ draggable: boolean; actionsRef: React.RefObject<ProviderActionHandlers> }> = ({
+  draggable,
+  actionsRef
+}) => {
   const { language, readClipboardAtStartup, targetLanguage, windowStyle } = useSettings()
   const { theme } = useTheme()
   const { t } = useTranslation()
 
-  const { files, couldAddImageFile, extensions } = useInputbarToolsState()
-  const { setFiles, toolsRegistry } = useInputbarToolsDispatch()
+  const { files, mentionedModels, selectedKnowledgeBases, isExpanded, couldAddImageFile } = useInputbarToolsState()
+  const { setFiles, setMentionedModels, setSelectedKnowledgeBases, setIsExpanded } = useInputbarToolsDispatch()
   const { setCouldAddImageFile } = useInputbarToolsInternalDispatch()
 
   const [text, setText] = useState('')
-  const textareaRef = useRef<any>(null)
 
   const [clipboardText, setClipboardText] = useState('')
   const lastClipboardTextRef = useRef<string | null>(null)
@@ -124,7 +129,18 @@ const HomeWindowInner: FC<{ draggable: boolean }> = ({ draggable }) => {
   const [error, setError] = useState<string | null>(null)
 
   const { quickAssistantId } = useAppSelector((state) => state.llm)
-  const { assistant: currentAssistant } = useAssistant(quickAssistantId)
+  const { defaultAssistant } = useDefaultAssistant()
+  const { quickModel } = useDefaultModel()
+
+  const assistantId = quickAssistantId || defaultAssistant.id
+  const { assistant: baseAssistant } = useAssistant(assistantId)
+
+  // When quickAssistantId is empty, Quick Assistant is configured to "use model" (quickModel) instead of an assistant.
+  // We still need an assistant-like object for prompt/settings; we reuse the default assistant and override its model.
+  const currentAssistant = useMemo(() => {
+    if (quickAssistantId) return baseAssistant
+    return { ...baseAssistant, model: quickModel, defaultModel: quickModel }
+  }, [baseAssistant, quickAssistantId, quickModel])
 
   const [topic, setTopic] = useState<Topic>(() => getDefaultTopic(currentAssistant.id))
   const currentAskId = useRef('')
@@ -132,19 +148,17 @@ const HomeWindowInner: FC<{ draggable: boolean }> = ({ draggable }) => {
   const featureMenusRef = useRef<FeatureMenusRef>(null)
   const [commandsFocused, setCommandsFocused] = useState(false)
 
-  const focusTextarea = useCallback(() => {
-    const el = textareaRef.current?.resizableTextArea?.textArea
-    el?.focus?.()
-  }, [])
-
-  const quickPanelApiForAttachment = useMemo<ToolQuickPanelApi>(() => {
-    // Use the provider registry so the attachment tool can integrate with QuickPanel.
-    // It still works in mini-window mode without rendering the full tools bar.
-    return {
-      registerRootMenu: (entries) => toolsRegistry.registerRootMenu('mini-window:attachment', entries),
-      registerTrigger: (symbol, handler) => toolsRegistry.registerTrigger('mini-window:attachment', symbol, handler)
-    }
-  }, [toolsRegistry])
+  const {
+    textareaRef,
+    resize: resizeTextArea,
+    focus: focusTextarea,
+    setExpanded,
+    customHeight,
+    setCustomHeight
+  } = useTextareaResize({
+    maxHeight: 280,
+    minHeight: 30
+  })
 
   const readClipboard = useCallback(async () => {
     if (!readClipboardAtStartup || !document.hasFocus()) return
@@ -315,9 +329,6 @@ const HomeWindowInner: FC<{ draggable: boolean }> = ({ draggable }) => {
         const newAssistant = cloneDeep(currentAssistant)
         if (!newAssistant.settings) newAssistant.settings = {}
         newAssistant.settings.streamOutput = true
-        newAssistant.webSearchProviderId = undefined
-        newAssistant.mcpServers = undefined
-        newAssistant.knowledge_bases = undefined
         newAssistant.prompt = await replacePromptVariables(currentAssistant.prompt, currentAssistant?.model.name)
 
         const { modelMessages, uiMessages } = await ConversationService.prepareMessagesForModel(
@@ -491,7 +502,10 @@ const HomeWindowInner: FC<{ draggable: boolean }> = ({ draggable }) => {
 
         if (shouldUseContext) {
           try {
-            const selectedText = (await window.api.selection.getLastSelectedText(60_000))?.trim()
+            // Prefer cached selection captured before the mini window was focused.
+            const lastSelected = (await window.api.selection.getLastSelectedText(60_000))?.trim()
+            const currentSelected = (await window.api.selection.getCurrentSelectedText())?.trim()
+            const selectedText = lastSelected || currentSelected
             if (selectedText) {
               contentOverride = selectedText
             } else if (clipboardText.trim()) {
@@ -597,6 +611,25 @@ const HomeWindowInner: FC<{ draggable: boolean }> = ({ draggable }) => {
     setCouldAddImageFile(canAddImage)
   }, [currentAssistant, setCouldAddImageFile])
 
+  useEffect(() => {
+    // Wire InputbarToolsProvider "parent actions" so tool buttons behave consistently.
+    actionsRef.current.resizeTextArea = () => resizeTextArea()
+    actionsRef.current.addNewTopic = () => resetConversation()
+    actionsRef.current.clearTopic = () => resetConversation()
+    actionsRef.current.onNewContext = () => {
+      // No-op for mini window for now.
+    }
+    actionsRef.current.onTextChange = (updater) => {
+      setText((prev) => (typeof updater === 'function' ? updater(prev) : updater))
+    }
+    actionsRef.current.toggleExpanded = (nextState) => {
+      const target = typeof nextState === 'boolean' ? nextState : !isExpanded
+      setIsExpanded(target)
+      setExpanded(target)
+      focusTextarea()
+    }
+  }, [actionsRef, focusTextarea, isExpanded, resetConversation, resizeTextArea, setExpanded, setIsExpanded])
+
   const supportedExts = useMemo(() => {
     // Mirror the main input behavior: only allow images when the model supports vision/image-generation.
     return couldAddImageFile ? [...imageExts, ...documentExts, ...textExts] : [...documentExts, ...textExts]
@@ -648,15 +681,18 @@ const HomeWindowInner: FC<{ draggable: boolean }> = ({ draggable }) => {
 
     if (hasConversation) {
       items.push(
-        <Tooltip key="continue" title={t('common.open')} mouseEnterDelay={0.6}>
-          <ActionIconButton onClick={() => void handleContinueInMainWindow()} aria-label={t('common.open')}>
+        <Tooltip key="continue" title="Open in main window" mouseEnterDelay={0.6}>
+          <ActionIconButton
+            className="nodrag"
+            onClick={() => void handleContinueInMainWindow()}
+            aria-label="Open in main window">
             <ExternalLink size={16} />
           </ActionIconButton>
         </Tooltip>
       )
       items.push(
-        <Tooltip key="new" title={t('shortcuts.new_topic')} mouseEnterDelay={0.6}>
-          <ActionIconButton onClick={resetConversation} aria-label={t('shortcuts.new_topic')}>
+        <Tooltip key="new" title="New conversation" mouseEnterDelay={0.6}>
+          <ActionIconButton className="nodrag" onClick={resetConversation} aria-label="New conversation">
             <PlusSquare size={16} />
           </ActionIconButton>
         </Tooltip>
@@ -665,7 +701,10 @@ const HomeWindowInner: FC<{ draggable: boolean }> = ({ draggable }) => {
 
     items.push(
       <Tooltip key="pin" title={t('miniwindow.tooltip.pin')} mouseEnterDelay={0.6}>
-        <ActionIconButton onClick={() => setIsPinned((p) => !p)} aria-label={t('miniwindow.tooltip.pin')}>
+        <ActionIconButton
+          className="nodrag"
+          onClick={() => setIsPinned((p) => !p)}
+          aria-label={t('miniwindow.tooltip.pin')}>
           {isPinned ? <Pin size={16} /> : <PinOff size={16} />}
         </ActionIconButton>
       </Tooltip>
@@ -673,18 +712,18 @@ const HomeWindowInner: FC<{ draggable: boolean }> = ({ draggable }) => {
 
     items.push(
       <Tooltip key="close" title={t('common.close')} mouseEnterDelay={0.6}>
-        <ActionIconButton onClick={handleClose} aria-label={t('common.close')}>
+        <ActionIconButton className="nodrag" onClick={handleClose} aria-label={t('common.close')}>
           <X size={16} />
         </ActionIconButton>
       </Tooltip>
     )
 
-    return <HeaderActions>{items}</HeaderActions>
+    return <HeaderActions className="nodrag">{items}</HeaderActions>
   }, [handleClose, handleContinueInMainWindow, hasConversation, isPinned, resetConversation, t])
 
   return (
     <Container style={{ backgroundColor }} $draggable={draggable} onKeyDownCapture={handleContainerKeyDownCapture}>
-      <Header>
+      <Header $draggable={draggable}>
         <HeaderTitle>{t('settings.quickAssistant.title')}</HeaderTitle>
         {headerActions}
       </Header>
@@ -723,24 +762,36 @@ const HomeWindowInner: FC<{ draggable: boolean }> = ({ draggable }) => {
           text={text}
           onTextChange={setText}
           textareaRef={textareaRef}
-          resizeTextArea={() => {}}
+          resizeTextArea={resizeTextArea}
           focusTextarea={focusTextarea}
-          height={undefined}
-          onHeightChange={() => {}}
+          height={customHeight}
+          onHeightChange={setCustomHeight}
           supportedExts={supportedExts}
           isLoading={isLoading}
           onPause={handlePause}
           handleSendMessage={handleSendChat}
-          leftToolbar={
-            <AttachmentButton
-              quickPanel={quickPanelApiForAttachment}
-              scope={INPUT_SCOPE}
-              couldAddImageFile={couldAddImageFile}
-              extensions={extensions}
-              files={files}
-              setFiles={setFiles}
-              disabled={isLoading}
-            />
+          leftToolbar={<InputbarTools scope={INPUT_SCOPE} assistantId={currentAssistant.id} />}
+          topContent={
+            <>
+              {selectedKnowledgeBases.length > 0 && (
+                <KnowledgeBaseInput
+                  selectedKnowledgeBases={selectedKnowledgeBases}
+                  onRemoveKnowledgeBase={(knowledgeBase) =>
+                    setSelectedKnowledgeBases((prev) => prev.filter((kb) => kb.id !== knowledgeBase.id))
+                  }
+                />
+              )}
+              {mentionedModels.length > 0 && (
+                <MentionModelsInput
+                  selectedModels={mentionedModels}
+                  onRemoveModel={(model) =>
+                    setMentionedModels((prev) =>
+                      prev.filter((m) => !(m.id === model.id && m.provider === model.provider))
+                    )
+                  }
+                />
+              )}
+            </>
           }
         />
       </InputArea>
@@ -760,16 +811,15 @@ const Container = styled.div<{ $draggable: boolean }>`
   height: 100%;
   width: 100%;
   flex-direction: column;
-  -webkit-app-region: ${({ $draggable }) => ($draggable ? 'drag' : 'no-drag')};
   padding: 8px 10px;
 `
 
-const Header = styled.div`
+const Header = styled.div<{ $draggable: boolean }>`
   display: flex;
   align-items: center;
   justify-content: space-between;
-  -webkit-app-region: none;
   padding: 4px 4px 8px 4px;
+  -webkit-app-region: ${({ $draggable }) => ($draggable ? 'drag' : 'no-drag')};
 `
 
 const HeaderTitle = styled.div`
@@ -781,7 +831,6 @@ const HeaderTitle = styled.div`
 const HeaderActions = styled.div`
   display: flex;
   gap: 6px;
-  -webkit-app-region: none;
 `
 
 const Content = styled.div`
@@ -789,7 +838,6 @@ const Content = styled.div`
   overflow: hidden;
   display: flex;
   flex-direction: column;
-  -webkit-app-region: none;
 `
 
 const CommandsPanel = styled.div`
@@ -801,7 +849,6 @@ const CommandsPanel = styled.div`
 `
 
 const InputArea = styled.div`
-  -webkit-app-region: none;
 `
 
 const ErrorMsg = styled.div`
@@ -813,7 +860,6 @@ const ErrorMsg = styled.div`
   margin-top: 8px;
   font-size: 13px;
   word-break: break-all;
-  -webkit-app-region: none;
 `
 
 const FooterHint = styled.div`
@@ -821,7 +867,6 @@ const FooterHint = styled.div`
   font-size: 11px;
   color: var(--color-text-3);
   user-select: none;
-  -webkit-app-region: none;
 `
 
 export default HomeWindow

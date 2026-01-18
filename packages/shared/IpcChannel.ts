@@ -48,6 +48,7 @@ export enum IpcChannel {
 
   App_QuoteToMain = 'app:quote-to-main',
   App_OpenTopic = 'app:open-topic',
+  App_Navigate = 'app:navigate',
   App_SetDisableHardwareAcceleration = 'app:set-disable-hardware-acceleration',
 
   Notification_Send = 'notification:send',
@@ -297,6 +298,7 @@ export enum IpcChannel {
   Selection_ToolbarDetermineSize = 'selection:toolbar-determine-size',
   Selection_WriteToClipboard = 'selection:write-to-clipboard',
   Selection_GetLastSelectedText = 'selection:get-last-selected-text',
+  Selection_GetCurrentSelectedText = 'selection:get-current-selected-text',
   Selection_SetEnabled = 'selection:set-enabled',
   Selection_SetTriggerMode = 'selection:set-trigger-mode',
   Selection_SetFilterMode = 'selection:set-filter-mode',

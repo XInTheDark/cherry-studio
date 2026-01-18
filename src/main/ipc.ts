@@ -909,6 +909,7 @@ export async function registerIpc(mainWindow: BrowserWindow, app: Electron.App) 
   ipcMain.handle(IpcChannel.App_OpenTopic, (_, payload: { assistantId: string; topicId: string }) =>
     windowService.openTopicInMainWindow(payload)
   )
+  ipcMain.handle(IpcChannel.App_Navigate, (_, path: string) => windowService.openPathInMainWindow(path))
 
   ipcMain.handle(IpcChannel.App_SetDisableHardwareAcceleration, (_, isDisable: boolean) => {
     configManager.setDisableHardwareAcceleration(isDisable)

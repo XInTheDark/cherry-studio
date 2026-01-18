@@ -7,7 +7,7 @@ import { PaintbrushVertical } from 'lucide-react'
 const clearTopicTool = defineTool({
   key: 'clear_topic',
   label: (t) => t('chat.input.clear.label', { Command: '' }),
-  visibleInScopes: [TopicType.Chat],
+  visibleInScopes: [TopicType.Chat, 'mini-window'],
   dependencies: {
     actions: ['clearTopic'] as const
   },

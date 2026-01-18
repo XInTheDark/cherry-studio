@@ -1,0 +1,108 @@
+Session: Quick Assistant improvements (Quick Assistant / mini window)
+
+Goals
+- Make Quick Assistant commands customizable (no longer hard-coded).
+- Add "Continue in main window" that saves current mini conversation into a new Topic/thread and opens it in the main window, then closes the mini window.
+- Add an attachment menu to the mini window: attach local files + capture full-screen screenshot (excluding the mini window itself).
+
+Decisions (user confirmed)
+- Keep customization low-complexity: custom commands are "prompt commands" (label + prompt), plus a per-command "hide source message" option.
+- Screenshot: capture entire primary screen; hide mini window briefly to avoid capturing it; no region selection UI.
+- After continuing in main window: close mini window.
+
+Implementation Plan
+1) Settings data model
+  - Add settings slice field: quickAssistantCommands: QuickAssistantCommand[]
+  - Built-ins stored as data too (chat / translate / summary / explanation) with default order.
+  - Persist via redux-persist (no electron-store config keys needed).
+  - Add store migration to seed defaults if missing.
+
+2) Settings UI
+  - Extend settings page QuickAssistantSettings to manage commands:
+    - list commands
+    - enable/disable
+    - reorder up/down
+    - add/edit/delete custom prompt commands
+    - toggle "hide source message" per command
+
+3) Mini window feature menu
+  - Update FeatureMenus to render from settings instead of hard-coded array.
+  - When executing a command:
+    - chat: setRoute('chat') + send
+    - translate: setRoute('translate') (no send)
+    - summary/explanation/custom prompt: setRoute('chat' or keep summary/explanation route) + send(prompt)
+  - Track per-command hide flag and pass down to chat renderer.
+
+4) Hide source message in chat view
+  - Add prop hideFirstUserMessage to mini chat Messages component.
+  - When enabled: find first user message id in chronological order, and skip rendering it (regardless of route).
+
+5) Attachments + screenshot in mini window
+  - Add attachment state (files[]) in HomeWindow.
+  - Attachment menu: attach files (open dialog) and capture screenshot.
+  - On send:
+    - upload selected files into app storage (FileManager.uploadFiles)
+    - ensure screenshot files are recorded in DB (FileManager.addFile)
+    - include uploaded files in getUserMessage({ files })
+    - clear attachments after send
+  - Screenshot capture flow: hide mini window -> small delay -> capture primary display via preload API -> show mini window -> attach image.
+
+6) Continue in main window
+  - Add mini window UI affordance (footer button) to "Continue in main window".
+  - Create new topic (getDefaultTopic), persist empty topic in Dexie, add topic to assistants slice.
+  - Clone mini window messages into new topic using cloneMessagesToNewTopicThunk(sourceTopicId, messages.length, newTopic).
+  - Add IPC to focus main window and instruct it to navigate to {assistantId, topicId}.
+  - Close mini window.
+
+Testing / Verification
+- Run pnpm lint/test/format.
+- Smoke test manually:
+  - add custom command, reorder, disable built-in
+  - send prompt command; hide source message toggle works
+  - attach local file and send
+  - capture screen attaches png and sends
+  - continue in main window opens new topic with conversation and closes mini window
+
+Follow-up fixes (Jan 18 2026)
+- Screenshot label renamed in mini window attachment menu: "Take screenshot" (miniwindow.attachment.take_screenshot).
+- Screenshot reliability: desktopCapturer thumbnail size is now clamped (max edge 4096px) to avoid failures on HiDPI / large displays.
+- Commands with empty input: commands can run using context text.
+  Priority: recent selected text (<= 60s, via SelectionService cache + IPC) -> existing clipboard preview -> system clipboard read on demand.
+  If no context is found: show toast miniwindow.input.no_context.
+
+Redesign (Jan 18 2026, later)
+- Mini window is no longer split into "home/chat/translate" routes. It is now a single screen:
+  - Before first message: command list centered in the main area, input at the bottom.
+  - After first message: messages render in the same view (mini conversation) above the same input UI (commands hidden).
+  - Cmd/Ctrl+N starts a new mini conversation (resets ephemeral topic and cleans up attachment files).
+  - Continue in main window is available as a header action (clones mini thread into a new topic, opens main window, closes mini).
+- Mini input now uses the shared main Inputbar UI (InputbarCore) for consistency.
+- Attachment button changes:
+  - Main window paperclip now opens a menu with: Upload local file + Take screenshot (+ KB entries).
+  - Taking screenshot hides the relevant window before capture:
+    - main window: hide/show via new window IPC
+    - mini window: hide/show mini window API
+- Translate command is now prompt-based in mini conversation (prompts.translate) instead of opening a separate translate view.
+
+Fixes after redesign feedback (Jan 18 2026)
+- Fixed QuickPanel crashes outside Chat route:
+  - App root now wraps Router in QuickPanelProvider so Settings pages can safely use useQuickPanel.
+  - Mini window is also wrapped in QuickPanelProvider (already).
+- Mini window drag regression:
+  - Removed -webkit-app-region overrides that made most of the window non-draggable.
+  - Relies on container drag + .nodrag class for interactive controls.
+- Mini window input now matches main input more closely:
+  - Uses InputbarCore + InputbarTools and renders KnowledgeBaseInput / MentionModelsInput chips like the main input.
+- Selected text context:
+  - Added IPC to query current OS selected text on-demand (selection:get-current-selected-text).
+  - Mini commands now prefer current selection -> last selected -> clipboard.
+
+Follow-up fixes (Jan 18 2026, later)
+- Mini window drag regression:
+  - Mini window is now draggable from the header region explicitly (app-region: drag on header; interactive controls are .nodrag).
+  - Replaced invalid `-webkit-app-region: none` usages in mini components with `no-drag` to avoid Chromium/Electron inconsistencies.
+- Selected text reliability:
+  - Main process pre-captures selected text right before showing the mini window (WindowService.showMiniWindow calls SelectionService.getCurrentSelectedText()) so focus change doesn’t wipe context.
+  - SelectionService.getCurrentSelectedText now:
+    - Updates the `lastSelectedText` cache when it successfully reads a selection.
+    - Can best-effort start/stop selection-hook for a one-shot selection read when the service isn’t running (without requiring the Selection Assistant UI to be enabled).

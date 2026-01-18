@@ -2091,6 +2091,10 @@
     "zhihu": "知乎直答"
   },
   "miniwindow": {
+    "action": {
+      "new_conversation": "新对话",
+      "open_in_main_window": "在主窗口中打开"
+    },
     "alert": {
       "google_login": "提示：如遇到Google登录提示\"不受信任的浏览器\"，请先在小程序列表中的Google小程序中完成账号登录，再在其它小程序使用Google登录"
     },

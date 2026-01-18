@@ -16,7 +16,6 @@ import { AtSign, CircleX, Plus } from 'lucide-react'
 import type React from 'react'
 import { useCallback, useEffect, useMemo, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
-import { useNavigate } from 'react-router'
 import styled from 'styled-components'
 
 export type MentionTriggerInfo = { type: 'input' | 'button'; position?: number; originalText?: string }
@@ -45,7 +44,13 @@ export const useMentionModelsPanel = (params: Params, role: 'button' | 'manager'
   const { open, close, updateList, isVisible, symbol } = quickPanelController
   const { providers } = useProviders()
   const { t } = useTranslation()
-  const navigate = useNavigate()
+  const openRouteInMainWindow = useCallback(async (path: string) => {
+    if (typeof window.navigate === 'function') {
+      window.navigate(path)
+      return
+    }
+    await window.api.openPathInMainWindow(path)
+  }, [])
 
   const hasModelActionRef = useRef(false)
   const triggerInfoRef = useRef<MentionTriggerInfo | undefined>(undefined)
@@ -194,7 +199,7 @@ export const useMentionModelsPanel = (params: Params, role: 'button' | 'manager'
     items.push({
       label: t('settings.models.add.add_model') + '...',
       icon: <Plus />,
-      action: () => navigate('/settings/provider'),
+      action: () => void openRouteInMainWindow('/settings/provider'),
       isSelected: false
     })
 
@@ -223,7 +228,7 @@ export const useMentionModelsPanel = (params: Params, role: 'button' | 'manager'
   }, [
     couldMentionNotVisionModel,
     mentionedModels,
-    navigate,
+    openRouteInMainWindow,
     onClearMentionModels,
     onMentionModel,
     pinnedModels,

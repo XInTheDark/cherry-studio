@@ -2091,6 +2091,10 @@
     "zhihu": "Zhihu"
   },
   "miniwindow": {
+    "action": {
+      "new_conversation": "[to be translated]:New conversation",
+      "open_in_main_window": "[to be translated]:Open in main window"
+    },
     "alert": {
       "google_login": "Sugerencia: si aparece el mensaje de Google \"navegador no confiable\" al iniciar sesión, primero inicie sesión en su cuenta a través de la miniaplicación de Google en la lista de miniaplicaciones, y luego use el inicio de sesión de Google en otras miniaplicaciones"
     },

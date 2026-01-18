@@ -508,6 +508,7 @@ const api = {
     hideToolbar: () => ipcRenderer.invoke(IpcChannel.Selection_ToolbarHide),
     writeToClipboard: (text: string) => ipcRenderer.invoke(IpcChannel.Selection_WriteToClipboard, text),
     getLastSelectedText: (maxAgeMs?: number) => ipcRenderer.invoke(IpcChannel.Selection_GetLastSelectedText, maxAgeMs),
+    getCurrentSelectedText: () => ipcRenderer.invoke(IpcChannel.Selection_GetCurrentSelectedText),
     determineToolbarSize: (width: number, height: number) =>
       ipcRenderer.invoke(IpcChannel.Selection_ToolbarDetermineSize, width, height),
     setEnabled: (enabled: boolean) => ipcRenderer.invoke(IpcChannel.Selection_SetEnabled, enabled),
@@ -539,6 +540,7 @@ const api = {
   quoteToMainWindow: (text: string) => ipcRenderer.invoke(IpcChannel.App_QuoteToMain, text),
   openTopicInMainWindow: (payload: { assistantId: string; topicId: string }) =>
     ipcRenderer.invoke(IpcChannel.App_OpenTopic, payload),
+  openPathInMainWindow: (path: string) => ipcRenderer.invoke(IpcChannel.App_Navigate, path),
   setDisableHardwareAcceleration: (isDisable: boolean) =>
     ipcRenderer.invoke(IpcChannel.App_SetDisableHardwareAcceleration, isDisable),
   trace: {

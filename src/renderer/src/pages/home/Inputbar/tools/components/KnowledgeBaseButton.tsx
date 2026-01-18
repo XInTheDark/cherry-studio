@@ -9,7 +9,6 @@ import { CircleX, FileSearch, Plus } from 'lucide-react'
 import type { FC } from 'react'
 import { memo, useCallback, useEffect, useMemo, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
-import { useNavigate } from 'react-router'
 
 interface Props {
   quickPanel: ToolQuickPanelApi
@@ -20,7 +19,6 @@ interface Props {
 
 const KnowledgeBaseButton: FC<Props> = ({ quickPanel, selectedBases, onSelect, disabled }) => {
   const { t } = useTranslation()
-  const navigate = useNavigate()
   const quickPanelHook = useQuickPanel()
   const knowledgeState = useAppSelector((state) => state.knowledge)
   const selectedBasesRef = useRef(selectedBases)
@@ -54,7 +52,14 @@ const KnowledgeBaseButton: FC<Props> = ({ quickPanel, selectedBases, onSelect, d
     items.push({
       label: t('knowledge.add.title') + '...',
       icon: <Plus />,
-      action: () => navigate('/knowledge'),
+      action: async () => {
+        // Mini window does not mount a router; route navigation must be proxied to the main window.
+        if (typeof window.navigate === 'function') {
+          window.navigate('/knowledge')
+          return
+        }
+        await window.api.openPathInMainWindow('/knowledge')
+      },
       isSelected: false
     })
 
@@ -70,7 +75,7 @@ const KnowledgeBaseButton: FC<Props> = ({ quickPanel, selectedBases, onSelect, d
     })
 
     return items
-  }, [knowledgeState.bases, t, selectedBases, handleBaseSelect, navigate, onSelect])
+  }, [knowledgeState.bases, t, selectedBases, handleBaseSelect, onSelect])
 
   const openQuickPanel = useCallback(() => {
     quickPanelHook.open({

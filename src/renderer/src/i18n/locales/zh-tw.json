@@ -2091,6 +2091,10 @@
     "zhihu": "知乎直答"
   },
   "miniwindow": {
+    "action": {
+      "new_conversation": "新對話",
+      "open_in_main_window": "在主視窗中開啟"
+    },
     "alert": {
       "google_login": "提示：若 Google 登入時顯示「不受信任的瀏覽器」，請先在小程式清單中的 Google 小程式完成帳號登入，再到其他小程式使用 Google 登入。"
     },

@@ -1,6 +1,7 @@
 import '@renderer/databases'
 
 import { ErrorBoundary } from '@renderer/components/ErrorBoundary'
+import { QuickPanelProvider } from '@renderer/components/QuickPanel'
 import { getToastUtilities } from '@renderer/components/TopView/toast'
 import { useSettings } from '@renderer/hooks/useSettings'
 import store, { persistor } from '@renderer/store'
@@ -46,7 +47,9 @@ function MiniWindow(): React.ReactElement {
           <CodeStyleProvider>
             <PersistGate loading={null} persistor={persistor}>
               <ErrorBoundary>
-                <MiniWindowContent />
+                <QuickPanelProvider>
+                  <MiniWindowContent />
+                </QuickPanelProvider>
               </ErrorBoundary>
             </PersistGate>
           </CodeStyleProvider>

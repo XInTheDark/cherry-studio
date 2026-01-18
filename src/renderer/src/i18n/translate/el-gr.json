@@ -2091,6 +2091,10 @@
     "zhihu": "Zhihu"
   },
   "miniwindow": {
+    "action": {
+      "new_conversation": "[to be translated]:New conversation",
+      "open_in_main_window": "[to be translated]:Open in main window"
+    },
     "alert": {
       "google_login": "Υπόδειξη: Αν συναντήσετε την ειδοποίηση «Μη εμπιστευόμενος περιηγητής» κατά τη σύνδεση στο Google, πρώτα ολοκληρώστε τη σύνδεση του λογαριασμού σας μέσω της εφαρμογής Google στη λίστα μικροεφαρμογών, και στη συνέχεια χρησιμοποιήστε τη σύνδεση Google σε άλλες μικροεφαρμογές"
     },

@@ -32,7 +32,7 @@ const Main = styled(Scrollbar)`
   flex-direction: row;
   justify-content: flex-start;
   margin-bottom: auto;
-  -webkit-app-region: none;
+  -webkit-app-region: no-drag;
   background-color: transparent !important;
   max-height: 100%;
 `

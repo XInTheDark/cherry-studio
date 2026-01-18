@@ -15,6 +15,7 @@ import icon from '../../../build/icon.png?asset'
 import { titleBarOverlayDark, titleBarOverlayLight } from '../config'
 import { configManager } from './ConfigManager'
 import { contextMenu } from './ContextMenu'
+import selectionService from './SelectionService'
 import { initSessionUserAgent } from './WebviewService'
 import { shouldHideAppAfterHidingMiniWindow, shouldUnhideAppBeforeShowingMiniWindow } from './window/miniWindowMacos'
 
@@ -574,6 +575,15 @@ export class WindowService {
       return
     }
 
+    // Best-effort: capture the current system selection before showing the mini window.
+    // Once the mini window is focused, the "current selection" can change, so we need
+    // to query it while the previous app is still focused.
+    try {
+      selectionService?.getCurrentSelectedText()
+    } catch (error) {
+      logger.warn('Failed to pre-capture selected text before showing miniWindow:', error as Error)
+    }
+
     // macOS: if the app is hidden (Cmd+H / `app.hide()`), calling `BrowserWindow.show()`
     // can flicker but remain hidden. Explicitly unhide the app before showing miniWindow.
     const isAppHidden = isMac && typeof app.isHidden === 'function' ? app.isHidden() : false
@@ -729,6 +739,24 @@ export class WindowService {
       }
     } catch (error) {
       logger.error('Failed to open topic in main window:', error as Error)
+    }
+  }
+
+  /**
+   * Ask the main window renderer to navigate to a route (used by mini window tool buttons).
+   */
+  public openPathInMainWindow(path: string): void {
+    try {
+      this.showMainWindow()
+
+      const mainWindow = this.getMainWindow()
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        setTimeout(() => {
+          mainWindow.webContents.send(IpcChannel.App_Navigate, path)
+        }, 100)
+      }
+    } catch (error) {
+      logger.error('Failed to navigate in main window:', error as Error)
     }
   }
 }

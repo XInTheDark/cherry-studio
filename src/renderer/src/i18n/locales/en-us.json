@@ -2091,6 +2091,10 @@
     "zhihu": "Zhihu"
   },
   "miniwindow": {
+    "action": {
+      "new_conversation": "New conversation",
+      "open_in_main_window": "Open in main window"
+    },
     "alert": {
       "google_login": "Tip: If you see a 'browser not trusted' message when logging into Google, please first login through the Google mini app in the mini app list, then use Google login in other mini apps"
     },

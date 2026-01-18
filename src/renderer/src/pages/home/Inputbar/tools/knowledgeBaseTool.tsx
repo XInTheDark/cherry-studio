@@ -18,7 +18,7 @@ const knowledgeBaseTool = defineTool({
   // ✅ 移除 icon 属性，不在 ToolDefinition 类型中
   // icon: FileSearch,
 
-  visibleInScopes: [TopicType.Chat],
+  visibleInScopes: [TopicType.Chat, 'mini-window'],
   condition: ({ assistant }) => isSupportedToolUse(assistant) || isPromptToolUse(assistant),
 
   dependencies: {

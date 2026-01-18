@@ -16,7 +16,6 @@ import { CircleX, Hammer, Plus } from 'lucide-react'
 import type { FC } from 'react'
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { useNavigate } from 'react-router'
 
 interface Props {
   assistantId: string
@@ -114,8 +113,14 @@ const MCPToolsButton: FC<Props> = ({ quickPanel, setInputValue, resizeTextArea, 
   const { activedMcpServers } = useMCPServers()
   const { t } = useTranslation()
   const quickPanelHook = useQuickPanel()
-  const navigate = useNavigate()
   const [form] = Form.useForm()
+  const openRouteInMainWindow = useCallback(async (path: string) => {
+    if (typeof window.navigate === 'function') {
+      window.navigate(path)
+      return
+    }
+    await window.api.openPathInMainWindow(path)
+  }, [])
 
   const { assistant, updateAssistant } = useAssistant(assistantId)
   const model = assistant.model
@@ -204,7 +209,7 @@ const MCPToolsButton: FC<Props> = ({ quickPanel, setInputValue, resizeTextArea, 
     newList.push({
       label: t('settings.mcp.addServer.label') + '...',
       icon: <Plus />,
-      action: () => navigate('/settings/mcp')
+      action: () => void openRouteInMainWindow('/settings/mcp')
     })
 
     newList.unshift({
@@ -219,7 +224,7 @@ const MCPToolsButton: FC<Props> = ({ quickPanel, setInputValue, resizeTextArea, 
     })
 
     return newList
-  }, [activedMcpServers, t, assistantMcpServers, navigate, updateMcpEnabled, quickPanelHook])
+  }, [activedMcpServers, t, assistantMcpServers, openRouteInMainWindow, updateMcpEnabled, quickPanelHook])
 
   const openQuickPanel = useCallback(() => {
     quickPanelHook.open({

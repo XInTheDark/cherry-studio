@@ -2091,6 +2091,10 @@
     "zhihu": "Zhihu"
   },
   "miniwindow": {
+    "action": {
+      "new_conversation": "[to be translated]:New conversation",
+      "open_in_main_window": "[to be translated]:Open in main window"
+    },
     "alert": {
       "google_login": "Remarque : Si vous recevez un message d'alerte Google indiquant que le navigateur n'est pas fiable lors de la connexion, veuillez d'abord vous connecter à votre compte via l'application intégrée Google dans la liste des mini-programmes, puis utilisez la connexion Google dans d'autres mini-programmes"
     },

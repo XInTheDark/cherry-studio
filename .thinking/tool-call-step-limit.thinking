@@ -1,0 +1,15 @@
+Context
+- User observed an apparent hard limit on how many tool calls can occur in a single message when using function-based tool calling.
+
+Finding
+- The cap comes from an AI SDK stop condition (max step count), not a dedicated 'max tool calls' limit.
+- Cherry Studio set stopWhen: stepCountIs(20) in src/renderer/src/aiCore/prepareParams/parameterBuilder.ts, which caps the agentic loop to 20 steps per streamText call.
+
+Decision
+- Make the step cap configurable via assistant.settings.customParameters.
+- Default to unlimited (Infinity) unless the user explicitly sets a value.
+- Support both maxSteps and max_steps (and stopWhenMaxSteps) keys.
+
+Implementation
+- Added parseMaxSteps() and resolveMaxSteps() in src/renderer/src/aiCore/prepareParams/parameterBuilder.ts.
+- stopWhen now uses stepCountIs(resolveMaxSteps(assistant)).

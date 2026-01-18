@@ -4,7 +4,6 @@ import { ContentSearch } from '@renderer/components/ContentSearch'
 import { HStack } from '@renderer/components/Layout'
 import MultiSelectActionPopup from '@renderer/components/Popups/MultiSelectionPopup'
 import PromptPopup from '@renderer/components/Popups/PromptPopup'
-import { QuickPanelProvider } from '@renderer/components/QuickPanel'
 import { useCreateDefaultSession } from '@renderer/hooks/agents/useCreateDefaultSession'
 import { useAssistant } from '@renderer/hooks/useAssistant'
 import { useChatContext } from '@renderer/hooks/useChatContext'
@@ -192,54 +191,52 @@ const Chat: FC<Props> = (props) => {
             flex={1}
             justify="space-between"
             style={{ maxWidth: chatMaxWidth, height: mainHeight }}>
-            <QuickPanelProvider>
-              <ChatNavbar
-                activeAssistant={props.assistant}
-                activeTopic={props.activeTopic}
-                setActiveTopic={props.setActiveTopic}
-                setActiveAssistant={props.setActiveAssistant}
-                position="left"
-              />
-              <div
-                className="flex flex-1 flex-col justify-between"
-                style={{ height: `calc(${mainHeight} - var(--navbar-height))` }}>
-                {activeTopicOrSession === 'topic' && (
-                  <>
-                    <Messages
-                      key={props.activeTopic.id}
-                      assistant={assistant}
-                      topic={props.activeTopic}
-                      setActiveTopic={props.setActiveTopic}
-                      onComponentUpdate={messagesComponentUpdateHandler}
-                      onFirstUpdate={messagesComponentFirstUpdateHandler}
-                    />
-                    <ContentSearch
-                      ref={contentSearchRef}
-                      searchTarget={mainRef as React.RefObject<HTMLElement>}
-                      filter={contentSearchFilter}
-                      includeUser={filterIncludeUser}
-                      onIncludeUserChange={userOutlinedItemClickHandler}
-                    />
-                    {messageNavigation === 'buttons' && <ChatNavigation containerId="messages" />}
-                    <Inputbar assistant={assistant} setActiveTopic={props.setActiveTopic} topic={props.activeTopic} />
-                  </>
-                )}
-                {activeTopicOrSession === 'session' && !activeAgentId && <AgentInvalid />}
-                {activeTopicOrSession === 'session' && activeAgentId && !activeSessionId && <SessionInvalid />}
-                {activeTopicOrSession === 'session' && activeAgentId && activeSessionId && (
-                  <>
-                    {!apiServer.enabled ? (
-                      <Alert type="warning" message={t('agent.warning.enable_server')} style={{ margin: '5px 16px' }} />
-                    ) : (
-                      <AgentSessionMessages agentId={activeAgentId} sessionId={activeSessionId} />
-                    )}
-                    {messageNavigation === 'buttons' && <ChatNavigation containerId="messages" />}
-                    <AgentSessionInputbar agentId={activeAgentId} sessionId={activeSessionId} />
-                  </>
-                )}
-                {isMultiSelectMode && <MultiSelectActionPopup topic={props.activeTopic} />}
-              </div>
-            </QuickPanelProvider>
+            <ChatNavbar
+              activeAssistant={props.assistant}
+              activeTopic={props.activeTopic}
+              setActiveTopic={props.setActiveTopic}
+              setActiveAssistant={props.setActiveAssistant}
+              position="left"
+            />
+            <div
+              className="flex flex-1 flex-col justify-between"
+              style={{ height: `calc(${mainHeight} - var(--navbar-height))` }}>
+              {activeTopicOrSession === 'topic' && (
+                <>
+                  <Messages
+                    key={props.activeTopic.id}
+                    assistant={assistant}
+                    topic={props.activeTopic}
+                    setActiveTopic={props.setActiveTopic}
+                    onComponentUpdate={messagesComponentUpdateHandler}
+                    onFirstUpdate={messagesComponentFirstUpdateHandler}
+                  />
+                  <ContentSearch
+                    ref={contentSearchRef}
+                    searchTarget={mainRef as React.RefObject<HTMLElement>}
+                    filter={contentSearchFilter}
+                    includeUser={filterIncludeUser}
+                    onIncludeUserChange={userOutlinedItemClickHandler}
+                  />
+                  {messageNavigation === 'buttons' && <ChatNavigation containerId="messages" />}
+                  <Inputbar assistant={assistant} setActiveTopic={props.setActiveTopic} topic={props.activeTopic} />
+                </>
+              )}
+              {activeTopicOrSession === 'session' && !activeAgentId && <AgentInvalid />}
+              {activeTopicOrSession === 'session' && activeAgentId && !activeSessionId && <SessionInvalid />}
+              {activeTopicOrSession === 'session' && activeAgentId && activeSessionId && (
+                <>
+                  {!apiServer.enabled ? (
+                    <Alert type="warning" message={t('agent.warning.enable_server')} style={{ margin: '5px 16px' }} />
+                  ) : (
+                    <AgentSessionMessages agentId={activeAgentId} sessionId={activeSessionId} />
+                  )}
+                  {messageNavigation === 'buttons' && <ChatNavigation containerId="messages" />}
+                  <AgentSessionInputbar agentId={activeAgentId} sessionId={activeSessionId} />
+                </>
+              )}
+              {isMultiSelectMode && <MultiSelectActionPopup topic={props.activeTopic} />}
+            </div>
           </Main>
         </motion.div>
         <AnimatePresence initial={false}>

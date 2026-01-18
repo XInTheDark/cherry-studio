@@ -60,13 +60,13 @@ const Actions = styled.div`
   display: flex;
   align-items: center;
   gap: 6px;
-  -webkit-app-region: none;
+  -webkit-app-region: no-drag;
 `
 
 const Input = styled(AntdInput)`
   background: none;
   border: none;
-  -webkit-app-region: none;
+  -webkit-app-region: no-drag;
   font-size: 18px;
 `
 

@@ -2091,6 +2091,10 @@
     "zhihu": "Zhihu"
   },
   "miniwindow": {
+    "action": {
+      "new_conversation": "[to be translated]:New conversation",
+      "open_in_main_window": "[to be translated]:Open in main window"
+    },
     "alert": {
       "google_login": "Sfat: Dacă vezi un mesaj 'browser not trusted' când te conectezi la Google, te rugăm să te conectezi mai întâi prin mini-aplicația Google din lista de mini-aplicații, apoi să folosești autentificarea Google în alte mini-aplicații"
     },

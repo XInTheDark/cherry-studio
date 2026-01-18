@@ -155,7 +155,7 @@ const FocusContainer = styled.div<{ $focused: boolean }>`
 const FeatureList = styled(Scrollbar)`
   flex-shrink: 0;
   height: auto;
-  -webkit-app-region: none;
+  -webkit-app-region: no-drag;
 `
 
 const FeatureListWrapper = styled.div`
@@ -176,7 +176,7 @@ const FeatureItem = styled.div<{ $disabled?: boolean }>`
   display: flex;
   align-items: center;
   gap: 12px;
-  -webkit-app-region: none;
+  -webkit-app-region: no-drag;
   border-radius: 8px;
   user-select: none;
   opacity: ${({ $disabled }) => ($disabled ? 0.6 : 1)};

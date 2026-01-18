@@ -31,7 +31,7 @@ const ToggleExpandTool: React.FC<{ context: ToggleExpandRenderContext }> = ({ co
 const toggleExpandTool = defineTool({
   key: 'toggle_expand',
   label: (t) => t('chat.input.expand'),
-  visibleInScopes: [TopicType.Chat, TopicType.Session],
+  visibleInScopes: [TopicType.Chat, TopicType.Session, 'mini-window'],
   dependencies: {
     state: ['isExpanded'] as const,
     actions: ['toggleExpanded'] as const

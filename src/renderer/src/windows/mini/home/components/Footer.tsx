@@ -93,7 +93,7 @@ const Footer: FC<FooterProps> = ({
             style={{ cursor: 'pointer' }}
             className="nodrag"
             onClick={onContinueInMainWindow}>
-            {t('common.open')}
+            Open in main window
           </Tag>
         )}
       </FooterText>

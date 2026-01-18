@@ -63,6 +63,19 @@ const NavigationHandler: React.FC = () => {
     }
   }, [navigate])
 
+  // Mini-window can request navigation to a route in the main window.
+  useEffect(() => {
+    const removeListener = window.electron.ipcRenderer.on(IpcChannel.App_Navigate, (_event, path: string) => {
+      if (typeof path === 'string' && path.trim()) {
+        navigate(path)
+      }
+    })
+
+    return () => {
+      removeListener()
+    }
+  }, [navigate])
+
   return null
 }
 

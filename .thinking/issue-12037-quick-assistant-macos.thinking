@@ -1,0 +1,22 @@
+Goal: Fix #12037 (macOS Quick Assistant / miniWindow flickers and fails to reopen after app was hidden).
+
+Observed behavior:
+- On macOS, `hideMiniWindow()` calls `app.hide()` when Quick Assistant was opened while another app was focused.
+- Once the app is hidden (Cmd+H state), subsequent `miniWindow.show()` calls can flicker but remain hidden because the app is still hidden.
+- Users also reported that closing Quick Assistant hides the entire app.
+
+Implementation plan:
+1) In `WindowService.showMiniWindow()`:
+   - On macOS, if `app.isHidden()` then call `app.show()` before attempting `miniWindow.show()`.
+   - This ensures the Quick Assistant can reopen even after the app was hidden by prior logic.
+
+2) In `WindowService.hideMiniWindow()` (macOS path):
+   - Apply a hybrid rule (user chose option 3): only call `app.hide()` when the main window is not visible.
+   - This reduces surprising "app hides itself" behavior when Cherry Studio main window is currently open.
+
+3) Add Vitest coverage:
+   - Verify `showMiniWindow()` unhides the app (calls `app.show()`) when `app.isHidden()` is true.
+   - Verify `hideMiniWindow()` only calls `app.hide()` when `mainWindow` is absent/hidden, and not when it's visible.
+
+4) Run `pnpm lint`, `pnpm test`, `pnpm format`.
+

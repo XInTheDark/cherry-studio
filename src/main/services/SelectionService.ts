@@ -1508,6 +1508,63 @@ export class SelectionService {
     return this.lastSelectedText.text
   }
 
+  public getCurrentSelectedText(): string {
+    if (!this.selectionHook) return ''
+
+    const wasRunning = (() => {
+      try {
+        return this.selectionHook?.isRunning?.() ?? false
+      } catch {
+        return false
+      }
+    })()
+
+    // If the hook isn't running (e.g. Selection Assistant is disabled), we can still try to
+    // perform a best-effort "one-shot" start/read/stop. This allows Quick Assistant to use
+    // the user's current system selection as context without requiring the toolbar feature.
+    if (!wasRunning) {
+      // On macOS, reading system selection requires accessibility permission.
+      if (isMac && !systemPreferences.isTrustedAccessibilityClient(false)) {
+        return ''
+      }
+
+      try {
+        const started = this.selectionHook.start({
+          debug: isDev,
+          selectionPassiveMode: true,
+          enableClipboard: true
+        })
+
+        if (!started) {
+          return ''
+        }
+      } catch (error) {
+        logger.warn('Failed to start selection-hook for one-shot selection read:', error as Error)
+        return ''
+      }
+    }
+
+    try {
+      const selectionData = this.selectionHook?.getCurrentSelection?.()
+      const text = selectionData?.text?.trim?.() ?? ''
+      if (text) {
+        this.lastSelectedText = { text, at: Date.now() }
+      }
+      return text
+    } catch (error) {
+      logger.warn('Failed to get current selected text:', error as Error)
+      return ''
+    } finally {
+      if (!wasRunning) {
+        try {
+          this.selectionHook?.stop?.()
+        } catch (error) {
+          logger.warn('Failed to stop selection-hook after one-shot selection read:', error as Error)
+        }
+      }
+    }
+  }
+
   /**
    * Register IPC handlers for communication with renderer process
    * Handles toolbar, action window, and selection-related commands
@@ -1526,6 +1583,10 @@ export class SelectionService {
     ipcMain.handle(IpcChannel.Selection_GetLastSelectedText, (_, maxAgeMs?: number): string => {
       const maxAge = typeof maxAgeMs === 'number' && Number.isFinite(maxAgeMs) ? maxAgeMs : 60_000
       return selectionService?.getLastSelectedText(maxAge) ?? ''
+    })
+
+    ipcMain.handle(IpcChannel.Selection_GetCurrentSelectedText, (): string => {
+      return selectionService?.getCurrentSelectedText() ?? ''
     })
 
     ipcMain.handle(IpcChannel.Selection_ToolbarDetermineSize, (_, width: number, height: number) => {
