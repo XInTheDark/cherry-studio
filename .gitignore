@@ -73,3 +73,6 @@ test-results
 YOUR_MEMORY_FILE_PATH
 
 .sessions/
+
+# AI assistant scratch
+.thinking/
