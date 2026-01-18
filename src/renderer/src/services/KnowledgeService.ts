@@ -3,7 +3,11 @@ import type { Span } from '@opentelemetry/api'
 import { ModernAiProvider } from '@renderer/aiCore'
 import AiProvider from '@renderer/aiCore/legacy'
 import { getMessageContent } from '@renderer/aiCore/plugins/searchOrchestrationPlugin'
-import { DEFAULT_KNOWLEDGE_DOCUMENT_COUNT, DEFAULT_KNOWLEDGE_THRESHOLD } from '@renderer/config/constant'
+import {
+  DEFAULT_KNOWLEDGE_DOCUMENT_COUNT,
+  DEFAULT_KNOWLEDGE_THRESHOLD,
+  KNOWLEDGE_DOCUMENT_COUNT_FULL_FILES
+} from '@renderer/config/constant'
 import { getEmbeddingMaxContext } from '@renderer/config/embedings'
 import { REFERENCE_PROMPT } from '@renderer/config/prompts'
 import { addSpan, endSpan } from '@renderer/services/SpanManagerService'
@@ -13,6 +17,7 @@ import {
   type FileMetadata,
   type KnowledgeBase,
   type KnowledgeBaseParams,
+  type KnowledgeDocument,
   type KnowledgeReference,
   type KnowledgeSearchResult,
   SystemProviderIds
@@ -32,6 +37,15 @@ import FileManager from './FileManager'
 import type { BlockManager } from './messageStreaming'
 
 const logger = loggerService.withContext('RendererKnowledgeService')
+
+// Tracks which (topic, assistant, knowledge base) combinations have already injected full-file contents.
+// This is in-memory only; reloading the app will allow re-injection.
+const fullFilesInjected = new Set<string>()
+
+const truncateText = (text: string, maxLength: number) => {
+  if (!text) return ''
+  return text.length > maxLength ? text.slice(0, maxLength) + '...' : text
+}
 
 export const getKnowledgeBaseParams = (base: KnowledgeBase): KnowledgeBaseParams => {
   const rerankProvider = getProviderByModel(base.rerankModel)
@@ -346,6 +360,128 @@ export function processKnowledgeReferences(
   }
 }
 
+export type KnowledgeInjectionResult = {
+  /**
+   * System prompt prefix that should be prepended for this request.
+   * This is used for "Full files" mode and is intentionally injected only once per (topic, assistant, KB).
+   */
+  systemPromptPrefix?: string
+}
+
+const buildFullFilesInjectionKey = (topicId: string, assistantId: string, baseId: string) =>
+  `${topicId}:${assistantId}:${baseId}`
+
+const buildFullFilesSystemPromptSection = ({
+  baseName,
+  documents
+}: {
+  baseName: string
+  documents: Array<{ title: string; content: string }>
+}) => {
+  const header =
+    `# Knowledge Base: ${baseName} (Full files)\n\n` +
+    `The following documents are provided in full. Use them as context when answering the user.\n\n`
+
+  const body = documents
+    .map((doc, idx) => {
+      return `---\n` + `Document ${idx + 1}: ${doc.title}\n` + `---\n` + `${doc.content}\n`
+    })
+    .join('\n')
+
+  return header + body
+}
+
+const buildFullFilesKnowledgeContext = async ({
+  assistant,
+  bases,
+  topicId
+}: {
+  assistant: Assistant
+  bases: KnowledgeBase[]
+  topicId: string
+}): Promise<{ systemPromptPrefix: string; references: KnowledgeReference[] }> => {
+  const references: KnowledgeReference[] = []
+  const systemSections: string[] = []
+
+  for (const base of bases) {
+    const injectionKey = buildFullFilesInjectionKey(topicId, assistant.id, base.id)
+    if (fullFilesInjected.has(injectionKey)) {
+      continue
+    }
+
+    const items = base.items.filter((item) => (item.type === 'file' || item.type === 'note') && !!item.uniqueId)
+    if (items.length === 0) {
+      continue
+    }
+
+    const baseParams = getKnowledgeBaseParams(base)
+
+    let docs: KnowledgeDocument[] = []
+    try {
+      docs = await window.api.knowledgeBase.getDocuments({ base: baseParams, items }, undefined)
+    } catch (err) {
+      logger.error('Failed to fetch knowledge documents for full-files mode', { baseId: base.id, err })
+      continue
+    }
+
+    if (docs.length === 0) {
+      continue
+    }
+
+    // Mark as injected only if we have actual content to inject.
+    fullFilesInjected.add(injectionKey)
+
+    const itemByUniqueId = new Map(items.map((i) => [i.uniqueId as string, i]))
+
+    const systemDocs: Array<{ title: string; content: string }> = []
+
+    for (const doc of docs) {
+      const item = itemByUniqueId.get(doc.uniqueId)
+      if (!item) continue
+
+      if (item.type === 'file') {
+        const file = item.content as FileMetadata
+        const title = file.origin_name || doc.displayName || file.name
+        systemDocs.push({ title, content: doc.content })
+
+        references.push({
+          id: 0, // will be renumbered later
+          type: 'file',
+          content: truncateText(doc.content, 400),
+          sourceUrl: `[${file.origin_name}](http://file/${file.name})`,
+          metadata: {
+            knowledgeFullFiles: true,
+            knowledgeBaseId: base.id,
+            knowledgeBaseName: base.name
+          },
+          file
+        })
+      } else if (item.type === 'note') {
+        const title = item.remark || doc.displayName || 'Note'
+        systemDocs.push({ title, content: doc.content })
+
+        references.push({
+          id: 0, // will be renumbered later
+          type: 'note',
+          content: truncateText(doc.content, 400),
+          sourceUrl: typeof doc.source === 'string' && doc.source.startsWith('http') ? doc.source : '',
+          metadata: {
+            knowledgeFullFiles: true,
+            knowledgeBaseId: base.id,
+            knowledgeBaseName: base.name
+          }
+        })
+      }
+    }
+
+    if (systemDocs.length > 0) {
+      systemSections.push(buildFullFilesSystemPromptSection({ baseName: base.name, documents: systemDocs }))
+    }
+  }
+
+  return { systemPromptPrefix: systemSections.join('\n\n'), references }
+}
+
 export const injectUserMessageWithKnowledgeSearchPrompt = async ({
   modelMessages,
   assistant,
@@ -360,36 +496,72 @@ export const injectUserMessageWithKnowledgeSearchPrompt = async ({
   topicId?: string
   blockManager: BlockManager
   setCitationBlockId: (blockId: string) => void
-}) => {
-  if (assistant.knowledge_bases?.length && modelMessages.length > 0) {
-    const lastUserMessage = modelMessages[modelMessages.length - 1]
-    const isUserMessage = lastUserMessage.role === 'user'
+}): Promise<KnowledgeInjectionResult> => {
+  if (!assistant.knowledge_bases?.length || modelMessages.length === 0) {
+    return {}
+  }
 
-    if (!isUserMessage) {
-      return
-    }
+  const lastUserMessage = modelMessages[modelMessages.length - 1]
+  if (lastUserMessage.role !== 'user') {
+    return {}
+  }
 
-    const knowledgeReferences = await getKnowledgeReferences({
-      assistant,
-      lastUserMessage,
-      topicId: topicId
-    })
+  if (!topicId) {
+    logger.warn('Knowledge injection skipped: missing topicId')
+    return {}
+  }
 
-    if (knowledgeReferences.length === 0) {
-      return
-    }
+  const fullFilesBases = assistant.knowledge_bases.filter(
+    (b) => (b.documentCount ?? DEFAULT_KNOWLEDGE_DOCUMENT_COUNT) === KNOWLEDGE_DOCUMENT_COUNT_FULL_FILES
+  )
+  const chunkBases = assistant.knowledge_bases.filter(
+    (b) => (b.documentCount ?? DEFAULT_KNOWLEDGE_DOCUMENT_COUNT) !== KNOWLEDGE_DOCUMENT_COUNT_FULL_FILES
+  )
 
+  const question = getMessageContent(lastUserMessage) || ''
+
+  let chunkReferences: KnowledgeReference[] = []
+  if (chunkBases.length > 0) {
+    chunkReferences = await processKnowledgeSearch(
+      {
+        knowledge: {
+          question: [question],
+          rewrite: ''
+        }
+      },
+      chunkBases.map((b) => b.id),
+      topicId
+    )
+  }
+
+  const fullFilesResult =
+    fullFilesBases.length > 0
+      ? await buildFullFilesKnowledgeContext({ assistant, bases: fullFilesBases, topicId })
+      : { systemPromptPrefix: '', references: [] }
+
+  const combinedReferences = [...chunkReferences, ...fullFilesResult.references].map((ref, index) => ({
+    ...ref,
+    id: index + 1
+  }))
+
+  if (combinedReferences.length > 0) {
     await createKnowledgeReferencesBlock({
       assistantMsgId,
-      knowledgeReferences,
+      knowledgeReferences: combinedReferences,
       blockManager,
       setCitationBlockId
     })
+  }
 
-    const question = getMessageContent(lastUserMessage) || ''
-    const references = JSON.stringify(knowledgeReferences, null, 2)
-
-    const knowledgeSearchPrompt = REFERENCE_PROMPT.replace('{question}', question).replace('{references}', references)
+  // Only rewrite the user message with REFERENCE_PROMPT when chunk-based retrieval is used.
+  // For full-files-only mode, the full content is injected into the system prompt, and wrapping
+  // the user message with snippet-only references can accidentally bias the model to ignore the full context.
+  if (chunkReferences.length > 0) {
+    const referencesJson = JSON.stringify(combinedReferences, null, 2)
+    const knowledgeSearchPrompt = REFERENCE_PROMPT.replace('{question}', question).replace(
+      '{references}',
+      referencesJson
+    )
 
     if (typeof lastUserMessage.content === 'string') {
       lastUserMessage.content = knowledgeSearchPrompt
@@ -398,12 +570,13 @@ export const injectUserMessageWithKnowledgeSearchPrompt = async ({
       if (textPart) {
         textPart.text = knowledgeSearchPrompt
       } else {
-        lastUserMessage.content.push({
-          type: 'text',
-          text: knowledgeSearchPrompt
-        })
+        lastUserMessage.content.push({ type: 'text', text: knowledgeSearchPrompt })
       }
     }
+  }
+
+  return {
+    systemPromptPrefix: fullFilesResult.systemPromptPrefix || undefined
   }
 }
 

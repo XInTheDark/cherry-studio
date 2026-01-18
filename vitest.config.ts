@@ -1,10 +1,11 @@
-import { resolve } from 'path'
+import { resolve } from 'node:path'
+
 import { defineConfig } from 'vitest/config'
 
 // NOTE:
-// We intentionally avoid importing `electron.vite.config.ts` here.
-// That config dynamically imports ESM-only plugins (e.g. tailwind vite plugin),
-// which can break Vitest config loading in some environments.
+// We intentionally do not import `electron.vite.config.ts` here.
+// That config pulls in the Electron/Vite toolchain and may introduce ESM/CJS interop issues
+// when Vitest loads its config. For tests we only need stable alias resolution.
 //
 // Keep Vitest aliases aligned with electron-vite so tests can resolve @renderer/@shared/etc.
 const mainAlias = {

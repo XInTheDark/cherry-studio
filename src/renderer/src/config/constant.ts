@@ -3,6 +3,9 @@ export const DEFAULT_CONTEXTCOUNT = 5
 export const DEFAULT_MAX_TOKENS = 4096
 export const SYSTEM_PROMPT_THRESHOLD = 128
 export const DEFAULT_KNOWLEDGE_DOCUMENT_COUNT = 6
+// Sentinel value for Knowledge Base "Requested Document Chunks" slider.
+// When selected, the app injects full document contents (files/notes) instead of per-message chunk retrieval.
+export const KNOWLEDGE_DOCUMENT_COUNT_FULL_FILES = 51
 export const DEFAULT_KNOWLEDGE_THRESHOLD = 0.0
 export const DEFAULT_WEBSEARCH_RAG_DOCUMENT_COUNT = 1
 export const DEFAULT_STREAM_OPTIONS_INCLUDE_USAGE = true

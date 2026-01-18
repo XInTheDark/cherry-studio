@@ -281,7 +281,8 @@ export const formatCitationsFromBlock = (block: CitationMessageBlock | undefined
           title: title,
           content: result.content,
           showFavicon: showFavicon,
-          type: 'knowledge'
+          type: 'knowledge',
+          metadata: result.metadata
         }
       })
     )

@@ -44,6 +44,8 @@ const CitationsList: React.FC<CitationsListProps> = ({ citations }) => {
   const count = citations.length
   if (!count) return null
 
+  const fullFilesEnabled = citations.some((c) => c.type === 'knowledge' && c.metadata?.knowledgeFullFiles)
+
   const popoverContent = (
     <PopoverContentContainer>
       {citations.map((citation) => (
@@ -81,7 +83,12 @@ const CitationsList: React.FC<CitationsListProps> = ({ citations }) => {
               fontWeight: 'bold',
               borderBottom: '0.5px solid var(--color-border)'
             }}>
-            {t('message.citations')}
+            <div>{t('message.citations')}</div>
+            {fullFilesEnabled && (
+              <div style={{ marginTop: 6, fontWeight: 400, fontSize: 12, color: 'var(--color-text-2)' }}>
+                {t('knowledge.citations_full_files_enabled')}
+              </div>
+            )}
           </div>
         }
         placement="right"
@@ -112,6 +119,17 @@ const CitationsList: React.FC<CitationsListProps> = ({ citations }) => {
 
 const handleLinkClick = (url: string, event: React.MouseEvent) => {
   event.preventDefault()
+  if (!url) return
+  if (url.startsWith('http://file/')) {
+    const fileName = url.slice('http://file/'.length)
+    // This matches how Knowledge Base builds file links: http://file/<stored-file-name>
+    window.api.file.openFileWithRelativePath({ name: fileName } as any)
+    return
+  }
+  if (url.startsWith('file://')) {
+    window.api.file.openPath(url.slice('file://'.length))
+    return
+  }
   if (url.startsWith('http')) window.open(url, '_blank', 'noopener,noreferrer')
   else window.api.file.openPath(url)
 }
