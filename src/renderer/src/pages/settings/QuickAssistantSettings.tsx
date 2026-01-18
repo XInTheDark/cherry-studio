@@ -6,21 +6,23 @@ import { useAssistants, useDefaultAssistant, useDefaultModel } from '@renderer/h
 import { useSettings } from '@renderer/hooks/useSettings'
 import { useAppDispatch, useAppSelector } from '@renderer/store'
 import { setQuickAssistantId } from '@renderer/store/llm'
+import type { QuickAssistantCommand } from '@renderer/store/settings'
 import {
+  DEFAULT_QUICK_ASSISTANT_COMMANDS,
   setClickTrayToShowQuickAssistant,
   setEnableQuickAssistant,
+  setQuickAssistantCommands,
   setReadClipboardAtStartup
 } from '@renderer/store/settings'
-import { matchKeywordsInString } from '@renderer/utils'
+import { matchKeywordsInString, uuid } from '@renderer/utils'
 import HomeWindow from '@renderer/windows/mini/home/HomeWindow'
-import { Button, Select, Switch, Tooltip } from 'antd'
+import { Button, Input, Modal, Select, Space, Switch, Tooltip } from 'antd'
 import type { FC } from 'react'
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import styled from 'styled-components'
 
 import { SettingContainer, SettingDivider, SettingGroup, SettingRow, SettingRowTitle, SettingTitle } from '.'
-
 const QuickAssistantSettings: FC = () => {
   const { t } = useTranslation()
   const { theme } = useTheme()
@@ -28,14 +30,88 @@ const QuickAssistantSettings: FC = () => {
   const dispatch = useAppDispatch()
   const { assistants } = useAssistants()
   const { quickAssistantId } = useAppSelector((state) => state.llm)
+  const quickAssistantCommands =
+    useAppSelector((state) => state.settings.quickAssistantCommands) || DEFAULT_QUICK_ASSISTANT_COMMANDS
   const { defaultAssistant: _defaultAssistant } = useDefaultAssistant()
   const { defaultModel } = useDefaultModel()
+
+  const [commandModalOpen, setCommandModalOpen] = useState(false)
+  const [editingCommand, setEditingCommand] = useState<QuickAssistantCommand | null>(null)
+  const [commandTitle, setCommandTitle] = useState('')
+  const [commandPrompt, setCommandPrompt] = useState('')
+  const [commandHideSource, setCommandHideSource] = useState(true)
 
   // Take the "default assistant" from the assistant list first.
   const defaultAssistant = useMemo(
     () => assistants.find((a) => a.id === _defaultAssistant.id) || _defaultAssistant,
     [assistants, _defaultAssistant]
   )
+
+  const updateCommands = (next: QuickAssistantCommand[]) => {
+    dispatch(setQuickAssistantCommands(next))
+  }
+
+  const moveCommand = (id: string, direction: 'up' | 'down') => {
+    const index = quickAssistantCommands.findIndex((c) => c.id === id)
+    if (index === -1) return
+    const nextIndex = direction === 'up' ? index - 1 : index + 1
+    if (nextIndex < 0 || nextIndex >= quickAssistantCommands.length) return
+
+    const next = [...quickAssistantCommands]
+    const [item] = next.splice(index, 1)
+    next.splice(nextIndex, 0, item)
+    updateCommands(next)
+  }
+
+  const openAddCommand = () => {
+    setEditingCommand(null)
+    setCommandTitle('')
+    setCommandPrompt('')
+    setCommandHideSource(true)
+    setCommandModalOpen(true)
+  }
+
+  const openEditCommand = (command: QuickAssistantCommand) => {
+    setEditingCommand(command)
+    setCommandTitle(command.title || '')
+    setCommandPrompt(command.prompt || '')
+    setCommandHideSource(!!command.hideSourceMessage)
+    setCommandModalOpen(true)
+  }
+
+  const saveCommand = () => {
+    const trimmedTitle = commandTitle.trim()
+    const trimmedPrompt = commandPrompt.trim()
+    if (!trimmedTitle || !trimmedPrompt) return
+
+    if (editingCommand) {
+      updateCommands(
+        quickAssistantCommands.map((c) =>
+          c.id === editingCommand.id
+            ? {
+                ...c,
+                title: trimmedTitle,
+                prompt: trimmedPrompt,
+                hideSourceMessage: commandHideSource
+              }
+            : c
+        )
+      )
+    } else {
+      const newCommand: QuickAssistantCommand = {
+        id: uuid(),
+        type: 'prompt',
+        title: trimmedTitle,
+        prompt: trimmedPrompt,
+        enabled: true,
+        hideSourceMessage: commandHideSource,
+        isBuiltIn: false
+      }
+      updateCommands([...quickAssistantCommands, newCommand])
+    }
+
+    setCommandModalOpen(false)
+  }
 
   const handleEnableQuickAssistant = async (enable: boolean) => {
     dispatch(setEnableQuickAssistant(enable))
@@ -171,6 +247,100 @@ const QuickAssistantSettings: FC = () => {
               </HStack>
             </HStack>
           </HStack>
+        </SettingGroup>
+      )}
+      {enableQuickAssistant && (
+        <SettingGroup theme={theme}>
+          <HStack alignItems="center" justifyContent="space-between">
+            <SettingTitle style={{ margin: 0 }}>Commands</SettingTitle>
+            <Space>
+              <Button onClick={() => updateCommands(DEFAULT_QUICK_ASSISTANT_COMMANDS)}>{t('common.reset')}</Button>
+              <Button type="primary" onClick={openAddCommand}>
+                {t('common.add')}
+              </Button>
+            </Space>
+          </HStack>
+          <SettingDivider />
+
+          {quickAssistantCommands.map((command) => {
+            const title = command.titleKey ? t(command.titleKey) : command.title || ''
+            const isCustom = command.type === 'prompt' && !command.isBuiltIn
+            return (
+              <div key={command.id}>
+                <SettingRow>
+                  <SettingRowTitle style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                    <span>{title}</span>
+                    <span style={{ fontSize: 12, color: 'var(--color-text-3)' }}>
+                      {command.type === 'prompt' ? 'Prompt' : command.type}
+                    </span>
+                  </SettingRowTitle>
+                  <Space>
+                    <Tooltip title="Enabled">
+                      <Switch
+                        checked={command.enabled}
+                        onChange={(enabled) =>
+                          updateCommands(
+                            quickAssistantCommands.map((c) => (c.id === command.id ? { ...c, enabled } : c))
+                          )
+                        }
+                      />
+                    </Tooltip>
+                    <Tooltip title="Hide source message">
+                      <Switch
+                        checked={command.hideSourceMessage}
+                        onChange={(hideSourceMessage) =>
+                          updateCommands(
+                            quickAssistantCommands.map((c) => (c.id === command.id ? { ...c, hideSourceMessage } : c))
+                          )
+                        }
+                      />
+                    </Tooltip>
+                    <Button onClick={() => moveCommand(command.id, 'up')}>↑</Button>
+                    <Button onClick={() => moveCommand(command.id, 'down')}>↓</Button>
+                    <Button disabled={!isCustom} onClick={() => isCustom && openEditCommand(command)}>
+                      {t('common.edit')}
+                    </Button>
+                    <Button
+                      danger
+                      disabled={!isCustom}
+                      onClick={() => {
+                        if (!isCustom) return
+                        updateCommands(quickAssistantCommands.filter((c) => c.id !== command.id))
+                      }}>
+                      {t('common.delete')}
+                    </Button>
+                  </Space>
+                </SettingRow>
+                <SettingDivider />
+              </div>
+            )
+          })}
+
+          <Modal
+            title={editingCommand ? t('common.edit') : t('common.add')}
+            open={commandModalOpen}
+            onOk={saveCommand}
+            okButtonProps={{ disabled: !commandTitle.trim() || !commandPrompt.trim() }}
+            onCancel={() => setCommandModalOpen(false)}>
+            <Space direction="vertical" style={{ width: '100%' }} size="middle">
+              <div>
+                <div style={{ marginBottom: 6 }}>{t('common.name')}</div>
+                <Input value={commandTitle} onChange={(e) => setCommandTitle(e.target.value)} />
+              </div>
+              <div>
+                <div style={{ marginBottom: 6 }}>Prompt</div>
+                <Input.TextArea
+                  value={commandPrompt}
+                  onChange={(e) => setCommandPrompt(e.target.value)}
+                  autoSize={{ minRows: 3, maxRows: 8 }}
+                />
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <span>Hide source message</span>
+                <Switch checked={commandHideSource} onChange={setCommandHideSource} />
+              </div>
+            </Space>
+          </Modal>
         </SettingGroup>
       )}
       {enableQuickAssistant && (

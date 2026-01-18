@@ -1,16 +1,17 @@
 import { EnterOutlined } from '@ant-design/icons'
 import Scrollbar from '@renderer/components/Scrollbar'
+import { useAppSelector } from '@renderer/store'
+import type { QuickAssistantCommand } from '@renderer/store/settings'
+import { DEFAULT_QUICK_ASSISTANT_COMMANDS } from '@renderer/store/settings'
 import { Col } from 'antd'
 import { FileText, Languages, Lightbulb, MessageSquare } from 'lucide-react'
-import type { Dispatch, SetStateAction } from 'react'
 import { useImperativeHandle, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import styled from 'styled-components'
 
 interface FeatureMenusProps {
   text: string
-  setRoute: Dispatch<SetStateAction<'translate' | 'summary' | 'chat' | 'explanation' | 'home'>>
-  onSendMessage: (prompt?: string) => void
+  onUseCommand: (command: QuickAssistantCommand) => void
 }
 
 export interface FeatureMenusRef {
@@ -23,63 +24,54 @@ export interface FeatureMenusRef {
 const FeatureMenus = ({
   ref,
   text,
-  setRoute,
-  onSendMessage
+  onUseCommand
 }: FeatureMenusProps & { ref?: React.RefObject<FeatureMenusRef | null> }) => {
   const { t } = useTranslation()
   const [selectedIndex, setSelectedIndex] = useState(0)
 
-  const features = useMemo(
-    () => [
-      {
-        icon: <MessageSquare size={16} color="var(--color-text)" />,
-        title: t('miniwindow.feature.chat'),
-        active: true,
-        onClick: () => {
-          if (text) {
-            setRoute('chat')
-            onSendMessage()
-          }
-        }
-      },
-      {
-        icon: <Languages size={16} color="var(--color-text)" />,
-        title: t('miniwindow.feature.translate'),
-        onClick: () => text && setRoute('translate')
-      },
-      {
-        icon: <FileText size={16} color="var(--color-text)" />,
-        title: t('miniwindow.feature.summary'),
-        onClick: () => {
-          if (text) {
-            setRoute('summary')
-            onSendMessage(t('prompts.summarize'))
-          }
-        }
-      },
-      {
-        icon: <Lightbulb size={16} color="var(--color-text)" />,
-        title: t('miniwindow.feature.explanation'),
-        onClick: () => {
-          if (text) {
-            setRoute('explanation')
-            onSendMessage(t('prompts.explanation'))
-          }
-        }
+  const quickAssistantCommands =
+    useAppSelector((state) => state.settings.quickAssistantCommands) || DEFAULT_QUICK_ASSISTANT_COMMANDS
+
+  const features = useMemo(() => {
+    const enabledCommands = (quickAssistantCommands || []).filter((c) => c.enabled)
+
+    const getIcon = (type: QuickAssistantCommand['type']) => {
+      switch (type) {
+        case 'chat':
+          return <MessageSquare size={16} color="var(--color-text)" />
+        case 'translate':
+          return <Languages size={16} color="var(--color-text)" />
+        case 'summary':
+          return <FileText size={16} color="var(--color-text)" />
+        case 'explanation':
+        case 'prompt':
+        default:
+          return <Lightbulb size={16} color="var(--color-text)" />
       }
-    ],
-    [onSendMessage, setRoute, t, text]
-  )
+    }
+
+    return enabledCommands.map((command) => ({
+      command,
+      icon: getIcon(command.type),
+      title: command.titleKey ? t(command.titleKey) : command.title || '',
+      onClick: () => {
+        if (!text) return
+        onUseCommand(command)
+      }
+    }))
+  }, [onUseCommand, quickAssistantCommands, t, text])
 
   useImperativeHandle(ref, () => ({
     nextFeature() {
+      if (features.length === 0) return
       setSelectedIndex((prev) => (prev < features.length - 1 ? prev + 1 : 0))
     },
     prevFeature() {
+      if (features.length === 0) return
       setSelectedIndex((prev) => (prev > 0 ? prev - 1 : features.length - 1))
     },
     useFeature() {
-      features[selectedIndex].onClick?.()
+      features[selectedIndex]?.onClick?.()
     },
     resetSelectedIndex() {
       setSelectedIndex(0)
@@ -90,7 +82,7 @@ const FeatureMenus = ({
     <FeatureList>
       <FeatureListWrapper>
         {features.map((feature, index) => (
-          <Col span={24} key={index}>
+          <Col span={24} key={feature.command.id}>
             <FeatureItem onClick={feature.onClick} className={index === selectedIndex ? 'active' : ''}>
               <FeatureIcon>{feature.icon}</FeatureIcon>
               <FeatureTitle>{feature.title}</FeatureTitle>

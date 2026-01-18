@@ -1,22 +1,33 @@
 import { loggerService } from '@logger'
+import { ActionIconButton } from '@renderer/components/Buttons'
 import { isMac } from '@renderer/config/constant'
 import { useTheme } from '@renderer/context/ThemeProvider'
+import db from '@renderer/databases'
 import { useAssistant } from '@renderer/hooks/useAssistant'
 import { useSettings } from '@renderer/hooks/useSettings'
 import i18n from '@renderer/i18n'
+import AttachmentPreview from '@renderer/pages/home/Inputbar/AttachmentPreview'
 import { fetchChatCompletion } from '@renderer/services/ApiService'
 import { getDefaultTopic } from '@renderer/services/AssistantService'
 import { ConversationService } from '@renderer/services/ConversationService'
-import { getAssistantMessage, getUserMessage } from '@renderer/services/MessagesService'
+import FileManager from '@renderer/services/FileManager'
+import { deleteMessageFiles, getAssistantMessage, getUserMessage } from '@renderer/services/MessagesService'
 import store, { useAppSelector } from '@renderer/store'
+import { addTopic } from '@renderer/store/assistants'
 import { updateOneBlock, upsertManyBlocks, upsertOneBlock } from '@renderer/store/messageBlock'
 import { newMessagesActions, selectMessagesForTopic } from '@renderer/store/newMessage'
-import { cancelThrottledBlockUpdate, throttledBlockUpdate } from '@renderer/store/thunk/messageThunk'
-import type { Topic } from '@renderer/types'
+import type { QuickAssistantCommand } from '@renderer/store/settings'
+import {
+  cancelThrottledBlockUpdate,
+  cloneMessagesToNewTopicThunk,
+  throttledBlockUpdate,
+  updateFileCount
+} from '@renderer/store/thunk/messageThunk'
+import type { FileMetadata, Topic } from '@renderer/types'
 import { ThemeMode } from '@renderer/types'
 import type { Chunk } from '@renderer/types/chunk'
 import { ChunkType } from '@renderer/types/chunk'
-import { AssistantMessageStatus, MessageBlockStatus } from '@renderer/types/newMessage'
+import { AssistantMessageStatus, MessageBlockStatus, MessageBlockType } from '@renderer/types/newMessage'
 import { abortCompletion } from '@renderer/utils/abortController'
 import { isAbortError } from '@renderer/utils/error'
 import { createMainTextBlock, createThinkingBlock } from '@renderer/utils/messageUtils/create'
@@ -24,9 +35,10 @@ import { getMainTextContent } from '@renderer/utils/messageUtils/find'
 import { replacePromptVariables } from '@renderer/utils/prompt'
 import { defaultLanguage } from '@shared/config/constant'
 import { IpcChannel } from '@shared/IpcChannel'
-import { Divider } from 'antd'
+import { Divider, Dropdown, Tooltip } from 'antd'
 import { cloneDeep, isEmpty } from 'lodash'
 import { last } from 'lodash'
+import { Monitor, Paperclip } from 'lucide-react'
 import type { FC } from 'react'
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -56,6 +68,8 @@ const HomeWindow: FC<{ draggable?: boolean }> = ({ draggable = true }) => {
   const lastClipboardTextRef = useRef<string | null>(null)
 
   const [isPinned, setIsPinned] = useState(false)
+  const [hideFirstUserMessage, setHideFirstUserMessage] = useState(false)
+  const [attachedFiles, setAttachedFiles] = useState<FileMetadata[]>([])
 
   // Indicator for loading(thinking/streaming)
   const [isLoading, setIsLoading] = useState(false)
@@ -91,6 +105,7 @@ const HomeWindow: FC<{ draggable?: boolean }> = ({ draggable = true }) => {
     if (route === 'home') {
       setIsFirstMessage(true)
       setError(null)
+      setHideFirstUserMessage(false)
     }
   }, [route])
 
@@ -213,6 +228,73 @@ const HomeWindow: FC<{ draggable?: boolean }> = ({ draggable = true }) => {
     setUserInputText(e.target.value)
   }
 
+  const handleAttachFiles = useCallback(async () => {
+    try {
+      const files = await window.api.file.select({
+        properties: ['openFile', 'multiSelections']
+      })
+      if (!files || files.length === 0) return
+
+      setAttachedFiles((prev) => {
+        const byPath = new Map<string, FileMetadata>()
+        prev.forEach((f) => byPath.set(f.path, f))
+        files.forEach((f) => byPath.set(f.path, f))
+        return Array.from(byPath.values())
+      })
+    } catch (error) {
+      logger.error('Failed to attach files in mini window:', error as Error)
+      window.toast.error(t('chat.input.file_error'))
+    }
+  }, [t])
+
+  const handleCaptureScreen = useCallback(async () => {
+    // Capture the primary screen without the mini window overlay by hiding it briefly.
+    try {
+      await window.api.miniWindow.hide()
+      await new Promise((resolve) => setTimeout(resolve, 150))
+
+      const file = await window.api.screenshot.capturePrimaryScreen()
+      setAttachedFiles((prev) => {
+        const byPath = new Map<string, FileMetadata>()
+        prev.forEach((f) => byPath.set(f.path, f))
+        byPath.set(file.path, file)
+        return Array.from(byPath.values())
+      })
+    } catch (error) {
+      logger.error('Failed to capture screen for mini window:', error as Error)
+      window.toast.error(t('chat.input.file_error'))
+    } finally {
+      await window.api.miniWindow.show()
+    }
+  }, [t])
+
+  const inputActions = useMemo(() => {
+    const items = [
+      {
+        key: 'attach_files',
+        label: t('chat.input.upload.upload_from_local'),
+        icon: <Paperclip size={16} />,
+        onClick: () => void handleAttachFiles()
+      },
+      {
+        key: 'capture_screen',
+        label: t('html_artifacts.capture.to_file'),
+        icon: <Monitor size={16} />,
+        onClick: () => void handleCaptureScreen()
+      }
+    ]
+
+    return (
+      <Dropdown menu={{ items }} trigger={['click']} placement="bottomRight">
+        <Tooltip title={t('chat.input.upload.attachment')} mouseEnterDelay={0.8} placement="bottom">
+          <ActionIconButton active={attachedFiles.length > 0} aria-label={t('chat.input.upload.attachment')}>
+            <Paperclip size={18} />
+          </ActionIconButton>
+        </Tooltip>
+      </Dropdown>
+    )
+  }, [attachedFiles.length, handleAttachFiles, handleCaptureScreen, t])
+
   const handleError = (error: Error) => {
     setIsLoading(false)
     setError(error.message)
@@ -227,10 +309,31 @@ const HomeWindow: FC<{ draggable?: boolean }> = ({ draggable = true }) => {
       try {
         const topicId = currentTopic.current.id
 
+        let uploadedFiles: FileMetadata[] | undefined = undefined
+        if (attachedFiles.length > 0) {
+          try {
+            const filesPath = store.getState().runtime.filesPath
+            uploadedFiles = await Promise.all(
+              attachedFiles.map(async (file) => {
+                // Screenshots are saved directly into the app file storage. We only need to ensure a DB record exists.
+                if (filesPath && file.path?.startsWith(filesPath)) {
+                  return await FileManager.addFile(file)
+                }
+                return await FileManager.uploadFile(file)
+              })
+            )
+          } catch (error) {
+            logger.error('Failed to prepare attachments for mini window message:', error as Error)
+            window.toast.error(t('chat.input.file_error'))
+            return
+          }
+        }
+
         const { message: userMessage, blocks } = getUserMessage({
           content: [prompt, userContent].filter(Boolean).join('\n\n'),
           assistant: currentAssistant,
-          topic: currentTopic.current
+          topic: currentTopic.current,
+          files: uploadedFiles
         })
 
         store.dispatch(newMessagesActions.addMessage({ topicId, message: userMessage }))
@@ -272,6 +375,7 @@ const HomeWindow: FC<{ draggable?: boolean }> = ({ draggable = true }) => {
 
         setIsFirstMessage(false)
         setUserInputText('')
+        setAttachedFiles([])
 
         const newAssistant = cloneDeep(currentAssistant)
         if (!newAssistant.settings) {
@@ -452,7 +556,7 @@ const HomeWindow: FC<{ draggable?: boolean }> = ({ draggable = true }) => {
         currentAskId.current = ''
       }
     },
-    [userContent, currentAssistant]
+    [attachedFiles, currentAssistant, t, userContent]
   )
 
   const handlePause = useCallback(() => {
@@ -473,6 +577,10 @@ const HomeWindow: FC<{ draggable?: boolean }> = ({ draggable = true }) => {
       } else {
         // Clear the topic messages to reduce memory usage
         if (currentTopic.current) {
+          // Clean up any uploaded attachments tied to this ephemeral mini-window thread.
+          // This keeps the file storage and db.files reference counts from leaking.
+          const messages = selectMessagesForTopic(store.getState(), currentTopic.current.id)
+          messages.forEach((m) => deleteMessageFiles(m))
           store.dispatch(newMessagesActions.clearTopicMessages(currentTopic.current.id))
         }
 
@@ -482,9 +590,43 @@ const HomeWindow: FC<{ draggable?: boolean }> = ({ draggable = true }) => {
         setError(null)
         setRoute('home')
         setUserInputText('')
+        setHideFirstUserMessage(false)
+        setAttachedFiles([])
       }
     }
   }, [isLoading, route, handleCloseWindow, currentAssistant.id, handlePause])
+
+  const handleUseCommand = useCallback(
+    (command: QuickAssistantCommand) => {
+      setHideFirstUserMessage(!!command.hideSourceMessage)
+
+      const commandPrompt = command.promptKey ? t(command.promptKey) : command.prompt
+
+      switch (command.type) {
+        case 'translate':
+          setRoute('translate')
+          return
+        case 'summary':
+          setRoute('summary')
+          handleSendMessage(commandPrompt)
+          return
+        case 'explanation':
+          setRoute('explanation')
+          handleSendMessage(commandPrompt)
+          return
+        case 'prompt':
+          setRoute('chat')
+          handleSendMessage(commandPrompt)
+          return
+        case 'chat':
+        default:
+          setRoute('chat')
+          handleSendMessage()
+          return
+      }
+    },
+    [handleSendMessage, t]
+  )
 
   const handleCopy = useCallback(() => {
     if (!currentTopic.current) return
@@ -498,6 +640,49 @@ const HomeWindow: FC<{ draggable?: boolean }> = ({ draggable = true }) => {
       window.toast.success(t('message.copy.success'))
     }
   }, [currentTopic, t])
+
+  const handleContinueInMainWindow = useCallback(async () => {
+    if (isLoading) return
+    if (!currentTopic.current) return
+
+    try {
+      const sourceTopicId = currentTopic.current.id
+      const messages = selectMessagesForTopic(store.getState(), sourceTopicId)
+
+      // Create a brand new topic and persist the empty shell first (required by clone thunk).
+      const newTopic = getDefaultTopic(currentAssistant.id)
+      await db.topics.add({ id: newTopic.id, messages: [] })
+      store.dispatch(addTopic({ assistantId: currentAssistant.id, topic: newTopic }))
+
+      const success = await store.dispatch(cloneMessagesToNewTopicThunk(sourceTopicId, messages.length, newTopic))
+      if (!success) {
+        window.toast.error(t('common.error'))
+        return
+      }
+
+      // cloneMessagesToNewTopicThunk increments file counts for the new topic. Since the mini window topic is ephemeral,
+      // we neutralize that increment to keep counts consistent.
+      const state = store.getState()
+      const fileIds = new Set<string>()
+      messages.forEach((m) => {
+        m.blocks?.forEach((blockId) => {
+          const block = state.messageBlocks.entities[blockId]
+          if (!block) return
+          if (block.type !== MessageBlockType.FILE && block.type !== MessageBlockType.IMAGE) return
+          const file = (block as any).file as FileMetadata | undefined
+          if (file?.id) fileIds.add(file.id)
+        })
+      })
+
+      await Promise.all(Array.from(fileIds).map((fileId) => updateFileCount(fileId, -1, false)))
+
+      await window.api.openTopicInMainWindow({ assistantId: currentAssistant.id, topicId: newTopic.id })
+      window.api.miniWindow.close()
+    } catch (error) {
+      logger.error('Failed to continue in main window from mini window:', error as Error)
+      window.toast.error(t('common.error'))
+    }
+  }, [currentAssistant.id, isLoading, t])
 
   const backgroundColor = useMemo(() => {
     // ONLY MAC: when transparent style + light theme: use vibrancy effect
@@ -546,8 +731,10 @@ const HomeWindow: FC<{ draggable?: boolean }> = ({ draggable = true }) => {
                 loading={isLoading}
                 handleKeyDown={handleKeyDown}
                 handleChange={handleChange}
+                actions={inputActions}
                 ref={inputBarRef}
               />
+              <AttachmentPreview files={attachedFiles} setFiles={setAttachedFiles} />
               <Divider style={{ margin: '10px 0' }} />
             </>
           )}
@@ -557,15 +744,20 @@ const HomeWindow: FC<{ draggable?: boolean }> = ({ draggable = true }) => {
             </div>
           )}
           <ChatWindow
-            route={route}
             assistant={currentAssistant}
             topic={currentTopic.current}
             isOutputted={isOutputted}
+            hideFirstUserMessage={hideFirstUserMessage}
           />
           {error && <ErrorMsg>{error}</ErrorMsg>}
 
           <Divider style={{ margin: '10px 0' }} />
-          <Footer key="footer" {...baseFooterProps} onCopy={handleCopy} />
+          <Footer
+            key="footer"
+            {...baseFooterProps}
+            onCopy={handleCopy}
+            onContinueInMainWindow={handleContinueInMainWindow}
+          />
         </Container>
       )
 
@@ -590,17 +782,14 @@ const HomeWindow: FC<{ draggable?: boolean }> = ({ draggable = true }) => {
             loading={isLoading}
             handleKeyDown={handleKeyDown}
             handleChange={handleChange}
+            actions={inputActions}
             ref={inputBarRef}
           />
+          <AttachmentPreview files={attachedFiles} setFiles={setAttachedFiles} />
           <Divider style={{ margin: '10px 0' }} />
           <ClipboardPreview referenceText={referenceText} clearClipboard={clearClipboard} t={t} />
           <Main>
-            <FeatureMenus
-              setRoute={setRoute}
-              onSendMessage={handleSendMessage}
-              text={userContent}
-              ref={featureMenusRef}
-            />
+            <FeatureMenus onUseCommand={handleUseCommand} text={userContent} ref={featureMenusRef} />
           </Main>
           <Divider style={{ margin: '10px 0' }} />
           <Footer

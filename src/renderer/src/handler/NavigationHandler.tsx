@@ -1,4 +1,4 @@
-import { useAppSelector } from '@renderer/store'
+import store, { useAppSelector } from '@renderer/store'
 import { IpcChannel } from '@shared/IpcChannel'
 import { useEffect } from 'react'
 import { useHotkeys } from 'react-hotkeys-hook'
@@ -34,6 +34,29 @@ const NavigationHandler: React.FC = () => {
     }
 
     const removeListener = window.electron.ipcRenderer.on(IpcChannel.Windows_NavigateToAbout, handleNavigateToAbout)
+
+    return () => {
+      removeListener()
+    }
+  }, [navigate])
+
+  // Mini-window can request opening a newly created topic in the main window.
+  useEffect(() => {
+    const removeListener = window.electron.ipcRenderer.on(
+      IpcChannel.App_OpenTopic,
+      (_event, payload: { assistantId: string; topicId: string }) => {
+        const state = store.getState()
+        const assistant = state.assistants.assistants.find((a) => a.id === payload.assistantId)
+        const topic = assistant?.topics.find((t) => t.id === payload.topicId)
+        if (assistant && topic) {
+          navigate('/', { state: { assistant, topic } })
+        } else if (assistant) {
+          navigate('/', { state: { assistant } })
+        } else {
+          navigate('/')
+        }
+      }
+    )
 
     return () => {
       removeListener()

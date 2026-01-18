@@ -713,6 +713,24 @@ export class WindowService {
       logger.error('Failed to quote to main window:', error as Error)
     }
   }
+
+  /**
+   * Open an assistant/topic in the main window (used by mini window "continue in main window").
+   */
+  public openTopicInMainWindow(payload: { assistantId: string; topicId: string }): void {
+    try {
+      this.showMainWindow()
+
+      const mainWindow = this.getMainWindow()
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        setTimeout(() => {
+          mainWindow.webContents.send(IpcChannel.App_OpenTopic, payload)
+        }, 100)
+      }
+    } catch (error) {
+      logger.error('Failed to open topic in main window:', error as Error)
+    }
+  }
 }
 
 export const windowService = WindowService.getInstance()

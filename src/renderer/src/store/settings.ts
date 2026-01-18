@@ -57,6 +57,73 @@ export type UserTheme = {
   userCodeFontFamily: string
 }
 
+export type QuickAssistantCommandType = 'chat' | 'translate' | 'summary' | 'explanation' | 'prompt'
+
+export type QuickAssistantCommand = {
+  /**
+   * Stable id for persistence + reordering. Built-ins use fixed ids.
+   * Custom commands use uuid().
+   */
+  id: string
+  type: QuickAssistantCommandType
+  /**
+   * Built-ins should use i18n keys to avoid storing localized strings.
+   * Custom commands should use title.
+   */
+  title?: string
+  titleKey?: string
+  /**
+   * For prompt commands (and optionally built-in summary/explanation),
+   * this is prepended as an instruction.
+   */
+  prompt?: string
+  promptKey?: string
+  enabled: boolean
+  /**
+   * When enabled, the mini chat view hides the first user message (source prompt)
+   * so the result looks like a "command output" rather than a chat transcript.
+   */
+  hideSourceMessage: boolean
+  isBuiltIn?: boolean
+}
+
+export const DEFAULT_QUICK_ASSISTANT_COMMANDS: QuickAssistantCommand[] = [
+  {
+    id: 'qa_builtin_chat',
+    type: 'chat',
+    titleKey: 'miniwindow.feature.chat',
+    enabled: true,
+    hideSourceMessage: false,
+    isBuiltIn: true
+  },
+  {
+    id: 'qa_builtin_translate',
+    type: 'translate',
+    titleKey: 'miniwindow.feature.translate',
+    enabled: true,
+    hideSourceMessage: false,
+    isBuiltIn: true
+  },
+  {
+    id: 'qa_builtin_summary',
+    type: 'summary',
+    titleKey: 'miniwindow.feature.summary',
+    promptKey: 'prompts.summarize',
+    enabled: true,
+    hideSourceMessage: true,
+    isBuiltIn: true
+  },
+  {
+    id: 'qa_builtin_explanation',
+    type: 'explanation',
+    titleKey: 'miniwindow.feature.explanation',
+    promptKey: 'prompts.explanation',
+    enabled: true,
+    hideSourceMessage: true,
+    isBuiltIn: true
+  }
+]
+
 export interface SettingsState {
   showAssistants: boolean
   showTopics: boolean
@@ -159,6 +226,7 @@ export interface SettingsState {
   clickTrayToShowQuickAssistant: boolean
   multiModelMessageStyle: MultiModelMessageStyle
   readClipboardAtStartup: boolean
+  quickAssistantCommands: QuickAssistantCommand[]
   notionDatabaseID: string | null
   notionApiKey: string | null
   notionPageNameKey: string | null
@@ -344,6 +412,7 @@ export const initialState: SettingsState = {
   enableQuickAssistant: false,
   clickTrayToShowQuickAssistant: false,
   readClipboardAtStartup: true,
+  quickAssistantCommands: DEFAULT_QUICK_ASSISTANT_COMMANDS,
   multiModelMessageStyle: 'horizontal',
   notionDatabaseID: '',
   notionApiKey: '',
@@ -704,6 +773,13 @@ const settingsSlice = createSlice({
     setReadClipboardAtStartup: (state, action: PayloadAction<boolean>) => {
       state.readClipboardAtStartup = action.payload
     },
+    setQuickAssistantCommands: (state, action: PayloadAction<QuickAssistantCommand[]>) => {
+      // Keep a sane default if the UI ever emits an empty/invalid value.
+      state.quickAssistantCommands =
+        action.payload && Array.isArray(action.payload) && action.payload.length > 0
+          ? action.payload
+          : DEFAULT_QUICK_ASSISTANT_COMMANDS
+    },
     setMultiModelMessageStyle: (state, action: PayloadAction<'horizontal' | 'vertical' | 'fold' | 'grid'>) => {
       state.multiModelMessageStyle = action.payload
     },
@@ -962,6 +1038,7 @@ export const {
   setClickTrayToShowQuickAssistant,
   setEnableQuickAssistant,
   setReadClipboardAtStartup,
+  setQuickAssistantCommands,
   setMultiModelMessageStyle,
   setNotionDatabaseID,
   setNotionApiKey,

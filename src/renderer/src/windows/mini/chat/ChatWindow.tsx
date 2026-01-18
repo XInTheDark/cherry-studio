@@ -5,18 +5,23 @@ import styled from 'styled-components'
 
 import Messages from './components/Messages'
 interface Props {
-  route: string
   assistant: Assistant | null
   topic: Topic | null
   isOutputted: boolean
+  hideFirstUserMessage?: boolean
 }
 
-const ChatWindow: FC<Props> = ({ route, assistant, topic, isOutputted }) => {
+const ChatWindow: FC<Props> = ({ assistant, topic, isOutputted, hideFirstUserMessage }) => {
   if (!assistant || !topic) return null
 
   return (
     <Main className="bubble">
-      <Messages assistant={assistant} topic={topic} route={route} isOutputted={isOutputted} />
+      <Messages
+        assistant={assistant}
+        topic={topic}
+        isOutputted={isOutputted}
+        hideFirstUserMessage={hideFirstUserMessage}
+      />
     </Main>
   )
 }

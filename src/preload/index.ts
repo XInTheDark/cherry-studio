@@ -43,7 +43,7 @@ import type {
   WebDavConfig
 } from '@types'
 import type { OpenDialogOptions } from 'electron'
-import { contextBridge, ipcRenderer, shell, webUtils } from 'electron'
+import { contextBridge, desktopCapturer, ipcRenderer, screen, shell, webUtils } from 'electron'
 import type { CreateDirectoryOptions } from 'webdav'
 
 import type {
@@ -252,6 +252,34 @@ const api = {
       return () => ipcRenderer.off('file-change', listener)
     },
     showInFolder: (path: string): Promise<void> => ipcRenderer.invoke(IpcChannel.File_ShowInFolder, path)
+  },
+  screenshot: {
+    /**
+     * Captures the primary display as a PNG and persists it into the app file storage.
+     * The returned FileMetadata can be used as a normal image attachment.
+     */
+    capturePrimaryScreen: async (): Promise<FileMetadata> => {
+      const primary = screen.getPrimaryDisplay()
+      const width = Math.floor(primary.size.width * primary.scaleFactor)
+      const height = Math.floor(primary.size.height * primary.scaleFactor)
+
+      const sources = await desktopCapturer.getSources({
+        types: ['screen'],
+        thumbnailSize: { width, height }
+      })
+
+      const source =
+        sources.find((s) => (s as any).display_id === String(primary.id)) ||
+        sources.find((s) => s.name?.toLowerCase().includes('screen')) ||
+        sources[0]
+
+      if (!source) {
+        throw new Error('No screen sources available for capture')
+      }
+
+      const png = source.thumbnail.toPNG()
+      return ipcRenderer.invoke(IpcChannel.File_SavePastedImage, png, '.png')
+    }
   },
   fs: {
     read: (pathOrUrl: string, encoding?: BufferEncoding) => ipcRenderer.invoke(IpcChannel.Fs_Read, pathOrUrl, encoding),
@@ -501,6 +529,8 @@ const api = {
     }) => ipcRenderer.invoke(IpcChannel.AgentToolPermission_Response, payload)
   },
   quoteToMainWindow: (text: string) => ipcRenderer.invoke(IpcChannel.App_QuoteToMain, text),
+  openTopicInMainWindow: (payload: { assistantId: string; topicId: string }) =>
+    ipcRenderer.invoke(IpcChannel.App_OpenTopic, payload),
   setDisableHardwareAcceleration: (isDisable: boolean) =>
     ipcRenderer.invoke(IpcChannel.App_SetDisableHardwareAcceleration, isDisable),
   trace: {
