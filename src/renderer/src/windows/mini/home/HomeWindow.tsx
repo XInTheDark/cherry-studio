@@ -243,10 +243,12 @@ const HomeWindowInner: FC<{ draggable: boolean; actionsRef: React.RefObject<Prov
 
       const rawInput = (contentOverride ?? text).trim()
 
-      // First message behavior: if clipboard text is present and user typed a question/instruction,
-      // prepend the clipboard content so commands can work on it without forcing a paste.
+      // First message behavior (freeform send only): if clipboard text is present and user typed a question/instruction,
+      // prepend the clipboard content so the model can work on it without forcing a paste.
       const mergedFirstMessageContent = (() => {
         if (!isFirstMessage) return rawInput
+        // Commands always use exactly what the user provided (typed input or explicit contentOverride).
+        if (prompt) return rawInput
         // If the caller explicitly provided "context", don't also prepend clipboard text.
         if (contentOverride) return rawInput
         if (!rawInput) return rawInput
@@ -795,12 +797,6 @@ const HomeWindowInner: FC<{ draggable: boolean; actionsRef: React.RefObject<Prov
           }
         />
       </InputArea>
-
-      {hasConversation && (
-        <FooterHint className="nodrag">
-          {t('miniwindow.footer.esc', { action: t('miniwindow.footer.esc_close') })}
-        </FooterHint>
-      )}
     </Container>
   )
 }
@@ -860,13 +856,6 @@ const ErrorMsg = styled.div`
   margin-top: 8px;
   font-size: 13px;
   word-break: break-all;
-`
-
-const FooterHint = styled.div`
-  margin-top: 8px;
-  font-size: 11px;
-  color: var(--color-text-3);
-  user-select: none;
 `
 
 export default HomeWindow
