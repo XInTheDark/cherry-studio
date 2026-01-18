@@ -6,7 +6,7 @@ import MCPToolsButton from './components/MCPToolsButton'
 const mcpToolsTool = defineTool({
   key: 'mcp_tools',
   label: (t) => t('settings.mcp.title'),
-  visibleInScopes: [TopicType.Chat],
+  visibleInScopes: [TopicType.Chat, 'mini-window'],
   condition: ({ assistant }) => isSupportedToolUse(assistant) || isPromptToolUse(assistant),
   dependencies: {
     actions: ['onTextChange', 'resizeTextArea'] as const

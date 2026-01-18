@@ -1,6 +1,6 @@
 import { ArrowLeftOutlined, LoadingOutlined } from '@ant-design/icons'
 import { Tag as AntdTag, Tooltip } from 'antd'
-import { CircleArrowLeft, Copy, Pin } from 'lucide-react'
+import { CircleArrowLeft, Copy, ExternalLink, Pin } from 'lucide-react'
 import type { FC } from 'react'
 import { useHotkeys } from 'react-hotkeys-hook'
 import { useTranslation } from 'react-i18next'
@@ -15,6 +15,7 @@ interface FooterProps {
   clearClipboard?: () => void
   onEsc: () => void
   onCopy?: () => void
+  onContinueInMainWindow?: () => void
 }
 
 const Footer: FC<FooterProps> = ({
@@ -25,7 +26,8 @@ const Footer: FC<FooterProps> = ({
   onEsc,
   setIsPinned,
   isPinned,
-  onCopy
+  onCopy,
+  onContinueInMainWindow
 }) => {
   const { t } = useTranslation()
 
@@ -82,6 +84,16 @@ const Footer: FC<FooterProps> = ({
             className="nodrag"
             onClick={handleCopy}>
             {t('miniwindow.footer.copy_last_message')}
+          </Tag>
+        )}
+        {route !== 'home' && !loading && onContinueInMainWindow && (
+          <Tag
+            bordered={false}
+            icon={<ExternalLink size={14} color="var(--color-text)" />}
+            style={{ cursor: 'pointer' }}
+            className="nodrag"
+            onClick={onContinueInMainWindow}>
+            Open in main window
           </Tag>
         )}
       </FooterText>

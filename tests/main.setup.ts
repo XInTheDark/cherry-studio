@@ -12,6 +12,10 @@ vi.mock('@logger', async () => {
 // Mock electron modules that are commonly used in main process
 vi.mock('electron', () => ({
   app: {
+    hide: vi.fn(),
+    show: vi.fn(),
+    isHidden: vi.fn(() => false),
+    setPath: vi.fn(),
     getPath: vi.fn((key: string) => {
       switch (key) {
         case 'userData':
@@ -26,6 +30,11 @@ vi.mock('electron', () => ({
     }),
     getVersion: vi.fn(() => '1.0.0')
   },
+  nativeTheme: {
+    shouldUseDarkColors: false,
+    themeSource: 'system',
+    on: vi.fn()
+  },
   ipcMain: {
     handle: vi.fn(),
     on: vi.fn(),
@@ -33,7 +42,7 @@ vi.mock('electron', () => ({
     removeHandler: vi.fn(),
     removeAllListeners: vi.fn()
   },
-  BrowserWindow: vi.fn(),
+  BrowserWindow: Object.assign(vi.fn(), { getAllWindows: vi.fn(() => []) }),
   dialog: {
     showErrorBox: vi.fn(),
     showMessageBox: vi.fn(),
@@ -42,6 +51,7 @@ vi.mock('electron', () => ({
   },
   shell: {
     openExternal: vi.fn(),
+    openPath: vi.fn(),
     showItemInFolder: vi.fn()
   },
   session: {
@@ -59,7 +69,9 @@ vi.mock('electron', () => ({
   },
   screen: {
     getPrimaryDisplay: vi.fn(),
-    getAllDisplays: vi.fn()
+    getAllDisplays: vi.fn(),
+    getCursorScreenPoint: vi.fn(() => ({ x: 0, y: 0 })),
+    getDisplayNearestPoint: vi.fn(() => ({ id: 1, bounds: { x: 0, y: 0, width: 1920, height: 1080 } }))
   },
   Notification: vi.fn()
 }))

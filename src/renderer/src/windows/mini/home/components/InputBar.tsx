@@ -14,6 +14,7 @@ interface InputBarProps {
   loading: boolean
   handleKeyDown: (e: React.KeyboardEvent<HTMLInputElement>) => void
   handleChange: (e: React.ChangeEvent<HTMLInputElement>) => void
+  actions?: React.ReactNode
 }
 
 const InputBar = ({
@@ -23,7 +24,8 @@ const InputBar = ({
   placeholder,
   loading,
   handleKeyDown,
-  handleChange
+  handleChange,
+  actions
 }: InputBarProps & { ref?: React.RefObject<HTMLDivElement | null> }) => {
   const inputRef = useRef<InputRef>(null)
   const { setTimeoutTimer } = useTimer()
@@ -42,6 +44,7 @@ const InputBar = ({
         onChange={handleChange}
         ref={inputRef}
       />
+      {actions ? <Actions className="nodrag">{actions}</Actions> : null}
     </InputWrapper>
   )
 }
@@ -53,10 +56,17 @@ const InputWrapper = styled.div`
   margin-top: 10px;
 `
 
+const Actions = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  -webkit-app-region: no-drag;
+`
+
 const Input = styled(AntdInput)`
   background: none;
   border: none;
-  -webkit-app-region: none;
+  -webkit-app-region: no-drag;
   font-size: 18px;
 `
 

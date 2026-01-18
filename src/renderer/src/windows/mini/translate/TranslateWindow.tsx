@@ -112,7 +112,7 @@ const Container = styled.div`
   padding: 12px;
   /* padding-right: 0; */
   overflow: hidden;
-  -webkit-app-region: none;
+  -webkit-app-region: no-drag;
 `
 
 const Main = styled.div`

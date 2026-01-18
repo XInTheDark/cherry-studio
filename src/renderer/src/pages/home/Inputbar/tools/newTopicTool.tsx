@@ -8,7 +8,7 @@ const newTopicTool = defineTool({
   key: 'new_topic',
   label: (t) => t('chat.input.new_topic', { Command: '' }),
 
-  visibleInScopes: [TopicType.Chat],
+  visibleInScopes: [TopicType.Chat, 'mini-window'],
 
   dependencies: {
     actions: ['addNewTopic'] as const
@@ -17,11 +17,12 @@ const newTopicTool = defineTool({
   render: function NewTopicRender(context) {
     const { actions, t } = context
     const newTopicShortcut = useShortcutDisplay('new_topic')
+    const isMiniWindow = context.scope === 'mini-window'
 
     return (
       <Tooltip
         placement="top"
-        title={t('chat.input.new_topic', { Command: newTopicShortcut })}
+        title={isMiniWindow ? 'New conversation' : t('chat.input.new_topic', { Command: newTopicShortcut })}
         mouseLeaveDelay={0}
         arrow>
         <ActionIconButton onClick={actions.addNewTopic}>

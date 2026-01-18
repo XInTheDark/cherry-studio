@@ -8,7 +8,7 @@ import UrlContextButton from './components/UrlContextbutton'
 const urlContextTool = defineTool({
   key: 'url_context',
   label: (t) => t('chat.input.url_context'),
-  visibleInScopes: [TopicType.Chat],
+  visibleInScopes: [TopicType.Chat, 'mini-window'],
   condition: ({ model }) => {
     const provider = getProviderByModel(model)
     return (

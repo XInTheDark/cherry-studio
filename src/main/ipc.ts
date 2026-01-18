@@ -738,6 +738,16 @@ export async function registerIpc(mainWindow: BrowserWindow, app: Electron.App) 
     mainWindow.unmaximize()
   })
 
+  ipcMain.handle(IpcChannel.Windows_Hide, () => {
+    checkMainWindow()
+    mainWindow.hide()
+  })
+
+  ipcMain.handle(IpcChannel.Windows_Show, () => {
+    checkMainWindow()
+    windowService.showMainWindow()
+  })
+
   ipcMain.handle(IpcChannel.Windows_Close, () => {
     checkMainWindow()
     mainWindow.close()
@@ -896,6 +906,10 @@ export async function registerIpc(mainWindow: BrowserWindow, app: Electron.App) 
   SelectionService.registerIpcHandler()
 
   ipcMain.handle(IpcChannel.App_QuoteToMain, (_, text: string) => windowService.quoteToMainWindow(text))
+  ipcMain.handle(IpcChannel.App_OpenTopic, (_, payload: { assistantId: string; topicId: string }) =>
+    windowService.openTopicInMainWindow(payload)
+  )
+  ipcMain.handle(IpcChannel.App_Navigate, (_, path: string) => windowService.openPathInMainWindow(path))
 
   ipcMain.handle(IpcChannel.App_SetDisableHardwareAcceleration, (_, isDisable: boolean) => {
     configManager.setDisableHardwareAcceleration(isDisable)

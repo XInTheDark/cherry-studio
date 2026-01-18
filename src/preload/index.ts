@@ -43,7 +43,7 @@ import type {
   WebDavConfig
 } from '@types'
 import type { OpenDialogOptions } from 'electron'
-import { contextBridge, ipcRenderer, shell, webUtils } from 'electron'
+import { contextBridge, desktopCapturer, ipcRenderer, screen, shell, webUtils } from 'electron'
 import type { CreateDirectoryOptions } from 'webdav'
 
 import type {
@@ -252,6 +252,41 @@ const api = {
       return () => ipcRenderer.off('file-change', listener)
     },
     showInFolder: (path: string): Promise<void> => ipcRenderer.invoke(IpcChannel.File_ShowInFolder, path)
+  },
+  screenshot: {
+    /**
+     * Captures the primary display as a PNG and persists it into the app file storage.
+     * The returned FileMetadata can be used as a normal image attachment.
+     */
+    capturePrimaryScreen: async (): Promise<FileMetadata> => {
+      const primary = screen.getPrimaryDisplay()
+      // desktopCapturer thumbnails can fail on HiDPI / large screens if requested size is too large.
+      // Clamp to a safe maximum while keeping the aspect ratio.
+      const nativeWidth = Math.floor(primary.size.width * primary.scaleFactor)
+      const nativeHeight = Math.floor(primary.size.height * primary.scaleFactor)
+      const maxEdge = 4096
+      const longestEdge = Math.max(nativeWidth, nativeHeight)
+      const ratio = longestEdge > maxEdge ? maxEdge / longestEdge : 1
+      const width = Math.max(1, Math.floor(nativeWidth * ratio))
+      const height = Math.max(1, Math.floor(nativeHeight * ratio))
+
+      const sources = await desktopCapturer.getSources({
+        types: ['screen'],
+        thumbnailSize: { width, height }
+      })
+
+      const source =
+        sources.find((s) => (s as any).display_id === String(primary.id)) ||
+        sources.find((s) => s.name?.toLowerCase().includes('screen')) ||
+        sources[0]
+
+      if (!source) {
+        throw new Error('No screen sources available for capture')
+      }
+
+      const png = source.thumbnail.toPNG()
+      return ipcRenderer.invoke(IpcChannel.File_SavePastedImage, png, '.png')
+    }
   },
   fs: {
     read: (pathOrUrl: string, encoding?: BufferEncoding) => ipcRenderer.invoke(IpcChannel.Fs_Read, pathOrUrl, encoding),
@@ -472,6 +507,8 @@ const api = {
   selection: {
     hideToolbar: () => ipcRenderer.invoke(IpcChannel.Selection_ToolbarHide),
     writeToClipboard: (text: string) => ipcRenderer.invoke(IpcChannel.Selection_WriteToClipboard, text),
+    getLastSelectedText: (maxAgeMs?: number) => ipcRenderer.invoke(IpcChannel.Selection_GetLastSelectedText, maxAgeMs),
+    getCurrentSelectedText: () => ipcRenderer.invoke(IpcChannel.Selection_GetCurrentSelectedText),
     determineToolbarSize: (width: number, height: number) =>
       ipcRenderer.invoke(IpcChannel.Selection_ToolbarDetermineSize, width, height),
     setEnabled: (enabled: boolean) => ipcRenderer.invoke(IpcChannel.Selection_SetEnabled, enabled),
@@ -501,6 +538,9 @@ const api = {
     }) => ipcRenderer.invoke(IpcChannel.AgentToolPermission_Response, payload)
   },
   quoteToMainWindow: (text: string) => ipcRenderer.invoke(IpcChannel.App_QuoteToMain, text),
+  openTopicInMainWindow: (payload: { assistantId: string; topicId: string }) =>
+    ipcRenderer.invoke(IpcChannel.App_OpenTopic, payload),
+  openPathInMainWindow: (path: string) => ipcRenderer.invoke(IpcChannel.App_Navigate, path),
   setDisableHardwareAcceleration: (isDisable: boolean) =>
     ipcRenderer.invoke(IpcChannel.App_SetDisableHardwareAcceleration, isDisable),
   trace: {
@@ -562,6 +602,8 @@ const api = {
     minimize: (): Promise<void> => ipcRenderer.invoke(IpcChannel.Windows_Minimize),
     maximize: (): Promise<void> => ipcRenderer.invoke(IpcChannel.Windows_Maximize),
     unmaximize: (): Promise<void> => ipcRenderer.invoke(IpcChannel.Windows_Unmaximize),
+    hide: (): Promise<void> => ipcRenderer.invoke(IpcChannel.Windows_Hide),
+    show: (): Promise<void> => ipcRenderer.invoke(IpcChannel.Windows_Show),
     close: (): Promise<void> => ipcRenderer.invoke(IpcChannel.Windows_Close),
     isMaximized: (): Promise<boolean> => ipcRenderer.invoke(IpcChannel.Windows_IsMaximized),
     onMaximizedChange: (callback: (isMaximized: boolean) => void): (() => void) => {

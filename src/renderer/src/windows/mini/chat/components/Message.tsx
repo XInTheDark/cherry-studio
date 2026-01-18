@@ -11,15 +11,12 @@ import styled from 'styled-components'
 
 interface Props {
   message: Message
-  index?: number
-  total: number
-  route: string
 }
 
 const getMessageBackground = (isBubbleStyle: boolean, isAssistantMessage: boolean) =>
   isBubbleStyle ? (isAssistantMessage ? 'transparent' : 'var(--chat-background-user)') : undefined
 
-const MessageItem: FC<Props> = ({ message, index, total, route }) => {
+const MessageItem: FC<Props> = ({ message }) => {
   // const [message, setMessage] = useState(_message)
   // const [bl, setTextBlock] = useState<MainTextMessageBlock | null>(null)
   // const model = useModel(getMessageModelId(message))
@@ -31,10 +28,6 @@ const MessageItem: FC<Props> = ({ message, index, total, route }) => {
   const messageBackground = getMessageBackground(true, isAssistantMessage)
 
   const maxWidth = '800px'
-
-  if (['summary', 'explanation'].includes(route) && index === total - 1) {
-    return null
-  }
 
   return (
     <MessageContainer

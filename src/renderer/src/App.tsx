@@ -1,6 +1,7 @@
 import '@renderer/databases'
 
 import { loggerService } from '@logger'
+import { QuickPanelProvider } from '@renderer/components/QuickPanel'
 import store, { persistor } from '@renderer/store'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { Provider } from 'react-redux'
@@ -38,9 +39,11 @@ function App(): React.ReactElement {
               <NotificationProvider>
                 <CodeStyleProvider>
                   <PersistGate loading={null} persistor={persistor}>
-                    <TopViewContainer>
-                      <Router />
-                    </TopViewContainer>
+                    <QuickPanelProvider>
+                      <TopViewContainer>
+                        <Router />
+                      </TopViewContainer>
+                    </QuickPanelProvider>
                   </PersistGate>
                 </CodeStyleProvider>
               </NotificationProvider>

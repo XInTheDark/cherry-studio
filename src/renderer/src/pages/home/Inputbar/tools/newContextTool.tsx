@@ -5,7 +5,7 @@ import NewContextButton from './components/NewContextButton'
 const newContextTool = defineTool({
   key: 'new_context',
   label: (t) => t('chat.input.new.context', { Command: '' }),
-  visibleInScopes: [TopicType.Chat],
+  visibleInScopes: [TopicType.Chat, 'mini-window'],
   dependencies: {
     actions: ['onNewContext'] as const
   },
