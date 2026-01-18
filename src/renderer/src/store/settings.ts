@@ -100,6 +100,7 @@ export const DEFAULT_QUICK_ASSISTANT_COMMANDS: QuickAssistantCommand[] = [
     id: 'qa_builtin_translate',
     type: 'translate',
     titleKey: 'miniwindow.feature.translate',
+    promptKey: 'prompts.translate',
     enabled: true,
     hideSourceMessage: false,
     isBuiltIn: true

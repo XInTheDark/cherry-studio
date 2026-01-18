@@ -738,6 +738,16 @@ export async function registerIpc(mainWindow: BrowserWindow, app: Electron.App) 
     mainWindow.unmaximize()
   })
 
+  ipcMain.handle(IpcChannel.Windows_Hide, () => {
+    checkMainWindow()
+    mainWindow.hide()
+  })
+
+  ipcMain.handle(IpcChannel.Windows_Show, () => {
+    checkMainWindow()
+    windowService.showMainWindow()
+  })
+
   ipcMain.handle(IpcChannel.Windows_Close, () => {
     checkMainWindow()
     mainWindow.close()

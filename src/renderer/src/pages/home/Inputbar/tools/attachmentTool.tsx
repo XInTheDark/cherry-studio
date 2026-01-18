@@ -18,6 +18,7 @@ const attachmentTool = defineTool({
     return (
       <AttachmentButton
         quickPanel={quickPanel}
+        scope={context.scope}
         couldAddImageFile={state.couldAddImageFile}
         extensions={state.extensions}
         files={state.files}

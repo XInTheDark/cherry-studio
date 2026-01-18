@@ -94,6 +94,10 @@ export class SelectionService {
 
   private zoomFactor: number = 1
 
+  // Cache the most recent selected text so other parts of the app (e.g. mini window)
+  // can use it as "context" even if the selection toolbar is not shown.
+  private lastSelectedText: { text: string; at: number } | null = null
+
   private TOOLBAR_WIDTH = 350
   private TOOLBAR_HEIGHT = 43
 
@@ -794,6 +798,11 @@ export class SelectionService {
       return
     }
 
+    const trimmedText = selectionData.text.trim()
+    if (trimmedText) {
+      this.lastSelectedText = { text: trimmedText, at: Date.now() }
+    }
+
     // Determine reference point and position for toolbar
     let refPoint: { x: number; y: number } = { x: 0, y: 0 }
     let isLogical = false
@@ -1491,6 +1500,14 @@ export class SelectionService {
     return this.selectionHook.writeToClipboard(text)
   }
 
+  public getLastSelectedText(maxAgeMs: number = 60_000): string {
+    if (!this.lastSelectedText) return ''
+    const age = Date.now() - this.lastSelectedText.at
+    if (age < 0) return ''
+    if (age > maxAgeMs) return ''
+    return this.lastSelectedText.text
+  }
+
   /**
    * Register IPC handlers for communication with renderer process
    * Handles toolbar, action window, and selection-related commands
@@ -1504,6 +1521,11 @@ export class SelectionService {
 
     ipcMain.handle(IpcChannel.Selection_WriteToClipboard, (_, text: string): boolean => {
       return selectionService?.writeToClipboard(text) ?? false
+    })
+
+    ipcMain.handle(IpcChannel.Selection_GetLastSelectedText, (_, maxAgeMs?: number): string => {
+      const maxAge = typeof maxAgeMs === 'number' && Number.isFinite(maxAgeMs) ? maxAgeMs : 60_000
+      return selectionService?.getLastSelectedText(maxAge) ?? ''
     })
 
     ipcMain.handle(IpcChannel.Selection_ToolbarDetermineSize, (_, width: number, height: number) => {

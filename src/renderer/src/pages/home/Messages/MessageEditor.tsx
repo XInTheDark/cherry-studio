@@ -12,7 +12,7 @@ import PasteService from '@renderer/services/PasteService'
 import { useAppSelector } from '@renderer/store'
 import { selectMessagesForTopic } from '@renderer/store/newMessage'
 import type { FileMetadata } from '@renderer/types'
-import { FileTypes } from '@renderer/types'
+import { FileTypes, TopicType } from '@renderer/types'
 import type { Message, MessageBlock } from '@renderer/types/newMessage'
 import { MessageBlockStatus, MessageBlockType } from '@renderer/types/newMessage'
 import { classNames } from '@renderer/utils'
@@ -354,6 +354,7 @@ const MessageBlockEditor: FC<Props> = ({ message, topicId, onSave, onResend, onC
           {isUserMessage && (
             <AttachmentButton
               quickPanel={noopQuickPanel}
+              scope={TopicType.Chat}
               files={files}
               setFiles={setFiles}
               couldAddImageFile={couldAddImageFile}

@@ -1,18 +1,23 @@
+import { loggerService } from '@logger'
 import { ActionIconButton } from '@renderer/components/Buttons'
 import { QuickPanelReservedSymbol, useQuickPanel } from '@renderer/components/QuickPanel'
 import { useKnowledgeBases } from '@renderer/hooks/useKnowledge'
 import type { ToolQuickPanelApi } from '@renderer/pages/home/Inputbar/types'
+import type { InputbarScope } from '@renderer/pages/home/Inputbar/types'
 import type { FileType, KnowledgeBase, KnowledgeItem } from '@renderer/types'
 import { filterSupportedFiles, formatFileSize } from '@renderer/utils/file'
 import { Tooltip } from 'antd'
 import dayjs from 'dayjs'
-import { FileSearch, FileText, Paperclip, Upload } from 'lucide-react'
+import { FileSearch, FileText, Monitor, Paperclip, Upload } from 'lucide-react'
 import type { Dispatch, FC, SetStateAction } from 'react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
+const logger = loggerService.withContext('AttachmentButton')
+
 interface Props {
   quickPanel: ToolQuickPanelApi
+  scope: InputbarScope
   couldAddImageFile: boolean
   extensions: string[]
   files: FileType[]
@@ -20,11 +25,54 @@ interface Props {
   disabled?: boolean
 }
 
-const AttachmentButton: FC<Props> = ({ quickPanel, couldAddImageFile, extensions, files, setFiles, disabled }) => {
+const AttachmentButton: FC<Props> = ({
+  quickPanel,
+  scope,
+  couldAddImageFile,
+  extensions,
+  files,
+  setFiles,
+  disabled
+}) => {
   const { t } = useTranslation()
   const quickPanelHook = useQuickPanel()
   const { bases: knowledgeBases } = useKnowledgeBases()
   const [selecting, setSelecting] = useState<boolean>(false)
+
+  const captureScreenshot = useCallback(async () => {
+    if (selecting) return
+
+    try {
+      setSelecting(true)
+      // Hide the active window to avoid capturing it in the screenshot.
+      if (scope === 'mini-window') {
+        await window.api.miniWindow.hide()
+      } else {
+        await window.api.windowControls.hide()
+      }
+      await new Promise((resolve) => setTimeout(resolve, 150))
+
+      const file = await window.api.screenshot.capturePrimaryScreen()
+      setFiles((prev) => {
+        if (prev.some((f) => f.path === file.path)) return prev
+        return [...prev, file]
+      })
+    } catch (error) {
+      logger.error('Failed to capture screenshot:', error as Error)
+      window.toast.error(t('chat.input.file_error'))
+    } finally {
+      try {
+        if (scope === 'mini-window') {
+          await window.api.miniWindow.show()
+        } else {
+          await window.api.windowControls.show()
+        }
+      } catch (error) {
+        logger.warn('Failed to re-show main window after screenshot:', error as Error)
+      }
+      setSelecting(false)
+    }
+  }, [scope, selecting, setFiles, t])
 
   const openFileSelectDialog = useCallback(async () => {
     if (selecting) {
@@ -104,6 +152,13 @@ const AttachmentButton: FC<Props> = ({ quickPanel, couldAddImageFile, extensions
   const items = useMemo(() => {
     return [
       {
+        label: t('chat.input.upload.take_screenshot'),
+        description: '',
+        icon: <Monitor />,
+        disabled: !couldAddImageFile,
+        action: () => captureScreenshot()
+      },
+      {
         label: t('chat.input.upload.upload_from_local'),
         description: '',
         icon: <Upload />,
@@ -123,7 +178,7 @@ const AttachmentButton: FC<Props> = ({ quickPanel, couldAddImageFile, extensions
         }
       })
     ]
-  }, [knowledgeBases, openFileSelectDialog, openKnowledgeFileList, t])
+  }, [captureScreenshot, couldAddImageFile, knowledgeBases, openFileSelectDialog, openKnowledgeFileList, t])
 
   const openQuickPanel = useCallback(() => {
     quickPanelHook.open({
@@ -156,11 +211,7 @@ const AttachmentButton: FC<Props> = ({ quickPanel, couldAddImageFile, extensions
 
   return (
     <Tooltip placement="top" title={ariaLabel} mouseLeaveDelay={0} arrow>
-      <ActionIconButton
-        onClick={openFileSelectDialog}
-        active={files.length > 0}
-        disabled={disabled}
-        aria-label={ariaLabel}>
+      <ActionIconButton onClick={openQuickPanel} active={files.length > 0} disabled={disabled} aria-label={ariaLabel}>
         <Paperclip size={18} />
       </ActionIconButton>
     </Tooltip>

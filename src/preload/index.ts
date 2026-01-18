@@ -260,8 +260,15 @@ const api = {
      */
     capturePrimaryScreen: async (): Promise<FileMetadata> => {
       const primary = screen.getPrimaryDisplay()
-      const width = Math.floor(primary.size.width * primary.scaleFactor)
-      const height = Math.floor(primary.size.height * primary.scaleFactor)
+      // desktopCapturer thumbnails can fail on HiDPI / large screens if requested size is too large.
+      // Clamp to a safe maximum while keeping the aspect ratio.
+      const nativeWidth = Math.floor(primary.size.width * primary.scaleFactor)
+      const nativeHeight = Math.floor(primary.size.height * primary.scaleFactor)
+      const maxEdge = 4096
+      const longestEdge = Math.max(nativeWidth, nativeHeight)
+      const ratio = longestEdge > maxEdge ? maxEdge / longestEdge : 1
+      const width = Math.max(1, Math.floor(nativeWidth * ratio))
+      const height = Math.max(1, Math.floor(nativeHeight * ratio))
 
       const sources = await desktopCapturer.getSources({
         types: ['screen'],
@@ -500,6 +507,7 @@ const api = {
   selection: {
     hideToolbar: () => ipcRenderer.invoke(IpcChannel.Selection_ToolbarHide),
     writeToClipboard: (text: string) => ipcRenderer.invoke(IpcChannel.Selection_WriteToClipboard, text),
+    getLastSelectedText: (maxAgeMs?: number) => ipcRenderer.invoke(IpcChannel.Selection_GetLastSelectedText, maxAgeMs),
     determineToolbarSize: (width: number, height: number) =>
       ipcRenderer.invoke(IpcChannel.Selection_ToolbarDetermineSize, width, height),
     setEnabled: (enabled: boolean) => ipcRenderer.invoke(IpcChannel.Selection_SetEnabled, enabled),
@@ -592,6 +600,8 @@ const api = {
     minimize: (): Promise<void> => ipcRenderer.invoke(IpcChannel.Windows_Minimize),
     maximize: (): Promise<void> => ipcRenderer.invoke(IpcChannel.Windows_Maximize),
     unmaximize: (): Promise<void> => ipcRenderer.invoke(IpcChannel.Windows_Unmaximize),
+    hide: (): Promise<void> => ipcRenderer.invoke(IpcChannel.Windows_Hide),
+    show: (): Promise<void> => ipcRenderer.invoke(IpcChannel.Windows_Show),
     close: (): Promise<void> => ipcRenderer.invoke(IpcChannel.Windows_Close),
     isMaximized: (): Promise<boolean> => ipcRenderer.invoke(IpcChannel.Windows_IsMaximized),
     onMaximizedChange: (callback: (isMaximized: boolean) => void): (() => void) => {

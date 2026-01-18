@@ -1,12 +1,21 @@
 import { loggerService } from '@logger'
 import { ActionIconButton } from '@renderer/components/Buttons'
 import { isMac } from '@renderer/config/constant'
+import { isGenerateImageModel, isVisionModel } from '@renderer/config/models'
 import { useTheme } from '@renderer/context/ThemeProvider'
 import db from '@renderer/databases'
 import { useAssistant } from '@renderer/hooks/useAssistant'
 import { useSettings } from '@renderer/hooks/useSettings'
 import i18n from '@renderer/i18n'
-import AttachmentPreview from '@renderer/pages/home/Inputbar/AttachmentPreview'
+import { InputbarCore } from '@renderer/pages/home/Inputbar/components/InputbarCore'
+import {
+  InputbarToolsProvider,
+  useInputbarToolsDispatch,
+  useInputbarToolsInternalDispatch,
+  useInputbarToolsState
+} from '@renderer/pages/home/Inputbar/context/InputbarToolsProvider'
+import AttachmentButton from '@renderer/pages/home/Inputbar/tools/components/AttachmentButton'
+import type { InputbarScope, ToolQuickPanelApi } from '@renderer/pages/home/Inputbar/types'
 import { fetchChatCompletion } from '@renderer/services/ApiService'
 import { getDefaultTopic } from '@renderer/services/AssistantService'
 import { ConversationService } from '@renderer/services/ConversationService'
@@ -23,7 +32,7 @@ import {
   throttledBlockUpdate,
   updateFileCount
 } from '@renderer/store/thunk/messageThunk'
-import type { FileMetadata, Topic } from '@renderer/types'
+import type { FileType, Topic } from '@renderer/types'
 import { ThemeMode } from '@renderer/types'
 import type { Chunk } from '@renderer/types/chunk'
 import { ChunkType } from '@renderer/types/chunk'
@@ -31,290 +40,225 @@ import { AssistantMessageStatus, MessageBlockStatus, MessageBlockType } from '@r
 import { abortCompletion } from '@renderer/utils/abortController'
 import { isAbortError } from '@renderer/utils/error'
 import { createMainTextBlock, createThinkingBlock } from '@renderer/utils/messageUtils/create'
-import { getMainTextContent } from '@renderer/utils/messageUtils/find'
 import { replacePromptVariables } from '@renderer/utils/prompt'
-import { defaultLanguage } from '@shared/config/constant'
+import { defaultLanguage, documentExts, imageExts, textExts } from '@shared/config/constant'
 import { IpcChannel } from '@shared/IpcChannel'
-import { Divider, Dropdown, Tooltip } from 'antd'
-import { cloneDeep, isEmpty } from 'lodash'
-import { last } from 'lodash'
-import { Monitor, Paperclip } from 'lucide-react'
+import { Divider, Tooltip } from 'antd'
+import { cloneDeep } from 'lodash'
+import { ExternalLink, Pin, PinOff, PlusSquare, X } from 'lucide-react'
 import type { FC } from 'react'
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import styled from 'styled-components'
 
 import ChatWindow from '../chat/ChatWindow'
-import TranslateWindow from '../translate/TranslateWindow'
-import ClipboardPreview from './components/ClipboardPreview'
 import type { FeatureMenusRef } from './components/FeatureMenus'
 import FeatureMenus from './components/FeatureMenus'
-import Footer from './components/Footer'
-import InputBar from './components/InputBar'
 
-const logger = loggerService.withContext('HomeWindow')
+const logger = loggerService.withContext('MiniHomeWindow')
+
+const INPUT_SCOPE: InputbarScope = 'mini-window'
+
+type ProviderActionHandlers = {
+  resizeTextArea: () => void
+  addNewTopic: () => void
+  clearTopic: () => void
+  onNewContext: () => void
+  onTextChange: (updater: string | ((prev: string) => string)) => void
+  toggleExpanded: (nextState?: boolean) => void
+}
 
 const HomeWindow: FC<{ draggable?: boolean }> = ({ draggable = true }) => {
-  const { language, readClipboardAtStartup, windowStyle } = useSettings()
+  const actionsRef = useRef<ProviderActionHandlers>({
+    resizeTextArea: () => {},
+    addNewTopic: () => {},
+    clearTopic: () => {},
+    onNewContext: () => {},
+    onTextChange: () => {},
+    toggleExpanded: () => {}
+  })
+
+  return (
+    <InputbarToolsProvider
+      initialState={{
+        files: [],
+        mentionedModels: [],
+        selectedKnowledgeBases: [],
+        isExpanded: false,
+        couldAddImageFile: false,
+        extensions: []
+      }}
+      actions={{
+        resizeTextArea: () => actionsRef.current.resizeTextArea(),
+        addNewTopic: () => actionsRef.current.addNewTopic(),
+        clearTopic: () => actionsRef.current.clearTopic(),
+        onNewContext: () => actionsRef.current.onNewContext(),
+        onTextChange: (updater) => actionsRef.current.onTextChange(updater),
+        toggleExpanded: (next) => actionsRef.current.toggleExpanded(next)
+      }}>
+      <HomeWindowInner draggable={draggable} />
+    </InputbarToolsProvider>
+  )
+}
+
+const HomeWindowInner: FC<{ draggable: boolean }> = ({ draggable }) => {
+  const { language, readClipboardAtStartup, targetLanguage, windowStyle } = useSettings()
   const { theme } = useTheme()
   const { t } = useTranslation()
 
-  const [route, setRoute] = useState<'home' | 'chat' | 'translate' | 'summary' | 'explanation'>('home')
-  const [isFirstMessage, setIsFirstMessage] = useState(true)
+  const { files, couldAddImageFile, extensions } = useInputbarToolsState()
+  const { setFiles, toolsRegistry } = useInputbarToolsDispatch()
+  const { setCouldAddImageFile } = useInputbarToolsInternalDispatch()
 
-  const [userInputText, setUserInputText] = useState('')
+  const [text, setText] = useState('')
+  const textareaRef = useRef<any>(null)
 
   const [clipboardText, setClipboardText] = useState('')
   const lastClipboardTextRef = useRef<string | null>(null)
 
   const [isPinned, setIsPinned] = useState(false)
   const [hideFirstUserMessage, setHideFirstUserMessage] = useState(false)
-  const [attachedFiles, setAttachedFiles] = useState<FileMetadata[]>([])
 
-  // Indicator for loading(thinking/streaming)
   const [isLoading, setIsLoading] = useState(false)
-  // Indicator for whether the first message is outputted
   const [isOutputted, setIsOutputted] = useState(false)
-
   const [error, setError] = useState<string | null>(null)
 
   const { quickAssistantId } = useAppSelector((state) => state.llm)
   const { assistant: currentAssistant } = useAssistant(quickAssistantId)
 
-  const currentTopic = useRef<Topic>(getDefaultTopic(currentAssistant.id))
+  const [topic, setTopic] = useState<Topic>(() => getDefaultTopic(currentAssistant.id))
   const currentAskId = useRef('')
 
-  const inputBarRef = useRef<HTMLDivElement>(null)
   const featureMenusRef = useRef<FeatureMenusRef>(null)
+  const [commandsFocused, setCommandsFocused] = useState(false)
 
-  const referenceText = useMemo(() => clipboardText || userInputText, [clipboardText, userInputText])
-
-  const userContent = useMemo(() => {
-    if (isFirstMessage) {
-      return referenceText === userInputText ? userInputText : `${referenceText}\n\n${userInputText}`.trim()
-    }
-    return userInputText.trim()
-  }, [isFirstMessage, referenceText, userInputText])
-
-  useEffect(() => {
-    i18n.changeLanguage(language || navigator.language || defaultLanguage)
-  }, [language])
-
-  // Reset state when switching to home route
-  useEffect(() => {
-    if (route === 'home') {
-      setIsFirstMessage(true)
-      setError(null)
-      setHideFirstUserMessage(false)
-    }
-  }, [route])
-
-  const focusInput = useCallback(() => {
-    if (inputBarRef.current) {
-      const input = inputBarRef.current.querySelector('input')
-      if (input) {
-        input.focus()
-      }
-    }
+  const focusTextarea = useCallback(() => {
+    const el = textareaRef.current?.resizableTextArea?.textArea
+    el?.focus?.()
   }, [])
 
-  // Use useCallback with stable dependencies to avoid infinite loops
+  const quickPanelApiForAttachment = useMemo<ToolQuickPanelApi>(() => {
+    // Use the provider registry so the attachment tool can integrate with QuickPanel.
+    // It still works in mini-window mode without rendering the full tools bar.
+    return {
+      registerRootMenu: (entries) => toolsRegistry.registerRootMenu('mini-window:attachment', entries),
+      registerTrigger: (symbol, handler) => toolsRegistry.registerTrigger('mini-window:attachment', symbol, handler)
+    }
+  }, [toolsRegistry])
+
   const readClipboard = useCallback(async () => {
     if (!readClipboardAtStartup || !document.hasFocus()) return
 
     try {
-      const text = await navigator.clipboard.readText()
-      if (text && text !== lastClipboardTextRef.current) {
-        lastClipboardTextRef.current = text
-        setClipboardText(text.trim())
+      const next = (await navigator.clipboard.readText())?.trim()
+      if (next && next !== lastClipboardTextRef.current) {
+        lastClipboardTextRef.current = next
+        setClipboardText(next)
       }
     } catch (error) {
-      // Silently handle clipboard read errors (common in some environments)
+      // Clipboard reads can fail in some environments; keep this best-effort.
       logger.warn('Failed to read clipboard:', error as Error)
     }
   }, [readClipboardAtStartup])
 
-  const clearClipboard = useCallback(async () => {
-    setClipboardText('')
-    lastClipboardTextRef.current = null
-    focusInput()
-  }, [focusInput])
+  const resetConversation = useCallback(() => {
+    if (!topic) return
 
-  const onWindowShow = useCallback(async () => {
-    featureMenusRef.current?.resetSelectedIndex()
-    await readClipboard()
-    focusInput()
-  }, [readClipboard, focusInput])
+    // Clean up any uploaded attachments tied to this ephemeral mini-window thread.
+    // This keeps file storage and db.files reference counts from leaking.
+    const messages = selectMessagesForTopic(store.getState(), topic.id)
+    messages.forEach((m) => deleteMessageFiles(m))
+    store.dispatch(newMessagesActions.clearTopicMessages(topic.id))
 
-  useEffect(() => {
-    window.api.miniWindow.setPin(isPinned)
-  }, [isPinned])
+    setTopic(getDefaultTopic(currentAssistant.id))
+    setHideFirstUserMessage(false)
+    setError(null)
+    setIsLoading(false)
+    setIsOutputted(false)
+    currentAskId.current = ''
 
-  useEffect(() => {
-    window.electron.ipcRenderer.on(IpcChannel.ShowMiniWindow, onWindowShow)
+    setText('')
+    setFiles([])
 
-    return () => {
-      window.electron.ipcRenderer.removeAllListeners(IpcChannel.ShowMiniWindow)
+    // Keep clipboard text (it can still be useful as context for the first command/message).
+    setCommandsFocused(false)
+  }, [currentAssistant.id, setFiles, topic])
+
+  const handlePause = useCallback(() => {
+    if (currentAskId.current) {
+      abortCompletion(currentAskId.current)
+      setIsLoading(false)
+      setIsOutputted(true)
+      currentAskId.current = ''
     }
-  }, [onWindowShow])
+  }, [])
 
-  useEffect(() => {
-    readClipboard()
-  }, [readClipboard])
+  const handleClose = useCallback(() => {
+    window.api.miniWindow.hide()
+  }, [])
 
-  const handleCloseWindow = useCallback(() => window.api.miniWindow.hide(), [])
-
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    // 使用非直接输入法时（例如中文、日文输入法），存在输入法键入过程
-    // 键入过程不应有任何响应
-    // 例子，中文输入法候选词过程使用`Enter`直接上屏字母，日文输入法候选词过程使用`Enter`输入假名
-    // 输入法可以`Esc`终止候选词过程
-    // 这两个例子的`Enter`和`Esc`快捷助手都不应该响应
-    if (e.nativeEvent.isComposing || e.key === 'Process') {
+  const handleEsc = useCallback(() => {
+    if (isLoading) {
+      handlePause()
       return
     }
+    handleClose()
+  }, [handleClose, handlePause, isLoading])
 
-    switch (e.code) {
-      case 'Enter':
-      case 'NumpadEnter':
-        {
-          if (isLoading) return
-
-          e.preventDefault()
-          if (userContent) {
-            if (route === 'home') {
-              featureMenusRef.current?.useFeature()
-            } else {
-              // Currently text input is only available in 'chat' mode
-              setRoute('chat')
-              handleSendMessage()
-              focusInput()
-            }
-          }
-        }
-        break
-      case 'Backspace':
-        {
-          if (userInputText.length === 0) {
-            clearClipboard()
-          }
-        }
-        break
-      case 'ArrowUp':
-        {
-          if (route === 'home') {
-            e.preventDefault()
-            featureMenusRef.current?.prevFeature()
-          }
-        }
-        break
-      case 'ArrowDown':
-        {
-          if (route === 'home') {
-            e.preventDefault()
-            featureMenusRef.current?.nextFeature()
-          }
-        }
-        break
-      case 'Escape':
-        {
-          handleEsc()
-        }
-        break
-    }
-  }
-
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setUserInputText(e.target.value)
-  }
-
-  const handleAttachFiles = useCallback(async () => {
-    try {
-      const files = await window.api.file.select({
-        properties: ['openFile', 'multiSelections']
-      })
-      if (!files || files.length === 0) return
-
-      setAttachedFiles((prev) => {
-        const byPath = new Map<string, FileMetadata>()
-        prev.forEach((f) => byPath.set(f.path, f))
-        files.forEach((f) => byPath.set(f.path, f))
-        return Array.from(byPath.values())
-      })
-    } catch (error) {
-      logger.error('Failed to attach files in mini window:', error as Error)
-      window.toast.error(t('chat.input.file_error'))
-    }
-  }, [t])
-
-  const handleCaptureScreen = useCallback(async () => {
-    // Capture the primary screen without the mini window overlay by hiding it briefly.
-    try {
-      await window.api.miniWindow.hide()
-      await new Promise((resolve) => setTimeout(resolve, 150))
-
-      const file = await window.api.screenshot.capturePrimaryScreen()
-      setAttachedFiles((prev) => {
-        const byPath = new Map<string, FileMetadata>()
-        prev.forEach((f) => byPath.set(f.path, f))
-        byPath.set(file.path, file)
-        return Array.from(byPath.values())
-      })
-    } catch (error) {
-      logger.error('Failed to capture screen for mini window:', error as Error)
-      window.toast.error(t('chat.input.file_error'))
-    } finally {
-      await window.api.miniWindow.show()
-    }
-  }, [t])
-
-  const inputActions = useMemo(() => {
-    const items = [
-      {
-        key: 'attach_files',
-        label: t('chat.input.upload.upload_from_local'),
-        icon: <Paperclip size={16} />,
-        onClick: () => void handleAttachFiles()
-      },
-      {
-        key: 'capture_screen',
-        label: t('html_artifacts.capture.to_file'),
-        icon: <Monitor size={16} />,
-        onClick: () => void handleCaptureScreen()
-      }
-    ]
-
-    return (
-      <Dropdown menu={{ items }} trigger={['click']} placement="bottomRight">
-        <Tooltip title={t('chat.input.upload.attachment')} mouseEnterDelay={0.8} placement="bottom">
-          <ActionIconButton active={attachedFiles.length > 0} aria-label={t('chat.input.upload.attachment')}>
-            <Paperclip size={18} />
-          </ActionIconButton>
-        </Tooltip>
-      </Dropdown>
-    )
-  }, [attachedFiles.length, handleAttachFiles, handleCaptureScreen, t])
-
-  const handleError = (error: Error) => {
+  const handleError = useCallback((err: unknown) => {
     setIsLoading(false)
-    setError(error.message)
-  }
+    setIsOutputted(true)
+    currentAskId.current = ''
+    setError(err instanceof Error ? err.message : 'An error occurred')
+  }, [])
 
-  const handleSendMessage = useCallback(
-    async (prompt?: string) => {
-      if (isEmpty(userContent) || !currentTopic.current) {
+  const send = useCallback(
+    async ({
+      prompt,
+      contentOverride,
+      hideSourceMessage
+    }: {
+      prompt?: string
+      contentOverride?: string
+      hideSourceMessage?: boolean
+    }) => {
+      if (!topic) return
+
+      const topicMessages = selectMessagesForTopic(store.getState(), topic.id)
+      const isFirstMessage = topicMessages.length === 0
+
+      const rawInput = (contentOverride ?? text).trim()
+
+      // First message behavior: if clipboard text is present and user typed a question/instruction,
+      // prepend the clipboard content so commands can work on it without forcing a paste.
+      const mergedFirstMessageContent = (() => {
+        if (!isFirstMessage) return rawInput
+        // If the caller explicitly provided "context", don't also prepend clipboard text.
+        if (contentOverride) return rawInput
+        if (!rawInput) return rawInput
+        const clip = clipboardText.trim()
+        if (!clip) return rawInput
+        // Avoid duplicating if user already pasted it.
+        if (rawInput.includes(clip)) return rawInput
+        return `${clip}\n\n${rawInput}`
+      })()
+
+      const finalContent = mergedFirstMessageContent.trim()
+      if (!finalContent) {
         return
       }
 
-      try {
-        const topicId = currentTopic.current.id
+      if (isFirstMessage && typeof hideSourceMessage === 'boolean') {
+        setHideFirstUserMessage(hideSourceMessage)
+      }
 
-        let uploadedFiles: FileMetadata[] | undefined = undefined
-        if (attachedFiles.length > 0) {
+      try {
+        let uploadedFiles: FileType[] | undefined = undefined
+        if (files.length > 0) {
           try {
             const filesPath = store.getState().runtime.filesPath
             uploadedFiles = await Promise.all(
-              attachedFiles.map(async (file) => {
+              files.map(async (file) => {
                 // Screenshots are saved directly into the app file storage. We only need to ensure a DB record exists.
                 if (filesPath && file.path?.startsWith(filesPath)) {
                   return await FileManager.addFile(file)
@@ -330,27 +274,23 @@ const HomeWindow: FC<{ draggable?: boolean }> = ({ draggable = true }) => {
         }
 
         const { message: userMessage, blocks } = getUserMessage({
-          content: [prompt, userContent].filter(Boolean).join('\n\n'),
+          content: [prompt, finalContent].filter(Boolean).join('\n\n'),
           assistant: currentAssistant,
-          topic: currentTopic.current,
+          topic,
           files: uploadedFiles
         })
 
-        store.dispatch(newMessagesActions.addMessage({ topicId, message: userMessage }))
+        store.dispatch(newMessagesActions.addMessage({ topicId: topic.id, message: userMessage }))
         store.dispatch(upsertManyBlocks(blocks))
 
-        const assistantMessage = getAssistantMessage({
-          assistant: currentAssistant,
-          topic: currentTopic.current
-        })
+        const assistantMessage = getAssistantMessage({ assistant: currentAssistant, topic })
         assistantMessage.askId = userMessage.id
         currentAskId.current = userMessage.id
+        store.dispatch(newMessagesActions.addMessage({ topicId: topic.id, message: assistantMessage }))
 
-        store.dispatch(newMessagesActions.addMessage({ topicId, message: assistantMessage }))
-
-        const allMessagesForTopic = selectMessagesForTopic(store.getState(), topicId)
+        // Capture context up to the just-added user message.
+        const allMessagesForTopic = selectMessagesForTopic(store.getState(), topic.id)
         const userMessageIndex = allMessagesForTopic.findIndex((m) => m?.id === userMessage.id)
-
         const messagesForContext = allMessagesForTopic
           .slice(0, userMessageIndex + 1)
           .filter((m) => m && !m.status?.includes('ing'))
@@ -360,12 +300,8 @@ const HomeWindow: FC<{ draggable?: boolean }> = ({ draggable = true }) => {
         let thinkingStartTime: number | null = null
 
         const resolveThinkingDuration = (duration?: number) => {
-          if (typeof duration === 'number' && Number.isFinite(duration)) {
-            return duration
-          }
-          if (thinkingStartTime !== null) {
-            return Math.max(0, performance.now() - thinkingStartTime)
-          }
+          if (typeof duration === 'number' && Number.isFinite(duration)) return duration
+          if (thinkingStartTime !== null) return Math.max(0, performance.now() - thinkingStartTime)
           return 0
         }
 
@@ -373,22 +309,16 @@ const HomeWindow: FC<{ draggable?: boolean }> = ({ draggable = true }) => {
         setIsOutputted(false)
         setError(null)
 
-        setIsFirstMessage(false)
-        setUserInputText('')
-        setAttachedFiles([])
+        setText('')
+        setFiles([])
 
         const newAssistant = cloneDeep(currentAssistant)
-        if (!newAssistant.settings) {
-          newAssistant.settings = {}
-        }
+        if (!newAssistant.settings) newAssistant.settings = {}
         newAssistant.settings.streamOutput = true
-        // 显式关闭这些功能
         newAssistant.webSearchProviderId = undefined
         newAssistant.mcpServers = undefined
         newAssistant.knowledge_bases = undefined
-        // replace prompt vars
         newAssistant.prompt = await replacePromptVariables(currentAssistant.prompt, currentAssistant?.model.name)
-        // logger.debug('newAssistant', newAssistant)
 
         const { modelMessages, uiMessages } = await ConversationService.prepareMessagesForModel(
           messagesForContext,
@@ -399,128 +329,105 @@ const HomeWindow: FC<{ draggable?: boolean }> = ({ draggable = true }) => {
           messages: modelMessages,
           assistant: newAssistant,
           requestOptions: {},
-          topicId,
+          topicId: topic.id,
           uiMessages: uiMessages,
           onChunkReceived: (chunk: Chunk) => {
             switch (chunk.type) {
-              case ChunkType.THINKING_START:
-                {
-                  setIsOutputted(true)
-                  thinkingStartTime = performance.now()
-                  if (thinkingBlockId) {
-                    store.dispatch(
-                      updateOneBlock({ id: thinkingBlockId, changes: { status: MessageBlockStatus.STREAMING } })
-                    )
-                  } else {
-                    const block = createThinkingBlock(assistantMessage.id, '', {
-                      status: MessageBlockStatus.STREAMING
+              case ChunkType.THINKING_START: {
+                setIsOutputted(true)
+                thinkingStartTime = performance.now()
+                if (thinkingBlockId) {
+                  store.dispatch(
+                    updateOneBlock({ id: thinkingBlockId, changes: { status: MessageBlockStatus.STREAMING } })
+                  )
+                } else {
+                  const block = createThinkingBlock(assistantMessage.id, '', { status: MessageBlockStatus.STREAMING })
+                  thinkingBlockId = block.id
+                  store.dispatch(
+                    newMessagesActions.updateMessage({
+                      topicId: topic.id,
+                      messageId: assistantMessage.id,
+                      updates: { blockInstruction: { id: block.id } }
                     })
-                    thinkingBlockId = block.id
-                    store.dispatch(
-                      newMessagesActions.updateMessage({
-                        topicId,
-                        messageId: assistantMessage.id,
-                        updates: { blockInstruction: { id: block.id } }
-                      })
-                    )
-                    store.dispatch(upsertOneBlock(block))
-                  }
+                  )
+                  store.dispatch(upsertOneBlock(block))
                 }
                 break
-              case ChunkType.THINKING_DELTA:
-                {
-                  setIsOutputted(true)
-                  if (thinkingBlockId) {
-                    if (thinkingStartTime === null) {
-                      thinkingStartTime = performance.now()
-                    }
-                    const thinkingDuration = resolveThinkingDuration(chunk.thinking_millsec)
-                    throttledBlockUpdate(thinkingBlockId, {
-                      content: chunk.text,
-                      thinking_millsec: thinkingDuration
+              }
+              case ChunkType.THINKING_DELTA: {
+                setIsOutputted(true)
+                if (thinkingBlockId) {
+                  if (thinkingStartTime === null) thinkingStartTime = performance.now()
+                  const thinkingDuration = resolveThinkingDuration(chunk.thinking_millsec)
+                  throttledBlockUpdate(thinkingBlockId, { content: chunk.text, thinking_millsec: thinkingDuration })
+                }
+                break
+              }
+              case ChunkType.THINKING_COMPLETE: {
+                if (thinkingBlockId) {
+                  const thinkingDuration = resolveThinkingDuration(chunk.thinking_millsec)
+                  cancelThrottledBlockUpdate(thinkingBlockId)
+                  store.dispatch(
+                    updateOneBlock({
+                      id: thinkingBlockId,
+                      changes: { status: MessageBlockStatus.SUCCESS, thinking_millsec: thinkingDuration }
                     })
-                  }
+                  )
                 }
+                thinkingStartTime = null
+                thinkingBlockId = null
                 break
-              case ChunkType.THINKING_COMPLETE:
-                {
-                  if (thinkingBlockId) {
-                    const thinkingDuration = resolveThinkingDuration(chunk.thinking_millsec)
-                    cancelThrottledBlockUpdate(thinkingBlockId)
-                    store.dispatch(
-                      updateOneBlock({
-                        id: thinkingBlockId,
-                        changes: { status: MessageBlockStatus.SUCCESS, thinking_millsec: thinkingDuration }
-                      })
-                    )
-                  }
-                  thinkingStartTime = null
-                  thinkingBlockId = null
-                }
-                break
-              case ChunkType.TEXT_START:
-                {
-                  setIsOutputted(true)
-                  if (blockId) {
-                    store.dispatch(updateOneBlock({ id: blockId, changes: { status: MessageBlockStatus.STREAMING } }))
-                  } else {
-                    const block = createMainTextBlock(assistantMessage.id, '', {
-                      status: MessageBlockStatus.STREAMING
+              }
+              case ChunkType.TEXT_START: {
+                setIsOutputted(true)
+                if (blockId) {
+                  store.dispatch(updateOneBlock({ id: blockId, changes: { status: MessageBlockStatus.STREAMING } }))
+                } else {
+                  const block = createMainTextBlock(assistantMessage.id, '', { status: MessageBlockStatus.STREAMING })
+                  blockId = block.id
+                  store.dispatch(
+                    newMessagesActions.updateMessage({
+                      topicId: topic.id,
+                      messageId: assistantMessage.id,
+                      updates: { blockInstruction: { id: block.id } }
                     })
-                    blockId = block.id
-                    store.dispatch(
-                      newMessagesActions.updateMessage({
-                        topicId,
-                        messageId: assistantMessage.id,
-                        updates: { blockInstruction: { id: block.id } }
-                      })
-                    )
-                    store.dispatch(upsertOneBlock(block))
-                  }
+                  )
+                  store.dispatch(upsertOneBlock(block))
                 }
                 break
-              case ChunkType.TEXT_DELTA:
-                {
-                  setIsOutputted(true)
-                  if (blockId) {
-                    throttledBlockUpdate(blockId, { content: chunk.text })
-                  }
+              }
+              case ChunkType.TEXT_DELTA: {
+                setIsOutputted(true)
+                if (blockId) throttledBlockUpdate(blockId, { content: chunk.text })
+                break
+              }
+              case ChunkType.TEXT_COMPLETE: {
+                if (blockId) {
+                  cancelThrottledBlockUpdate(blockId)
+                  store.dispatch(
+                    updateOneBlock({
+                      id: blockId,
+                      changes: { content: chunk.text, status: MessageBlockStatus.SUCCESS }
+                    })
+                  )
                 }
                 break
-
-              case ChunkType.TEXT_COMPLETE:
-                {
-                  if (blockId) {
-                    cancelThrottledBlockUpdate(blockId)
-                    store.dispatch(
-                      updateOneBlock({
-                        id: blockId,
-                        changes: { content: chunk.text, status: MessageBlockStatus.SUCCESS }
-                      })
-                    )
-                  }
-                }
-                break
+              }
               case ChunkType.ERROR: {
-                //stop the thinking timer
                 const isAborted = isAbortError(chunk.error)
                 const possibleBlockId = thinkingBlockId || blockId
                 if (possibleBlockId) {
                   store.dispatch(
                     updateOneBlock({
                       id: possibleBlockId,
-                      changes: {
-                        status: isAborted ? MessageBlockStatus.PAUSED : MessageBlockStatus.ERROR
-                      }
+                      changes: { status: isAborted ? MessageBlockStatus.PAUSED : MessageBlockStatus.ERROR }
                     })
                   )
                   store.dispatch(
                     newMessagesActions.updateMessage({
-                      topicId,
+                      topicId: topic.id,
                       messageId: assistantMessage.id,
-                      updates: {
-                        status: isAborted ? AssistantMessageStatus.PAUSED : AssistantMessageStatus.SUCCESS
-                      }
+                      updates: { status: isAborted ? AssistantMessageStatus.PAUSED : AssistantMessageStatus.SUCCESS }
                     })
                   )
                 }
@@ -530,14 +437,14 @@ const HomeWindow: FC<{ draggable?: boolean }> = ({ draggable = true }) => {
                 thinkingStartTime = null
                 thinkingBlockId = null
               }
-              //fall through
+              // fallthrough
               case ChunkType.BLOCK_COMPLETE:
                 setIsLoading(false)
                 setIsOutputted(true)
                 currentAskId.current = ''
                 store.dispatch(
                   newMessagesActions.updateMessage({
-                    topicId,
+                    topicId: topic.id,
                     messageId: assistantMessage.id,
                     updates: { status: AssistantMessageStatus.SUCCESS }
                   })
@@ -548,108 +455,82 @@ const HomeWindow: FC<{ draggable?: boolean }> = ({ draggable = true }) => {
         })
       } catch (err) {
         if (isAbortError(err)) return
-        handleError(err instanceof Error ? err : new Error('An error occurred'))
-        logger.error('Error fetching result:', err as Error)
+        handleError(err)
+        logger.error('Mini window send failed:', err as Error)
       } finally {
         setIsLoading(false)
         setIsOutputted(true)
         currentAskId.current = ''
       }
     },
-    [attachedFiles, currentAssistant, t, userContent]
+    [clipboardText, currentAssistant, files, handleError, setFiles, text, topic, t]
   )
 
-  const handlePause = useCallback(() => {
-    if (currentAskId.current) {
-      abortCompletion(currentAskId.current)
-      setIsLoading(false)
-      setIsOutputted(true)
-      currentAskId.current = ''
-    }
-  }, [])
-
-  const handleEsc = useCallback(() => {
-    if (isLoading) {
-      handlePause()
-    } else {
-      if (route === 'home') {
-        handleCloseWindow()
-      } else {
-        // Clear the topic messages to reduce memory usage
-        if (currentTopic.current) {
-          // Clean up any uploaded attachments tied to this ephemeral mini-window thread.
-          // This keeps the file storage and db.files reference counts from leaking.
-          const messages = selectMessagesForTopic(store.getState(), currentTopic.current.id)
-          messages.forEach((m) => deleteMessageFiles(m))
-          store.dispatch(newMessagesActions.clearTopicMessages(currentTopic.current.id))
-        }
-
-        // Reset the topic
-        currentTopic.current = getDefaultTopic(currentAssistant.id)
-
-        setError(null)
-        setRoute('home')
-        setUserInputText('')
-        setHideFirstUserMessage(false)
-        setAttachedFiles([])
-      }
-    }
-  }, [isLoading, route, handleCloseWindow, currentAssistant.id, handlePause])
+  const handleSendChat = useCallback(() => {
+    void send({})
+  }, [send])
 
   const handleUseCommand = useCallback(
     (command: QuickAssistantCommand) => {
-      setHideFirstUserMessage(!!command.hideSourceMessage)
+      void (async () => {
+        const commandPrompt = (() => {
+          if (command.promptKey) {
+            if (command.promptKey === 'prompts.translate') {
+              return t(command.promptKey, { target_language: targetLanguage })
+            }
+            return t(command.promptKey)
+          }
+          if (command.type === 'translate') {
+            return t('prompts.translate', { target_language: targetLanguage })
+          }
+          return command.prompt
+        })()
 
-      const commandPrompt = command.promptKey ? t(command.promptKey) : command.prompt
+        const shouldUseContext = text.trim().length === 0
+        let contentOverride: string | undefined = undefined
 
-      switch (command.type) {
-        case 'translate':
-          setRoute('translate')
-          return
-        case 'summary':
-          setRoute('summary')
-          handleSendMessage(commandPrompt)
-          return
-        case 'explanation':
-          setRoute('explanation')
-          handleSendMessage(commandPrompt)
-          return
-        case 'prompt':
-          setRoute('chat')
-          handleSendMessage(commandPrompt)
-          return
-        case 'chat':
-        default:
-          setRoute('chat')
-          handleSendMessage()
-          return
-      }
+        if (shouldUseContext) {
+          try {
+            const selectedText = (await window.api.selection.getLastSelectedText(60_000))?.trim()
+            if (selectedText) {
+              contentOverride = selectedText
+            } else if (clipboardText.trim()) {
+              contentOverride = clipboardText.trim()
+            } else {
+              try {
+                const clip = (await navigator.clipboard.readText())?.trim()
+                if (clip) {
+                  lastClipboardTextRef.current = clip
+                  setClipboardText(clip)
+                  contentOverride = clip
+                }
+              } catch (error) {
+                logger.warn('Failed to read clipboard on demand:', error as Error)
+              }
+            }
+          } catch (error) {
+            logger.warn('Failed to resolve selected text context:', error as Error)
+          }
+
+          if (!contentOverride) {
+            window.toast.info(t('miniwindow.input.no_context'))
+            return
+          }
+        }
+
+        void send({ prompt: commandPrompt, contentOverride, hideSourceMessage: command.hideSourceMessage })
+      })()
     },
-    [handleSendMessage, t]
+    [clipboardText, send, t, targetLanguage, text]
   )
-
-  const handleCopy = useCallback(() => {
-    if (!currentTopic.current) return
-
-    const messages = selectMessagesForTopic(store.getState(), currentTopic.current.id)
-    const lastMessage = last(messages)
-
-    if (lastMessage) {
-      const content = getMainTextContent(lastMessage)
-      navigator.clipboard.writeText(content)
-      window.toast.success(t('message.copy.success'))
-    }
-  }, [currentTopic, t])
 
   const handleContinueInMainWindow = useCallback(async () => {
     if (isLoading) return
-    if (!currentTopic.current) return
 
     try {
-      const sourceTopicId = currentTopic.current.id
+      const sourceTopicId = topic.id
       const messages = selectMessagesForTopic(store.getState(), sourceTopicId)
 
-      // Create a brand new topic and persist the empty shell first (required by clone thunk).
       const newTopic = getDefaultTopic(currentAssistant.id)
       await db.topics.add({ id: newTopic.id, messages: [] })
       store.dispatch(addTopic({ assistantId: currentAssistant.id, topic: newTopic }))
@@ -669,11 +550,10 @@ const HomeWindow: FC<{ draggable?: boolean }> = ({ draggable = true }) => {
           const block = state.messageBlocks.entities[blockId]
           if (!block) return
           if (block.type !== MessageBlockType.FILE && block.type !== MessageBlockType.IMAGE) return
-          const file = (block as any).file as FileMetadata | undefined
+          const file = (block as any).file as FileType | undefined
           if (file?.id) fileIds.add(file.id)
         })
       })
-
       await Promise.all(Array.from(fileIds).map((fileId) => updateFileCount(fileId, -1, false)))
 
       await window.api.openTopicInMainWindow({ assistantId: currentAssistant.id, topicId: newTopic.id })
@@ -682,125 +562,196 @@ const HomeWindow: FC<{ draggable?: boolean }> = ({ draggable = true }) => {
       logger.error('Failed to continue in main window from mini window:', error as Error)
       window.toast.error(t('common.error'))
     }
-  }, [currentAssistant.id, isLoading, t])
+  }, [currentAssistant.id, isLoading, t, topic.id])
+
+  // Window show/hide + pin behavior
+  useEffect(() => {
+    window.api.miniWindow.setPin(isPinned)
+  }, [isPinned])
+
+  useEffect(() => {
+    i18n.changeLanguage(language || navigator.language || defaultLanguage)
+  }, [language])
+
+  useEffect(() => {
+    const onWindowShow = async () => {
+      await readClipboard()
+      focusTextarea()
+      featureMenusRef.current?.resetSelectedIndex()
+    }
+
+    window.electron.ipcRenderer.on(IpcChannel.ShowMiniWindow, onWindowShow)
+    return () => {
+      window.electron.ipcRenderer.removeAllListeners(IpcChannel.ShowMiniWindow)
+    }
+  }, [focusTextarea, readClipboard])
+
+  useEffect(() => {
+    readClipboard()
+  }, [readClipboard])
+
+  // Determine attachment capabilities from the current assistant model.
+  useEffect(() => {
+    const model = currentAssistant.model || currentAssistant.defaultModel
+    const canAddImage = isVisionModel(model) || isGenerateImageModel(model)
+    setCouldAddImageFile(canAddImage)
+  }, [currentAssistant, setCouldAddImageFile])
+
+  const supportedExts = useMemo(() => {
+    // Mirror the main input behavior: only allow images when the model supports vision/image-generation.
+    return couldAddImageFile ? [...imageExts, ...documentExts, ...textExts] : [...documentExts, ...textExts]
+  }, [couldAddImageFile])
 
   const backgroundColor = useMemo(() => {
-    // ONLY MAC: when transparent style + light theme: use vibrancy effect
-    // because the dark style under mac's vibrancy effect has not been implemented
-    if (isMac && windowStyle === 'transparent' && theme === ThemeMode.light) {
-      return 'transparent'
-    }
+    if (isMac && windowStyle === 'transparent' && theme === ThemeMode.light) return 'transparent'
     return 'var(--color-background)'
-  }, [windowStyle, theme])
+  }, [theme, windowStyle])
 
-  // Memoize placeholder text
-  const inputPlaceholder = useMemo(() => {
-    if (referenceText && route === 'home') {
-      return t('miniwindow.input.placeholder.title')
-    }
-    return t('miniwindow.input.placeholder.empty', {
-      model: quickAssistantId ? currentAssistant.name : currentAssistant.model.name
-    })
-  }, [referenceText, route, t, quickAssistantId, currentAssistant])
+  const messages = useAppSelector((state) => selectMessagesForTopic(state, topic.id))
+  const hasConversation = messages.length > 0
+  const showCommands = !hasConversation
 
-  // Memoize footer props
-  const baseFooterProps = useMemo(
-    () => ({
-      route,
-      loading: isLoading,
-      onEsc: handleEsc,
-      setIsPinned,
-      isPinned
-    }),
-    [route, isLoading, handleEsc, isPinned]
+  const handleContainerKeyDownCapture = useCallback(
+    (e: React.KeyboardEvent) => {
+      if (e.nativeEvent.isComposing) return
+
+      if (e.key === 'Escape') {
+        e.preventDefault()
+        handleEsc()
+        return
+      }
+
+      // Cmd+N: start a new conversation (always available).
+      if (e.key.toLowerCase() === 'n' && (e.metaKey || e.ctrlKey)) {
+        e.preventDefault()
+        if (isLoading) return
+        resetConversation()
+        return
+      }
+
+      if (!showCommands) return
+
+      if (e.key === 'Tab') {
+        e.preventDefault()
+        if (commandsFocused) {
+          focusTextarea()
+        } else {
+          featureMenusRef.current?.focus?.()
+        }
+      }
+    },
+    [commandsFocused, focusTextarea, handleEsc, isLoading, resetConversation, showCommands]
   )
 
-  switch (route) {
-    case 'chat':
-    case 'summary':
-    case 'explanation':
-      return (
-        <Container style={{ backgroundColor }} $draggable={draggable}>
-          {route === 'chat' && (
-            <>
-              <InputBar
-                text={userInputText}
-                assistant={currentAssistant}
-                referenceText={referenceText}
-                placeholder={inputPlaceholder}
-                loading={isLoading}
-                handleKeyDown={handleKeyDown}
-                handleChange={handleChange}
-                actions={inputActions}
-                ref={inputBarRef}
-              />
-              <AttachmentPreview files={attachedFiles} setFiles={setAttachedFiles} />
-              <Divider style={{ margin: '10px 0' }} />
-            </>
-          )}
-          {['summary', 'explanation'].includes(route) && (
-            <div style={{ marginTop: 10 }}>
-              <ClipboardPreview referenceText={referenceText} clearClipboard={clearClipboard} t={t} />
-            </div>
-          )}
-          <ChatWindow
-            assistant={currentAssistant}
-            topic={currentTopic.current}
-            isOutputted={isOutputted}
-            hideFirstUserMessage={hideFirstUserMessage}
-          />
-          {error && <ErrorMsg>{error}</ErrorMsg>}
+  const headerActions = useMemo(() => {
+    const items: React.ReactNode[] = []
 
-          <Divider style={{ margin: '10px 0' }} />
-          <Footer
-            key="footer"
-            {...baseFooterProps}
-            onCopy={handleCopy}
-            onContinueInMainWindow={handleContinueInMainWindow}
-          />
-        </Container>
+    if (hasConversation) {
+      items.push(
+        <Tooltip key="continue" title={t('common.open')} mouseEnterDelay={0.6}>
+          <ActionIconButton onClick={() => void handleContinueInMainWindow()} aria-label={t('common.open')}>
+            <ExternalLink size={16} />
+          </ActionIconButton>
+        </Tooltip>
       )
+      items.push(
+        <Tooltip key="new" title={t('shortcuts.new_topic')} mouseEnterDelay={0.6}>
+          <ActionIconButton onClick={resetConversation} aria-label={t('shortcuts.new_topic')}>
+            <PlusSquare size={16} />
+          </ActionIconButton>
+        </Tooltip>
+      )
+    }
 
-    case 'translate':
-      return (
-        <Container style={{ backgroundColor }} $draggable={draggable}>
-          <TranslateWindow text={referenceText} />
-          <Divider style={{ margin: '10px 0' }} />
-          <Footer key="footer" {...baseFooterProps} />
-        </Container>
-      )
+    items.push(
+      <Tooltip key="pin" title={t('miniwindow.tooltip.pin')} mouseEnterDelay={0.6}>
+        <ActionIconButton onClick={() => setIsPinned((p) => !p)} aria-label={t('miniwindow.tooltip.pin')}>
+          {isPinned ? <Pin size={16} /> : <PinOff size={16} />}
+        </ActionIconButton>
+      </Tooltip>
+    )
 
-    // Home
-    default:
-      return (
-        <Container style={{ backgroundColor }} $draggable={draggable}>
-          <InputBar
-            text={userInputText}
-            assistant={currentAssistant}
-            referenceText={referenceText}
-            placeholder={inputPlaceholder}
-            loading={isLoading}
-            handleKeyDown={handleKeyDown}
-            handleChange={handleChange}
-            actions={inputActions}
-            ref={inputBarRef}
-          />
-          <AttachmentPreview files={attachedFiles} setFiles={setAttachedFiles} />
-          <Divider style={{ margin: '10px 0' }} />
-          <ClipboardPreview referenceText={referenceText} clearClipboard={clearClipboard} t={t} />
-          <Main>
-            <FeatureMenus onUseCommand={handleUseCommand} text={userContent} ref={featureMenusRef} />
-          </Main>
-          <Divider style={{ margin: '10px 0' }} />
-          <Footer
-            key="footer"
-            {...baseFooterProps}
-            canUseBackspace={userInputText.length > 0 || clipboardText.length === 0}
-            clearClipboard={clearClipboard}
-          />
-        </Container>
-      )
-  }
+    items.push(
+      <Tooltip key="close" title={t('common.close')} mouseEnterDelay={0.6}>
+        <ActionIconButton onClick={handleClose} aria-label={t('common.close')}>
+          <X size={16} />
+        </ActionIconButton>
+      </Tooltip>
+    )
+
+    return <HeaderActions>{items}</HeaderActions>
+  }, [handleClose, handleContinueInMainWindow, hasConversation, isPinned, resetConversation, t])
+
+  return (
+    <Container style={{ backgroundColor }} $draggable={draggable} onKeyDownCapture={handleContainerKeyDownCapture}>
+      <Header>
+        <HeaderTitle>{t('settings.quickAssistant.title')}</HeaderTitle>
+        {headerActions}
+      </Header>
+
+      <Content>
+        {showCommands ? (
+          <CommandsPanel>
+            <FeatureMenus
+              onUseCommand={handleUseCommand}
+              ref={featureMenusRef}
+              onFocusChange={setCommandsFocused}
+              disabled={isLoading}
+            />
+          </CommandsPanel>
+        ) : (
+          <>
+            <ChatWindow
+              assistant={currentAssistant}
+              topic={topic}
+              isOutputted={isOutputted}
+              hideFirstUserMessage={hideFirstUserMessage}
+            />
+            {error && <ErrorMsg>{error}</ErrorMsg>}
+          </>
+        )}
+      </Content>
+
+      <Divider style={{ margin: '10px 0' }} />
+
+      <InputArea className="nodrag">
+        <InputbarCore
+          scope={INPUT_SCOPE}
+          placeholder={t('miniwindow.input.placeholder.empty', {
+            model: quickAssistantId ? currentAssistant.name : currentAssistant.model.name
+          })}
+          text={text}
+          onTextChange={setText}
+          textareaRef={textareaRef}
+          resizeTextArea={() => {}}
+          focusTextarea={focusTextarea}
+          height={undefined}
+          onHeightChange={() => {}}
+          supportedExts={supportedExts}
+          isLoading={isLoading}
+          onPause={handlePause}
+          handleSendMessage={handleSendChat}
+          leftToolbar={
+            <AttachmentButton
+              quickPanel={quickPanelApiForAttachment}
+              scope={INPUT_SCOPE}
+              couldAddImageFile={couldAddImageFile}
+              extensions={extensions}
+              files={files}
+              setFiles={setFiles}
+              disabled={isLoading}
+            />
+          }
+        />
+      </InputArea>
+
+      {hasConversation && (
+        <FooterHint className="nodrag">
+          {t('miniwindow.footer.esc', { action: t('miniwindow.footer.esc_close') })}
+        </FooterHint>
+      )}
+    </Container>
+  )
 }
 
 const Container = styled.div<{ $draggable: boolean }>`
@@ -813,12 +764,44 @@ const Container = styled.div<{ $draggable: boolean }>`
   padding: 8px 10px;
 `
 
-const Main = styled.main`
+const Header = styled.div`
   display: flex;
-  flex-direction: column;
+  align-items: center;
+  justify-content: space-between;
+  -webkit-app-region: none;
+  padding: 4px 4px 8px 4px;
+`
 
+const HeaderTitle = styled.div`
+  font-size: 12px;
+  color: var(--color-text-2);
+  user-select: none;
+`
+
+const HeaderActions = styled.div`
+  display: flex;
+  gap: 6px;
+  -webkit-app-region: none;
+`
+
+const Content = styled.div`
   flex: 1;
   overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  -webkit-app-region: none;
+`
+
+const CommandsPanel = styled.div`
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  justify-content: center;
+  gap: 10px;
+`
+
+const InputArea = styled.div`
+  -webkit-app-region: none;
 `
 
 const ErrorMsg = styled.div`
@@ -827,9 +810,18 @@ const ErrorMsg = styled.div`
   border: 1px solid var(--color-error);
   padding: 8px 12px;
   border-radius: 4px;
-  margin-bottom: 12px;
+  margin-top: 8px;
   font-size: 13px;
   word-break: break-all;
+  -webkit-app-region: none;
+`
+
+const FooterHint = styled.div`
+  margin-top: 8px;
+  font-size: 11px;
+  color: var(--color-text-3);
+  user-select: none;
+  -webkit-app-region: none;
 `
 
 export default HomeWindow
