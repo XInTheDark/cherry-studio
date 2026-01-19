@@ -756,6 +756,11 @@ export async function registerIpc(mainWindow: BrowserWindow, app: Electron.App) 
     windowService.showMainWindow()
   })
 
+  ipcMain.handle(IpcChannel.Windows_Paste, () => {
+    const focused = webContents.getFocusedWebContents()
+    focused?.paste()
+  })
+
   ipcMain.handle(IpcChannel.Windows_Close, () => {
     checkMainWindow()
     mainWindow.close()

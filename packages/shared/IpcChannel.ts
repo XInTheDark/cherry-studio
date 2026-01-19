@@ -148,6 +148,7 @@ export enum IpcChannel {
   Windows_Unmaximize = 'window:unmaximize',
   Windows_Hide = 'window:hide',
   Windows_Show = 'window:show',
+  Windows_Paste = 'window:paste',
   Windows_Close = 'window:close',
   Windows_IsMaximized = 'window:is-maximized',
   Windows_MaximizedChanged = 'window:maximized-changed',

@@ -274,6 +274,7 @@ export const InputbarCore: FC<InputbarCoreProps> = ({
     (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
       if (event.key.toLowerCase() === 'v' && event.shiftKey && (isMac ? event.metaKey : event.ctrlKey)) {
         forceTextAsFileRef.current = true
+        window.api.windowControls.paste()
         return
       }
 

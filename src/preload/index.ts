@@ -609,6 +609,7 @@ const api = {
     unmaximize: (): Promise<void> => ipcRenderer.invoke(IpcChannel.Windows_Unmaximize),
     hide: (): Promise<void> => ipcRenderer.invoke(IpcChannel.Windows_Hide),
     show: (): Promise<void> => ipcRenderer.invoke(IpcChannel.Windows_Show),
+    paste: (): Promise<void> => ipcRenderer.invoke(IpcChannel.Windows_Paste),
     close: (): Promise<void> => ipcRenderer.invoke(IpcChannel.Windows_Close),
     isMaximized: (): Promise<boolean> => ipcRenderer.invoke(IpcChannel.Windows_IsMaximized),
     onMaximizedChange: (callback: (isMaximized: boolean) => void): (() => void) => {
