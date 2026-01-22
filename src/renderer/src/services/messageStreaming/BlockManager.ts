@@ -80,6 +80,9 @@ export class BlockManager {
     blockType: MessageBlockType,
     isComplete: boolean = false
   ) {
+    // Keep block timestamps meaningful for UI (e.g. elapsed time calculations) and persistence.
+    // We update `updatedAt` whenever we apply changes, including during streaming.
+    const changesWithUpdatedAt: Partial<MessageBlock> = { ...changes, updatedAt: new Date().toISOString() }
     const isBlockTypeChanged = this._lastBlockType !== null && this._lastBlockType !== blockType
     if (isBlockTypeChanged || isComplete) {
       // 如果块类型改变，则取消上一个块的节流更新
@@ -93,12 +96,12 @@ export class BlockManager {
       } else {
         this._activeBlockInfo = { id: blockId, type: blockType } // 更新活跃块信息
       }
-      this.deps.dispatch(updateOneBlock({ id: blockId, changes }))
+      this.deps.dispatch(updateOneBlock({ id: blockId, changes: changesWithUpdatedAt }))
       this.deps.saveUpdatedBlockToDB(blockId, this.deps.assistantMsgId, this.deps.topicId, this.deps.getState)
       this._lastBlockType = blockType
     } else {
       this._activeBlockInfo = { id: blockId, type: blockType } // 更新活跃块信息
-      this.deps.throttledBlockUpdate(blockId, changes)
+      this.deps.throttledBlockUpdate(blockId, changesWithUpdatedAt)
     }
   }
 

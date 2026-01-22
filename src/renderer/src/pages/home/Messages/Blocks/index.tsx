@@ -20,6 +20,7 @@ import ThinkingBlock from './ThinkingBlock'
 import ToolBlock from './ToolBlock'
 import TranslationBlock from './TranslationBlock'
 import VideoBlock from './VideoBlock'
+import WorkSequenceBlock from './WorkSequenceBlock'
 
 const logger = loggerService.withContext('MessageBlockRenderer')
 
@@ -63,8 +64,29 @@ interface Props {
   message: Message
 }
 
-const groupSimilarBlocks = (blocks: MessageBlock[]): (MessageBlock[] | MessageBlock)[] => {
+export const groupSimilarBlocks = (
+  blocks: MessageBlock[],
+  options: { workSequenceAutoCollapse: boolean }
+): (MessageBlock[] | MessageBlock)[] => {
   return blocks.reduce((acc: (MessageBlock[] | MessageBlock)[], currentBlock) => {
+    if (
+      options.workSequenceAutoCollapse &&
+      (currentBlock.type === MessageBlockType.TOOL || currentBlock.type === MessageBlockType.THINKING)
+    ) {
+      // Group consecutive TOOL/THINKING blocks into a single expandable sequence.
+      const prevGroup = acc[acc.length - 1]
+      if (
+        Array.isArray(prevGroup) &&
+        prevGroup.length > 0 &&
+        (prevGroup[0].type === MessageBlockType.TOOL || prevGroup[0].type === MessageBlockType.THINKING)
+      ) {
+        prevGroup.push(currentBlock)
+      } else {
+        acc.push([currentBlock])
+      }
+      return acc
+    }
+
     if (currentBlock.type === MessageBlockType.IMAGE) {
       // 对于IMAGE类型，按连续分组
       const prevGroup = acc[acc.length - 1]
@@ -104,16 +126,20 @@ const groupSimilarBlocks = (blocks: MessageBlock[]): (MessageBlock[] | MessageBl
 const MessageBlockRenderer: React.FC<Props> = ({ blocks, message }) => {
   // 始终调用useSelector，避免条件调用Hook
   const blockEntities = useSelector((state: RootState) => messageBlocksSelectors.selectEntities(state))
+  const workSequenceAutoCollapse = useSelector((state: RootState) => state.settings.workSequenceAutoCollapse)
   // 根据blocks类型处理渲染数据
   const renderedBlocks = blocks.map((blockId) => blockEntities[blockId]).filter(Boolean)
-  const groupedBlocks = useMemo(() => groupSimilarBlocks(renderedBlocks), [renderedBlocks])
+  const groupedBlocks = useMemo(
+    () => groupSimilarBlocks(renderedBlocks, { workSequenceAutoCollapse }),
+    [renderedBlocks, workSequenceAutoCollapse]
+  )
 
   // Check if message is still processing
   const isProcessing = isMessageProcessing(message)
 
   return (
     <AnimatePresence mode="sync">
-      {groupedBlocks.map((block) => {
+      {groupedBlocks.map((block, index) => {
         if (Array.isArray(block)) {
           const groupKey = block.map((b) => b.id).join('-')
 
@@ -145,6 +171,13 @@ const MessageBlockRenderer: React.FC<Props> = ({ blocks, message }) => {
             return (
               <AnimatedBlockWrapper key={groupKey} enableAnimation={message.status.includes('ing')}>
                 <VideoBlock key={firstVideoBlock.id} block={firstVideoBlock} />
+              </AnimatedBlockWrapper>
+            )
+          } else if (block[0].type === MessageBlockType.TOOL || block[0].type === MessageBlockType.THINKING) {
+            const isLastGroup = index === groupedBlocks.length - 1
+            return (
+              <AnimatedBlockWrapper key={groupKey} enableAnimation={message.status.includes('ing')}>
+                <WorkSequenceBlock blocks={block} isRunning={isProcessing && isLastGroup} />
               </AnimatedBlockWrapper>
             )
           }

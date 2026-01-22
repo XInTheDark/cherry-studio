@@ -978,6 +978,10 @@
       "top_p": {
         "label": "Top-P",
         "tip": "默认值为 1，值越小，AI 生成的内容越单调，也越容易理解；值越大，AI 回复的词汇范围越大，越多样化"
+      },
+      "work_sequence_auto_collapse": {
+        "label": "工具/思考块自动折叠",
+        "tip": "当工具/思考块连续出现且中间没有正文时，将它们合并为一个可展开的工作块"
       }
     },
     "suggestions": {
@@ -1097,6 +1101,14 @@
       "warning": {
         "openai": "GPT5 模型 minimal 思考强度不支持网络搜索"
       }
+    },
+    "work_sequence": {
+      "thought_count_one": "思考 {{count}} 次",
+      "thought_count_other": "思考 {{count}} 次",
+      "tool_count_one": "工具 {{count}} 次",
+      "tool_count_other": "工具 {{count}} 次",
+      "worked_for": "已用时 {{seconds}} 秒",
+      "working_for": "进行中（已用时 {{seconds}} 秒）"
     }
   },
   "code": {

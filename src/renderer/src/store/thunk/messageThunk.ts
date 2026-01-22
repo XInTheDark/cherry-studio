@@ -422,18 +422,20 @@ const blockUpdateRafs = new LRUCache<string, number>({
 const getBlockThrottler = (id: string) => {
   if (!blockUpdateThrottlers.has(id)) {
     const throttler = throttle(async (blockUpdate: any) => {
+      // Keep block timestamps meaningful for UI + persistence.
+      const blockUpdateWithUpdatedAt = { ...blockUpdate, updatedAt: new Date().toISOString() }
       const existingRAF = blockUpdateRafs.get(id)
       if (existingRAF) {
         cancelAnimationFrame(existingRAF)
       }
 
       const rafId = requestAnimationFrame(() => {
-        store.dispatch(updateOneBlock({ id, changes: blockUpdate }))
+        store.dispatch(updateOneBlock({ id, changes: blockUpdateWithUpdatedAt }))
         blockUpdateRafs.delete(id)
       })
 
       blockUpdateRafs.set(id, rafId)
-      await updateSingleBlock(id, blockUpdate)
+      await updateSingleBlock(id, blockUpdateWithUpdatedAt)
     }, 150)
 
     blockUpdateThrottlers.set(id, throttler)
@@ -1403,7 +1405,8 @@ export const updateTranslationBlockThunk =
       const status = isComplete ? MessageBlockStatus.SUCCESS : MessageBlockStatus.STREAMING
       const changes: Partial<MessageBlock> = {
         content: accumulatedText,
-        status: status
+        status: status,
+        updatedAt: new Date().toISOString()
       }
 
       // 更新Redux状态

@@ -978,6 +978,10 @@
       "top_p": {
         "label": "Top-P",
         "tip": "Η προεπιλογή είναι 1, όσο μικρότερος είναι ο αριθμός, τόσο μικρότερη είναι η ποικιλία του περιεχομένου που παράγεται από το AI και τόσο εύκολοτερο είναι να κατανοείται· όσο μεγαλύτερος είναι, τόσο μεγαλύτερη είναι η ποικιλία των λέξεων που μπορεί να χρησιμοποιήσει το AI."
+      },
+      "work_sequence_auto_collapse": {
+        "label": "[to be translated]:Collapse Tool/Thought Blocks",
+        "tip": "[to be translated]:When tool/thought blocks appear consecutively without assistant text in between, group them into a single expandable block"
       }
     },
     "suggestions": {
@@ -1097,6 +1101,14 @@
       "warning": {
         "openai": "Το μοντέλο GPT5 με ελάχιστη ένταση σκέψης δεν υποστηρίζει αναζήτηση στο διαδίκτυο"
       }
+    },
+    "work_sequence": {
+      "thought_count_one": "[to be translated]:{{count}} thought",
+      "thought_count_other": "[to be translated]:{{count}} thoughts",
+      "tool_count_one": "[to be translated]:{{count}} tool",
+      "tool_count_other": "[to be translated]:{{count}} tools",
+      "worked_for": "[to be translated]:Worked for {{seconds}}s",
+      "working_for": "[to be translated]:Working for {{seconds}}s"
     }
   },
   "code": {

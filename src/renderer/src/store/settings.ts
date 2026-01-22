@@ -237,6 +237,11 @@ export interface SettingsState {
   showModelNameInMarkdown: boolean
   showModelProviderInMarkdown: boolean
   thoughtAutoCollapse: boolean
+  /**
+   * UI-only: collapse consecutive TOOL/THINKING blocks into a single expandable "work sequence" block.
+   * (Persisted as a setting, but it does not change stored message content.)
+   */
+  workSequenceAutoCollapse: boolean
   notionExportReasoning: boolean
   excludeCitationsInExport: boolean
   standardizeCitationsInExport: boolean
@@ -424,6 +429,7 @@ export const initialState: SettingsState = {
   showModelNameInMarkdown: false,
   showModelProviderInMarkdown: false,
   thoughtAutoCollapse: true,
+  workSequenceAutoCollapse: true,
   notionExportReasoning: false,
   excludeCitationsInExport: false,
   standardizeCitationsInExport: false,
@@ -811,6 +817,9 @@ const settingsSlice = createSlice({
     setThoughtAutoCollapse: (state, action: PayloadAction<boolean>) => {
       state.thoughtAutoCollapse = action.payload
     },
+    setWorkSequenceAutoCollapse: (state, action: PayloadAction<boolean>) => {
+      state.workSequenceAutoCollapse = action.payload
+    },
     setNotionExportReasoning: (state, action: PayloadAction<boolean>) => {
       state.notionExportReasoning = action.payload
     },
@@ -1048,6 +1057,7 @@ export const {
   setForceDollarMathInMarkdown,
   setUseTopicNamingForMessageTitle,
   setThoughtAutoCollapse,
+  setWorkSequenceAutoCollapse,
   setNotionExportReasoning,
   setExcludeCitationsInExport,
   setStandardizeCitationsInExport,

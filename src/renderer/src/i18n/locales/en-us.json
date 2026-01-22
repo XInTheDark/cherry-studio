@@ -978,6 +978,10 @@
       "top_p": {
         "label": "Top-P",
         "tip": "Default value is 1, the smaller the value, the less variety in the answers, the easier to understand, the larger the value, the larger the range of the AI's vocabulary, the more diverse"
+      },
+      "work_sequence_auto_collapse": {
+        "label": "Collapse Tool/Thought Blocks",
+        "tip": "When tool/thought blocks appear consecutively without assistant text in between, group them into a single expandable block"
       }
     },
     "suggestions": {
@@ -1097,6 +1101,14 @@
       "warning": {
         "openai": "The GPT-5 model's minimal reasoning effort does not support web search."
       }
+    },
+    "work_sequence": {
+      "thought_count_one": "{{count}} thought",
+      "thought_count_other": "{{count}} thoughts",
+      "tool_count_one": "{{count}} tool",
+      "tool_count_other": "{{count}} tools",
+      "worked_for": "Worked for {{seconds}}s",
+      "working_for": "Working for {{seconds}}s"
     }
   },
   "code": {

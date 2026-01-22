@@ -43,7 +43,8 @@ import {
   setShowMessageOutline,
   setShowPrompt,
   setShowTranslateConfirm,
-  setThoughtAutoCollapse
+  setThoughtAutoCollapse,
+  setWorkSequenceAutoCollapse
 } from '@renderer/store/settings'
 import type { Assistant, CodeStyleVarious, MathEngine } from '@renderer/types'
 import { isGroqSystemProvider, ThemeMode } from '@renderer/types'
@@ -106,6 +107,7 @@ const SettingsTab: FC<Props> = (props) => {
     pasteLongTextThreshold,
     multiModelMessageStyle,
     thoughtAutoCollapse,
+    workSequenceAutoCollapse,
     messageNavigation,
     enableQuickPanelTriggers,
     showTranslateConfirm,
@@ -196,6 +198,18 @@ const SettingsTab: FC<Props> = (props) => {
               size="small"
               checked={thoughtAutoCollapse}
               onChange={(checked) => dispatch(setThoughtAutoCollapse(checked))}
+            />
+          </SettingRow>
+          <SettingDivider />
+          <SettingRow>
+            <SettingRowTitleSmall>
+              {t('chat.settings.work_sequence_auto_collapse.label')}
+              <HelpTooltip title={t('chat.settings.work_sequence_auto_collapse.tip')} />
+            </SettingRowTitleSmall>
+            <Switch
+              size="small"
+              checked={workSequenceAutoCollapse}
+              onChange={(checked) => dispatch(setWorkSequenceAutoCollapse(checked))}
             />
           </SettingRow>
           <SettingDivider />
