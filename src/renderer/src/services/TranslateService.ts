@@ -18,6 +18,7 @@ import { NoOutputGeneratedError } from 'ai'
 import { t } from 'i18next'
 
 import { fetchChatCompletion } from './ApiService'
+import { applyDefaultAssistantPromptPrefix } from './AssistantPromptService'
 import { getDefaultTranslateAssistant } from './AssistantService'
 
 const logger = loggerService.withContext('TranslateService')
@@ -47,6 +48,7 @@ export const translateText = async (
     ? { reasoning_effort: options?.reasoningEffort }
     : undefined
   const assistant = getDefaultTranslateAssistant(targetLanguage, text, assistantSettings)
+  const assistantWithDefaultPrompt = applyDefaultAssistantPromptPrefix(assistant)
 
   const signal = abortKey ? readyToAbort(abortKey) : undefined
 
@@ -72,8 +74,8 @@ export const translateText = async (
 
   try {
     await fetchChatCompletion({
-      prompt: assistant.content,
-      assistant,
+      prompt: assistantWithDefaultPrompt.content,
+      assistant: assistantWithDefaultPrompt,
       requestOptions,
       onChunkReceived: onChunk
     })

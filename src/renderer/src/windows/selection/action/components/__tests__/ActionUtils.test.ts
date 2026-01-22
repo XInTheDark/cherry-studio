@@ -28,7 +28,17 @@ vi.mock('@renderer/services/MessagesService', () => ({
 
 vi.mock('@renderer/store', () => ({
   default: {
-    dispatch: vi.fn()
+    dispatch: vi.fn(),
+    getState: () => ({
+      settings: {
+        defaultAssistantId: 'default',
+        alwaysUseDefaultAssistantPrompt: false
+      },
+      assistants: {
+        assistants: [],
+        defaultAssistant: { id: 'default', prompt: '' }
+      }
+    })
   }
 }))
 

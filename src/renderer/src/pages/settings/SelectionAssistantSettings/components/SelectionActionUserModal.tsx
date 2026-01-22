@@ -1,6 +1,7 @@
 import ModelAvatar from '@renderer/components/Avatar/ModelAvatar'
 import CopyButton from '@renderer/components/CopyButton'
 import { useAssistants, useDefaultAssistant } from '@renderer/hooks/useAssistant'
+import { useSettings } from '@renderer/hooks/useSettings'
 import { getDefaultModel } from '@renderer/services/AssistantService'
 import type { ActionItem } from '@renderer/types/selectionTypes'
 import { Col, Input, Modal, Radio, Row, Select, Space, Tooltip } from 'antd'
@@ -26,7 +27,13 @@ const SelectionActionUserModal: FC<SelectionActionUserModalProps> = ({
 }) => {
   const { t } = useTranslation()
   const { assistants: userPredefinedAssistants } = useAssistants()
-  const { defaultAssistant } = useDefaultAssistant()
+  const { defaultAssistant: legacyDefaultAssistant } = useDefaultAssistant()
+  const { defaultAssistantId } = useSettings()
+
+  const defaultAssistant =
+    userPredefinedAssistants.find((a) => a.id === defaultAssistantId) ??
+    userPredefinedAssistants.find((a) => a.id === legacyDefaultAssistant.id) ??
+    legacyDefaultAssistant
 
   const [formData, setFormData] = useState<Partial<ActionItem>>({})
   const [errors, setErrors] = useState<Partial<Record<keyof ActionItem, string>>>({})

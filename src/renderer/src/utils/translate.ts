@@ -5,6 +5,7 @@ import { builtinLanguages, LanguagesEnum, UNKNOWN } from '@renderer/config/trans
 import db from '@renderer/databases'
 import i18n from '@renderer/i18n'
 import { fetchChatCompletion } from '@renderer/services/ApiService'
+import { applyDefaultAssistantPromptPrefix } from '@renderer/services/AssistantPromptService'
 import { getDefaultAssistant, getDefaultModel, getQuickModel } from '@renderer/services/AssistantService'
 import { estimateTextTokens } from '@renderer/services/TokenService'
 import { getAllCustomLanguages } from '@renderer/services/TranslateService'
@@ -85,6 +86,7 @@ const detectLanguageByLLM = async (inputText: string): Promise<TranslateLanguage
   assistant.model = model
   assistant.settings = {}
   assistant.prompt = LANG_DETECT_PROMPT.replace('{{list_lang}}', listLangText).replace('{{input}}', text)
+  const assistantWithDefaultPrompt = applyDefaultAssistantPromptPrefix(assistant)
 
   const onChunk: (chunk: Chunk) => void = (chunk: Chunk) => {
     // 你的意思是，虽然写的是delta类型，但其实是完整拼接后的结果？
@@ -93,7 +95,11 @@ const detectLanguageByLLM = async (inputText: string): Promise<TranslateLanguage
     }
   }
 
-  await fetchChatCompletion({ prompt: 'follow system prompt', assistant, onChunkReceived: onChunk })
+  await fetchChatCompletion({
+    prompt: 'follow system prompt',
+    assistant: assistantWithDefaultPrompt,
+    onChunkReceived: onChunk
+  })
   return detectedLang.trim()
 }
 

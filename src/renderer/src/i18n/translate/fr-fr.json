@@ -2116,6 +2116,14 @@
     "alert": {
       "google_login": "Remarque : Si vous recevez un message d'alerte Google indiquant que le navigateur n'est pas fiable lors de la connexion, veuillez d'abord vous connecter à votre compte via l'application intégrée Google dans la liste des mini-programmes, puis utilisez la connexion Google dans d'autres mini-programmes"
     },
+    "assistant_selector": {
+      "confirm": {
+        "content": "[to be translated]:Switching will clear the current Quick Assistant conversation. Continue?",
+        "title": "[to be translated]:Switch assistant?"
+      },
+      "default_tag": "[to be translated]:Default",
+      "use_model": "[to be translated]:Use quick model ({{model}})"
+    },
     "attachment": {
       "take_screenshot": "[to be translated]:Take screenshot"
     },
@@ -3184,6 +3192,18 @@
       "label": "Assistant par défaut",
       "model_params": "Paramètres du modèle",
       "title": "Assistant par défaut"
+    },
+    "assistants": {
+      "always_use_default_assistant_prompt": {
+        "description": "[to be translated]:Prepend the Default Assistant prompt to all non-default assistants (system prompt only).",
+        "label": "[to be translated]:Always use Default Assistant prompt"
+      },
+      "default_assistant": {
+        "description": "[to be translated]:Used as the default persona for Quick Assistant (model mode) and as the prompt prefix source when enabled.",
+        "label": "[to be translated]:Default Assistant",
+        "placeholder": "[to be translated]:Select an assistant",
+        "title": "[to be translated]:Default Assistant"
+      }
     },
     "data": {
       "app_data": {

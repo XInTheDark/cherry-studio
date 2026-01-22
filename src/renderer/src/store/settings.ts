@@ -222,6 +222,16 @@ export interface SettingsState {
     disabled: SidebarIcon[]
   }
   narrowMode: boolean
+  /**
+   * Selected default assistant id (from the assistant list).
+   * Used for Quick Assistant fallback and default prompt prefixing.
+   */
+  defaultAssistantId: string
+  /**
+   * When enabled, the selected default assistant prompt is prepended to all non-default assistants
+   * at request time (system prompt composition only; stored assistant prompts are not mutated).
+   */
+  alwaysUseDefaultAssistantPrompt: boolean
   // QuickAssistant
   enableQuickAssistant: boolean
   clickTrayToShowQuickAssistant: boolean
@@ -415,6 +425,8 @@ export const initialState: SettingsState = {
     disabled: []
   },
   narrowMode: false,
+  defaultAssistantId: 'default',
+  alwaysUseDefaultAssistantPrompt: false,
   enableQuickAssistant: false,
   clickTrayToShowQuickAssistant: false,
   readClipboardAtStartup: true,
@@ -771,6 +783,12 @@ const settingsSlice = createSlice({
     setNarrowMode: (state, action: PayloadAction<boolean>) => {
       state.narrowMode = action.payload
     },
+    setDefaultAssistantId: (state, action: PayloadAction<string>) => {
+      state.defaultAssistantId = action.payload
+    },
+    setAlwaysUseDefaultAssistantPrompt: (state, action: PayloadAction<boolean>) => {
+      state.alwaysUseDefaultAssistantPrompt = action.payload
+    },
     setClickTrayToShowQuickAssistant: (state, action: PayloadAction<boolean>) => {
       state.clickTrayToShowQuickAssistant = action.payload
     },
@@ -1045,6 +1063,8 @@ export const {
   setTopicNamingPrompt,
   setSidebarIcons,
   setNarrowMode,
+  setDefaultAssistantId,
+  setAlwaysUseDefaultAssistantPrompt,
   setClickTrayToShowQuickAssistant,
   setEnableQuickAssistant,
   setReadClipboardAtStartup,

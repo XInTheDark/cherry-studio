@@ -2116,6 +2116,14 @@
     "alert": {
       "google_login": "提示：如遇到Google登录提示\"不受信任的浏览器\"，请先在小程序列表中的Google小程序中完成账号登录，再在其它小程序使用Google登录"
     },
+    "assistant_selector": {
+      "confirm": {
+        "content": "切换将清空当前快速助手对话。是否继续？",
+        "title": "切换助手？"
+      },
+      "default_tag": "默认",
+      "use_model": "使用快速模型（{{model}}）"
+    },
     "attachment": {
       "take_screenshot": "屏幕截图"
     },
@@ -3184,6 +3192,18 @@
       "label": "默认助手",
       "model_params": "模型参数",
       "title": "默认助手"
+    },
+    "assistants": {
+      "always_use_default_assistant_prompt": {
+        "description": "为所有非默认助手自动在系统提示词前追加默认助手的提示词（仅影响系统提示词）。",
+        "label": "始终使用默认助手提示词"
+      },
+      "default_assistant": {
+        "description": "用于快速助手（模型模式）的默认人设，并在启用时作为提示词前缀来源。",
+        "label": "默认助手",
+        "placeholder": "选择一个助手",
+        "title": "默认助手"
+      }
     },
     "data": {
       "app_data": {

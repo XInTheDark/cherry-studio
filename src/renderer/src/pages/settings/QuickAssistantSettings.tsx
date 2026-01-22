@@ -26,13 +26,14 @@ import { SettingContainer, SettingDivider, SettingGroup, SettingRow, SettingRowT
 const QuickAssistantSettings: FC = () => {
   const { t } = useTranslation()
   const { theme } = useTheme()
-  const { enableQuickAssistant, clickTrayToShowQuickAssistant, setTray, readClipboardAtStartup } = useSettings()
+  const { enableQuickAssistant, clickTrayToShowQuickAssistant, setTray, readClipboardAtStartup, defaultAssistantId } =
+    useSettings()
   const dispatch = useAppDispatch()
   const { assistants } = useAssistants()
   const { quickAssistantId } = useAppSelector((state) => state.llm)
   const quickAssistantCommands =
     useAppSelector((state) => state.settings.quickAssistantCommands) || DEFAULT_QUICK_ASSISTANT_COMMANDS
-  const { defaultAssistant: _defaultAssistant } = useDefaultAssistant()
+  const { defaultAssistant: legacyDefaultAssistant } = useDefaultAssistant()
   const { defaultModel } = useDefaultModel()
 
   const [commandModalOpen, setCommandModalOpen] = useState(false)
@@ -41,11 +42,14 @@ const QuickAssistantSettings: FC = () => {
   const [commandPrompt, setCommandPrompt] = useState('')
   const [commandHideSource, setCommandHideSource] = useState(true)
 
-  // Take the "default assistant" from the assistant list first.
-  const defaultAssistant = useMemo(
-    () => assistants.find((a) => a.id === _defaultAssistant.id) || _defaultAssistant,
-    [assistants, _defaultAssistant]
-  )
+  // Use the selected default assistant (from settings) when present.
+  const defaultAssistant = useMemo(() => {
+    return (
+      assistants.find((a) => a.id === defaultAssistantId) ??
+      assistants.find((a) => a.id === legacyDefaultAssistant.id) ??
+      legacyDefaultAssistant
+    )
+  }, [assistants, defaultAssistantId, legacyDefaultAssistant])
 
   const updateCommands = (next: QuickAssistantCommand[]) => {
     dispatch(setQuickAssistantCommands(next))

@@ -7,6 +7,7 @@ import { buildStreamTextParams } from '@renderer/aiCore/prepareParams'
 import { isDedicatedImageGenerationModel, isEmbeddingModel, isFunctionCallingModel } from '@renderer/config/models'
 import { getStoreSetting } from '@renderer/hooks/useSettings'
 import i18n from '@renderer/i18n'
+import { applyDefaultAssistantPromptPrefix } from '@renderer/services/AssistantPromptService'
 import store from '@renderer/store'
 import type { Assistant, MCPServer, MCPTool, Model, Provider } from '@renderer/types'
 import { type FetchChatCompletionParams, isSystemProvider } from '@renderer/types'
@@ -105,7 +106,11 @@ export async function transformMessagesAndFetch(
   },
   onChunkReceived: (chunk: Chunk) => void
 ) {
-  const { messages, assistant } = request
+  const { messages, assistant: rawAssistant } = request
+
+  // Compute effective assistant system prompt (default prompt prefixing, etc.)
+  // before any per-request injections (e.g. knowledge base system prompt prefix).
+  const assistant = applyDefaultAssistantPromptPrefix(rawAssistant)
 
   let originalPrompt: string | undefined = undefined
   try {

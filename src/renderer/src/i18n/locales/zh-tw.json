@@ -2116,6 +2116,14 @@
     "alert": {
       "google_login": "提示：若 Google 登入時顯示「不受信任的瀏覽器」，請先在小程式清單中的 Google 小程式完成帳號登入，再到其他小程式使用 Google 登入。"
     },
+    "assistant_selector": {
+      "confirm": {
+        "content": "切換將清空目前的快速助手對話。是否繼續？",
+        "title": "切換助手？"
+      },
+      "default_tag": "預設",
+      "use_model": "使用快速模型（{{model}}）"
+    },
     "attachment": {
       "take_screenshot": "螢幕截圖"
     },
@@ -3184,6 +3192,18 @@
       "label": "預設助手",
       "model_params": "模型參數",
       "title": "預設助手"
+    },
+    "assistants": {
+      "always_use_default_assistant_prompt": {
+        "description": "為所有非預設助手自動在系統提示詞前追加預設助手的提示詞（僅影響系統提示詞）。",
+        "label": "一律使用預設助手提示詞"
+      },
+      "default_assistant": {
+        "description": "用於快速助手（模型模式）的預設人設，並在啟用時作為提示詞前綴來源。",
+        "label": "預設助手",
+        "placeholder": "選擇一個助手",
+        "title": "預設助手"
+      }
     },
     "data": {
       "app_data": {

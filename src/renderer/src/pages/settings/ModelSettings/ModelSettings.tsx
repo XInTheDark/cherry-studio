@@ -5,21 +5,25 @@ import { InfoTooltip } from '@renderer/components/TooltipIcons'
 import { isEmbeddingModel, isRerankModel, isTextToImageModel } from '@renderer/config/models'
 import { TRANSLATE_PROMPT } from '@renderer/config/prompts'
 import { useTheme } from '@renderer/context/ThemeProvider'
-import { useDefaultModel } from '@renderer/hooks/useAssistant'
+import { useAssistants, useDefaultModel } from '@renderer/hooks/useAssistant'
 import { useProviders } from '@renderer/hooks/useProvider'
 import { useSettings } from '@renderer/hooks/useSettings'
 import { getModelUniqId, hasModel } from '@renderer/services/ModelService'
 import { useAppDispatch } from '@renderer/store'
-import { setTranslateModelPrompt } from '@renderer/store/settings'
+import {
+  setAlwaysUseDefaultAssistantPrompt,
+  setDefaultAssistantId,
+  setTranslateModelPrompt
+} from '@renderer/store/settings'
 import type { Model } from '@renderer/types'
-import { Button, Tooltip } from 'antd'
+import { Button, Select, Switch, Tooltip } from 'antd'
 import { find } from 'lodash'
 import { Languages, MessageSquareMore, Rocket, Settings2 } from 'lucide-react'
 import type { FC } from 'react'
 import { useCallback, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 
-import { SettingContainer, SettingDescription, SettingGroup, SettingTitle } from '..'
+import { SettingContainer, SettingDescription, SettingGroup, SettingRow, SettingRowTitle, SettingTitle } from '..'
 import TranslateSettingsPopup from '../TranslateSettingsPopup/TranslateSettingsPopup'
 import DefaultAssistantSettings from './DefaultAssistantSettings'
 import TopicNamingModalPopup from './QuickModelPopup'
@@ -27,11 +31,12 @@ import TopicNamingModalPopup from './QuickModelPopup'
 const ModelSettings: FC = () => {
   const { defaultModel, quickModel, translateModel, setDefaultModel, setQuickModel, setTranslateModel } =
     useDefaultModel()
+  const { assistants } = useAssistants()
   const { providers } = useProviders()
   const allModels = providers.map((p) => p.models).flat()
   const { theme } = useTheme()
   const { t } = useTranslation()
-  const { translateModelPrompt } = useSettings()
+  const { translateModelPrompt, defaultAssistantId, alwaysUseDefaultAssistantPrompt } = useSettings()
 
   const dispatch = useAppDispatch()
 
@@ -58,6 +63,35 @@ const ModelSettings: FC = () => {
 
   return (
     <SettingContainer theme={theme}>
+      <SettingGroup theme={theme}>
+        <SettingTitle style={{ marginBottom: 12 }}>{t('settings.assistants.default_assistant.title')}</SettingTitle>
+        <SettingRow>
+          <SettingRowTitle>{t('settings.assistants.default_assistant.label')}</SettingRowTitle>
+          <Select
+            value={defaultAssistantId || 'default'}
+            style={{ width: 360, height: 34 }}
+            onChange={(value) => dispatch(setDefaultAssistantId(value))}
+            placeholder={t('settings.assistants.default_assistant.placeholder')}
+            showSearch
+            options={assistants.map((a) => ({ value: a.id, label: a.name }))}
+            filterOption={(input, option) => {
+              const label = String(option?.label ?? '')
+              return label.toLowerCase().includes(input.trim().toLowerCase())
+            }}
+          />
+        </SettingRow>
+        <SettingDescription>{t('settings.assistants.default_assistant.description')}</SettingDescription>
+        <SettingRow style={{ marginTop: 10 }}>
+          <SettingRowTitle>{t('settings.assistants.always_use_default_assistant_prompt.label')}</SettingRowTitle>
+          <Switch
+            checked={!!alwaysUseDefaultAssistantPrompt}
+            onChange={(checked) => dispatch(setAlwaysUseDefaultAssistantPrompt(checked))}
+          />
+        </SettingRow>
+        <SettingDescription>
+          {t('settings.assistants.always_use_default_assistant_prompt.description')}
+        </SettingDescription>
+      </SettingGroup>
       <SettingGroup theme={theme}>
         <SettingTitle style={{ marginBottom: 12 }}>
           <HStack alignItems="center" gap={10}>

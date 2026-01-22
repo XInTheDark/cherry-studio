@@ -1,5 +1,6 @@
 import { loggerService } from '@logger'
 import { fetchChatCompletion } from '@renderer/services/ApiService'
+import { applyDefaultAssistantPromptPrefix } from '@renderer/services/AssistantPromptService'
 import { ConversationService } from '@renderer/services/ConversationService'
 import { getAssistantMessage, getUserMessage } from '@renderer/services/MessagesService'
 import store from '@renderer/store'
@@ -76,11 +77,15 @@ export const processMessages = async (
     newAssistant.webSearchProviderId = undefined
     newAssistant.mcpServers = undefined
     newAssistant.knowledge_bases = undefined
-    const { modelMessages, uiMessages } = await ConversationService.prepareMessagesForModel([userMessage], newAssistant)
+    const assistantWithDefaultPrompt = applyDefaultAssistantPromptPrefix(newAssistant)
+    const { modelMessages, uiMessages } = await ConversationService.prepareMessagesForModel(
+      [userMessage],
+      assistantWithDefaultPrompt
+    )
 
     await fetchChatCompletion({
       messages: modelMessages,
-      assistant: newAssistant,
+      assistant: assistantWithDefaultPrompt,
       requestOptions: {},
       uiMessages: uiMessages,
       onChunkReceived: (chunk: Chunk) => {

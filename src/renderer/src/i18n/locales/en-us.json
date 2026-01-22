@@ -2116,6 +2116,14 @@
     "alert": {
       "google_login": "Tip: If you see a 'browser not trusted' message when logging into Google, please first login through the Google mini app in the mini app list, then use Google login in other mini apps"
     },
+    "assistant_selector": {
+      "confirm": {
+        "content": "Switching will clear the current Quick Assistant conversation. Continue?",
+        "title": "Switch assistant?"
+      },
+      "default_tag": "Default",
+      "use_model": "Use quick model ({{model}})"
+    },
     "attachment": {
       "take_screenshot": "Take screenshot"
     },
@@ -3184,6 +3192,18 @@
       "label": "Default Assistant",
       "model_params": "Model Parameters",
       "title": "Default Assistant"
+    },
+    "assistants": {
+      "always_use_default_assistant_prompt": {
+        "description": "Prepend the Default Assistant prompt to all non-default assistants (system prompt only).",
+        "label": "Always use Default Assistant prompt"
+      },
+      "default_assistant": {
+        "description": "Used as the default persona for Quick Assistant (model mode) and as the prompt prefix source when enabled.",
+        "label": "Default Assistant",
+        "placeholder": "Select an assistant",
+        "title": "Default Assistant"
+      }
     },
     "data": {
       "app_data": {

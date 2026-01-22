@@ -4,7 +4,7 @@ import { isMac } from '@renderer/config/constant'
 import { isGenerateImageModel, isVisionModel } from '@renderer/config/models'
 import { useTheme } from '@renderer/context/ThemeProvider'
 import db from '@renderer/databases'
-import { useAssistant, useDefaultAssistant, useDefaultModel } from '@renderer/hooks/useAssistant'
+import { useDefaultModel } from '@renderer/hooks/useAssistant'
 import { useSettings } from '@renderer/hooks/useSettings'
 import { useTextareaResize } from '@renderer/hooks/useTextareaResize'
 import i18n from '@renderer/i18n'
@@ -20,12 +20,14 @@ import KnowledgeBaseInput from '@renderer/pages/home/Inputbar/KnowledgeBaseInput
 import MentionModelsInput from '@renderer/pages/home/Inputbar/MentionModelsInput'
 import type { InputbarScope } from '@renderer/pages/home/Inputbar/types'
 import { fetchChatCompletion } from '@renderer/services/ApiService'
+import { applyDefaultAssistantPromptPrefix } from '@renderer/services/AssistantPromptService'
 import { getDefaultTopic } from '@renderer/services/AssistantService'
 import { ConversationService } from '@renderer/services/ConversationService'
 import FileManager from '@renderer/services/FileManager'
 import { deleteMessageFiles, getAssistantMessage, getUserMessage } from '@renderer/services/MessagesService'
 import store, { useAppSelector } from '@renderer/store'
 import { addTopic } from '@renderer/store/assistants'
+import { setQuickAssistantId } from '@renderer/store/llm'
 import { updateOneBlock, upsertManyBlocks, upsertOneBlock } from '@renderer/store/messageBlock'
 import { newMessagesActions, selectMessagesForTopic } from '@renderer/store/newMessage'
 import type { QuickAssistantCommand } from '@renderer/store/settings'
@@ -40,13 +42,14 @@ import { ThemeMode } from '@renderer/types'
 import type { Chunk } from '@renderer/types/chunk'
 import { ChunkType } from '@renderer/types/chunk'
 import { AssistantMessageStatus, MessageBlockStatus, MessageBlockType } from '@renderer/types/newMessage'
+import { matchKeywordsInString, modalConfirm } from '@renderer/utils'
 import { abortCompletion } from '@renderer/utils/abortController'
 import { isAbortError } from '@renderer/utils/error'
 import { createMainTextBlock, createThinkingBlock } from '@renderer/utils/messageUtils/create'
 import { replacePromptVariables } from '@renderer/utils/prompt'
 import { defaultLanguage, documentExts, imageExts, textExts } from '@shared/config/constant'
 import { IpcChannel } from '@shared/IpcChannel'
-import { Divider, Tooltip } from 'antd'
+import { Divider, Select, Tooltip } from 'antd'
 import { cloneDeep } from 'lodash'
 import { ExternalLink, Pin, PinOff, PlusSquare, X } from 'lucide-react'
 import type { FC } from 'react'
@@ -108,7 +111,7 @@ const HomeWindowInner: FC<{ draggable: boolean; actionsRef: React.RefObject<Prov
   draggable,
   actionsRef
 }) => {
-  const { language, readClipboardAtStartup, targetLanguage, windowStyle } = useSettings()
+  const { language, readClipboardAtStartup, targetLanguage, windowStyle, defaultAssistantId } = useSettings()
   const { theme } = useTheme()
   const { t } = useTranslation()
 
@@ -129,18 +132,37 @@ const HomeWindowInner: FC<{ draggable: boolean; actionsRef: React.RefObject<Prov
   const [error, setError] = useState<string | null>(null)
 
   const { quickAssistantId } = useAppSelector((state) => state.llm)
-  const { defaultAssistant } = useDefaultAssistant()
-  const { quickModel } = useDefaultModel()
+  const { quickModel, defaultModel } = useDefaultModel()
 
-  const assistantId = quickAssistantId || defaultAssistant.id
-  const { assistant: baseAssistant } = useAssistant(assistantId)
+  const assistants = useAppSelector((state) => state.assistants.assistants)
+  const legacyDefaultAssistant = useAppSelector((state) => state.assistants.defaultAssistant)
+
+  // Selected default assistant (from settings) is the base persona/template for Quick Assistant model mode.
+  const selectedDefaultAssistant = useMemo(() => {
+    return (
+      assistants.find((a) => a.id === defaultAssistantId) ??
+      assistants.find((a) => a.id === legacyDefaultAssistant.id) ??
+      assistants.find((a) => a.id === 'default') ??
+      legacyDefaultAssistant
+    )
+  }, [assistants, defaultAssistantId, legacyDefaultAssistant])
+
+  const baseAssistant = useMemo(() => {
+    if (!quickAssistantId) return selectedDefaultAssistant
+    return assistants.find((a) => a.id === quickAssistantId) ?? selectedDefaultAssistant
+  }, [assistants, quickAssistantId, selectedDefaultAssistant])
+
+  const baseAssistantWithModel = useMemo(() => {
+    const model = baseAssistant?.model ?? baseAssistant?.defaultModel ?? defaultModel
+    return { ...baseAssistant, model }
+  }, [baseAssistant, defaultModel])
 
   // When quickAssistantId is empty, Quick Assistant is configured to "use model" (quickModel) instead of an assistant.
-  // We still need an assistant-like object for prompt/settings; we reuse the default assistant and override its model.
+  // We still need an assistant-like object for prompt/settings; we reuse the selected default assistant and override its model.
   const currentAssistant = useMemo(() => {
-    if (quickAssistantId) return baseAssistant
-    return { ...baseAssistant, model: quickModel, defaultModel: quickModel }
-  }, [baseAssistant, quickAssistantId, quickModel])
+    if (quickAssistantId) return baseAssistantWithModel
+    return { ...baseAssistantWithModel, model: quickModel, defaultModel: quickModel }
+  }, [baseAssistantWithModel, quickAssistantId, quickModel])
 
   const [topic, setTopic] = useState<Topic>(() => getDefaultTopic(currentAssistant.id))
   const currentAskId = useRef('')
@@ -175,28 +197,32 @@ const HomeWindowInner: FC<{ draggable: boolean; actionsRef: React.RefObject<Prov
     }
   }, [readClipboardAtStartup])
 
-  const resetConversation = useCallback(() => {
-    if (!topic) return
+  const resetConversation = useCallback(
+    (assistantIdOverride?: string) => {
+      if (!topic) return
 
-    // Clean up any uploaded attachments tied to this ephemeral mini-window thread.
-    // This keeps file storage and db.files reference counts from leaking.
-    const messages = selectMessagesForTopic(store.getState(), topic.id)
-    messages.forEach((m) => deleteMessageFiles(m))
-    store.dispatch(newMessagesActions.clearTopicMessages(topic.id))
+      // Clean up any uploaded attachments tied to this ephemeral mini-window thread.
+      // This keeps file storage and db.files reference counts from leaking.
+      const messages = selectMessagesForTopic(store.getState(), topic.id)
+      messages.forEach((m) => deleteMessageFiles(m))
+      store.dispatch(newMessagesActions.clearTopicMessages(topic.id))
 
-    setTopic(getDefaultTopic(currentAssistant.id))
-    setHideFirstUserMessage(false)
-    setError(null)
-    setIsLoading(false)
-    setIsOutputted(false)
-    currentAskId.current = ''
+      const nextAssistantId = assistantIdOverride ?? currentAssistant.id
+      setTopic(getDefaultTopic(nextAssistantId))
+      setHideFirstUserMessage(false)
+      setError(null)
+      setIsLoading(false)
+      setIsOutputted(false)
+      currentAskId.current = ''
 
-    setText('')
-    setFiles([])
+      setText('')
+      setFiles([])
 
-    // Keep clipboard text (it can still be useful as context for the first command/message).
-    setCommandsFocused(false)
-  }, [currentAssistant.id, setFiles, topic])
+      // Keep clipboard text (it can still be useful as context for the first command/message).
+      setCommandsFocused(false)
+    },
+    [currentAssistant.id, setFiles, topic]
+  )
 
   const handlePause = useCallback(() => {
     if (currentAskId.current) {
@@ -328,10 +354,14 @@ const HomeWindowInner: FC<{ draggable: boolean; actionsRef: React.RefObject<Prov
         setText('')
         setFiles([])
 
-        const newAssistant = cloneDeep(currentAssistant)
+        let newAssistant = cloneDeep(currentAssistant)
         if (!newAssistant.settings) newAssistant.settings = {}
         newAssistant.settings.streamOutput = true
-        newAssistant.prompt = await replacePromptVariables(currentAssistant.prompt, currentAssistant?.model.name)
+        newAssistant = applyDefaultAssistantPromptPrefix(newAssistant)
+        newAssistant.prompt = await replacePromptVariables(
+          newAssistant.prompt,
+          (newAssistant.model ?? defaultModel).name
+        )
 
         const { modelMessages, uiMessages } = await ConversationService.prepareMessagesForModel(
           messagesForContext,
@@ -476,7 +506,7 @@ const HomeWindowInner: FC<{ draggable: boolean; actionsRef: React.RefObject<Prov
         currentAskId.current = ''
       }
     },
-    [clipboardText, currentAssistant, files, handleError, setFiles, text, topic, t]
+    [clipboardText, currentAssistant, defaultModel, files, handleError, setFiles, text, topic, t]
   )
 
   const handleSendChat = useCallback(() => {
@@ -608,10 +638,10 @@ const HomeWindowInner: FC<{ draggable: boolean; actionsRef: React.RefObject<Prov
 
   // Determine attachment capabilities from the current assistant model.
   useEffect(() => {
-    const model = currentAssistant.model || currentAssistant.defaultModel
+    const model = currentAssistant.model ?? currentAssistant.defaultModel ?? defaultModel
     const canAddImage = isVisionModel(model) || isGenerateImageModel(model)
     setCouldAddImageFile(canAddImage)
-  }, [currentAssistant, setCouldAddImageFile])
+  }, [currentAssistant.defaultModel, currentAssistant.model, defaultModel, setCouldAddImageFile])
 
   useEffect(() => {
     // Wire InputbarToolsProvider "parent actions" so tool buttons behave consistently.
@@ -645,6 +675,52 @@ const HomeWindowInner: FC<{ draggable: boolean; actionsRef: React.RefObject<Prov
   const messages = useAppSelector((state) => selectMessagesForTopic(state, topic.id))
   const hasConversation = messages.length > 0
   const showCommands = !hasConversation
+
+  const assistantSelectOptions = useMemo(() => {
+    const options: Array<{ value: string; label: string; title?: string }> = []
+
+    options.push({
+      value: '',
+      label: t('miniwindow.assistant_selector.use_model', { model: quickModel.name }),
+      title: t('miniwindow.assistant_selector.use_model', { model: quickModel.name })
+    })
+
+    options.push(
+      ...assistants.map((a) => ({
+        value: a.id,
+        label:
+          a.id === selectedDefaultAssistant.id
+            ? `${a.name} (${t('miniwindow.assistant_selector.default_tag')})`
+            : a.name,
+        title: a.name
+      }))
+    )
+
+    return options
+  }, [assistants, quickModel.name, selectedDefaultAssistant.id, t])
+
+  const handleAssistantChange = useCallback(
+    async (nextQuickAssistantId: string) => {
+      if (nextQuickAssistantId === quickAssistantId) return
+
+      const hasDraft = (text?.trim()?.length ?? 0) > 0 || (files?.length ?? 0) > 0
+      const shouldConfirm = hasConversation || hasDraft
+      if (shouldConfirm) {
+        const ok = await modalConfirm({
+          title: t('miniwindow.assistant_selector.confirm.title'),
+          content: t('miniwindow.assistant_selector.confirm.content')
+        })
+        if (!ok) return
+      }
+
+      store.dispatch(setQuickAssistantId(nextQuickAssistantId))
+
+      // In model mode (empty quickAssistantId), the assistant id comes from the selected default assistant.
+      const nextAssistantIdForTopic = nextQuickAssistantId || selectedDefaultAssistant.id
+      resetConversation(nextAssistantIdForTopic)
+    },
+    [files?.length, hasConversation, quickAssistantId, resetConversation, selectedDefaultAssistant.id, t, text]
+  )
 
   const handleContainerKeyDownCapture = useCallback(
     (e: React.KeyboardEvent) => {
@@ -694,7 +770,7 @@ const HomeWindowInner: FC<{ draggable: boolean; actionsRef: React.RefObject<Prov
       )
       items.push(
         <Tooltip key="new" title="New conversation" mouseEnterDelay={0.6}>
-          <ActionIconButton className="nodrag" onClick={resetConversation} aria-label="New conversation">
+          <ActionIconButton className="nodrag" onClick={() => resetConversation()} aria-label="New conversation">
             <PlusSquare size={16} />
           </ActionIconButton>
         </Tooltip>
@@ -726,7 +802,19 @@ const HomeWindowInner: FC<{ draggable: boolean; actionsRef: React.RefObject<Prov
   return (
     <Container style={{ backgroundColor }} $draggable={draggable} onKeyDownCapture={handleContainerKeyDownCapture}>
       <Header $draggable={draggable}>
-        <HeaderTitle>{t('settings.quickAssistant.title')}</HeaderTitle>
+        <HeaderLeft className="nodrag">
+          <AssistantSelect
+            className="nodrag"
+            value={quickAssistantId}
+            options={assistantSelectOptions}
+            disabled={isLoading}
+            showSearch
+            size="small"
+            popupMatchSelectWidth={false}
+            onChange={(value) => void handleAssistantChange(String(value))}
+            filterOption={(input, option) => matchKeywordsInString(input, String(option?.title || option?.label || ''))}
+          />
+        </HeaderLeft>
         {headerActions}
       </Header>
 
@@ -759,7 +847,7 @@ const HomeWindowInner: FC<{ draggable: boolean; actionsRef: React.RefObject<Prov
         <InputbarCore
           scope={INPUT_SCOPE}
           placeholder={t('miniwindow.input.placeholder.empty', {
-            model: quickAssistantId ? currentAssistant.name : currentAssistant.model.name
+            model: quickAssistantId ? currentAssistant.name : (currentAssistant.model ?? defaultModel).name
           })}
           text={text}
           onTextChange={setText}
@@ -807,7 +895,7 @@ const Container = styled.div<{ $draggable: boolean }>`
   height: 100%;
   width: 100%;
   flex-direction: column;
-  padding: 8px 10px;
+  padding: 8px 14px;
 `
 
 const Header = styled.div<{ $draggable: boolean }>`
@@ -818,10 +906,19 @@ const Header = styled.div<{ $draggable: boolean }>`
   -webkit-app-region: ${({ $draggable }) => ($draggable ? 'drag' : 'no-drag')};
 `
 
-const HeaderTitle = styled.div`
-  font-size: 12px;
-  color: var(--color-text-2);
-  user-select: none;
+const HeaderLeft = styled.div`
+  display: flex;
+  align-items: center;
+  min-width: 0;
+`
+
+const AssistantSelect = styled(Select<string>)`
+  width: 220px;
+
+  .ant-select-selector {
+    padding-left: 8px !important;
+    padding-right: 8px !important;
+  }
 `
 
 const HeaderActions = styled.div`
