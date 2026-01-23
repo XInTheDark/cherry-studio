@@ -4970,6 +4970,21 @@
       "title": "縮放"
     }
   },
+  "thread": {
+    "back": "返回",
+    "cancel": "取消",
+    "create_failed": "建立討論串失敗",
+    "new": "新增討論串",
+    "reply": "在討論串中回覆",
+    "reply_in_thread": "在討論串中回覆",
+    "reply_placeholder": "輸入回覆…",
+    "send": "送出",
+    "start": "開始討論串",
+    "start_placeholder": "輸入內容以建立討論串…",
+    "threads_one": "{{count}} 個討論串",
+    "threads_other": "{{count}} 個討論串",
+    "title": "討論串"
+  },
   "title": {
     "apps": "小程式",
     "code": "程式碼",

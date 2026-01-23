@@ -6,7 +6,7 @@ import { getModelLogoById } from '@renderer/config/models'
 import { useTheme } from '@renderer/context/ThemeProvider'
 import { useAgent } from '@renderer/hooks/agents/useAgent'
 import useAvatar from '@renderer/hooks/useAvatar'
-import { useChatContext } from '@renderer/hooks/useChatContext'
+import { type ChatContextOptions, useChatContext } from '@renderer/hooks/useChatContext'
 import { useMinappPopup } from '@renderer/hooks/useMinappPopup'
 import { useRuntime } from '@renderer/hooks/useRuntime'
 import { useMessageStyle, useSettings } from '@renderer/hooks/useSettings'
@@ -29,6 +29,7 @@ interface Props {
   model?: Model
   topic: Topic
   isGroupContextMessage?: boolean
+  chatContextOptions?: ChatContextOptions
 }
 
 const getAvatarSource = (isLocalAi: boolean, modelId: string | undefined) => {
@@ -36,115 +37,117 @@ const getAvatarSource = (isLocalAi: boolean, modelId: string | undefined) => {
   return modelId ? getModelLogoById(modelId) : undefined
 }
 
-const MessageHeader: FC<Props> = memo(({ assistant, model, message, topic, isGroupContextMessage }) => {
-  const avatar = useAvatar()
-  const { theme } = useTheme()
-  const { userName, sidebarIcons } = useSettings()
-  const { chat } = useRuntime()
-  const { activeTopicOrSession, activeAgentId } = chat
-  const { agent } = useAgent(activeAgentId)
-  const isAgentView = activeTopicOrSession === 'session'
-  const { t } = useTranslation()
-  const { isBubbleStyle } = useMessageStyle()
-  const { openMinappById } = useMinappPopup()
+const MessageHeader: FC<Props> = memo(
+  ({ assistant, model, message, topic, isGroupContextMessage, chatContextOptions }) => {
+    const avatar = useAvatar()
+    const { theme } = useTheme()
+    const { userName, sidebarIcons } = useSettings()
+    const { chat } = useRuntime()
+    const { activeTopicOrSession, activeAgentId } = chat
+    const { agent } = useAgent(activeAgentId)
+    const isAgentView = activeTopicOrSession === 'session'
+    const { t } = useTranslation()
+    const { isBubbleStyle } = useMessageStyle()
+    const { openMinappById } = useMinappPopup()
 
-  const { isMultiSelectMode, selectedMessageIds, handleSelectMessage } = useChatContext(topic)
+    const { isMultiSelectMode, selectedMessageIds, handleSelectMessage } = useChatContext(topic, chatContextOptions)
 
-  const isSelected = selectedMessageIds?.includes(message.id)
+    const isSelected = selectedMessageIds?.includes(message.id)
 
-  const avatarSource = useMemo(() => getAvatarSource(isLocalAi, getMessageModelId(message)), [message])
+    const avatarSource = useMemo(() => getAvatarSource(isLocalAi, getMessageModelId(message)), [message])
 
-  const getUserName = useCallback(() => {
-    if (isLocalAi && message.role !== 'user') {
-      return APP_NAME
-    }
+    const getUserName = useCallback(() => {
+      if (isLocalAi && message.role !== 'user') {
+        return APP_NAME
+      }
 
-    if (isAgentView && message.role === 'assistant') {
-      return agent?.name ?? t('common.unknown')
-    }
+      if (isAgentView && message.role === 'assistant') {
+        return agent?.name ?? t('common.unknown')
+      }
 
-    if (message.role === 'assistant') {
-      return getModelName(model) || getMessageModelId(message) || ''
-    }
+      if (message.role === 'assistant') {
+        return getModelName(model) || getMessageModelId(message) || ''
+      }
 
-    return userName || t('common.you')
-  }, [agent?.name, isAgentView, message, model, t, userName])
+      return userName || t('common.you')
+    }, [agent?.name, isAgentView, message, model, t, userName])
 
-  const isAssistantMessage = message.role === 'assistant'
-  const isUserMessage = message.role === 'user'
-  const showMinappIcon = sidebarIcons.visible.includes('minapp')
+    const isAssistantMessage = message.role === 'assistant'
+    const isUserMessage = message.role === 'user'
+    const showMinappIcon = sidebarIcons.visible.includes('minapp')
 
-  const avatarName = useMemo(() => firstLetter(assistant?.name).toUpperCase(), [assistant?.name])
-  const username = useMemo(() => removeLeadingEmoji(getUserName()), [getUserName])
+    const avatarName = useMemo(() => firstLetter(assistant?.name).toUpperCase(), [assistant?.name])
+    const username = useMemo(() => removeLeadingEmoji(getUserName()), [getUserName])
 
-  const showMiniApp = useCallback(() => {
-    showMinappIcon && model?.provider && openMinappById(model.provider)
-    // because don't need openMinappById to be a dependency
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [model?.provider, showMinappIcon])
+    const showMiniApp = useCallback(() => {
+      showMinappIcon && model?.provider && openMinappById(model.provider)
+      // because don't need openMinappById to be a dependency
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [model?.provider, showMinappIcon])
 
-  const userNameJustifyContent = useMemo(() => {
-    if (!isBubbleStyle) return 'flex-start'
-    if (isUserMessage && !isMultiSelectMode) return 'flex-end'
-    return 'flex-start'
-  }, [isBubbleStyle, isUserMessage, isMultiSelectMode])
+    const userNameJustifyContent = useMemo(() => {
+      if (!isBubbleStyle) return 'flex-start'
+      if (isUserMessage && !isMultiSelectMode) return 'flex-end'
+      return 'flex-start'
+    }, [isBubbleStyle, isUserMessage, isMultiSelectMode])
 
-  return (
-    <Container className="message-header">
-      {isAssistantMessage ? (
-        <Avatar
-          src={avatarSource}
-          size={35}
-          style={{
-            borderRadius: '25%',
-            cursor: showMinappIcon ? 'pointer' : 'default',
-            border: isLocalAi ? '1px solid var(--color-border-soft)' : 'none',
-            filter: theme === 'dark' ? 'invert(0.05)' : undefined
-          }}
-          onClick={showMiniApp}>
-          {avatarName}
-        </Avatar>
-      ) : (
-        <>
-          {isEmoji(avatar) ? (
-            <EmojiAvatar onClick={() => UserPopup.show()} size={35} fontSize={20}>
-              {avatar}
-            </EmojiAvatar>
-          ) : (
-            <Avatar
-              src={avatar}
-              size={35}
-              style={{ borderRadius: '25%', cursor: 'pointer' }}
-              onClick={() => UserPopup.show()}
-            />
-          )}
-        </>
-      )}
-      <UserWrap>
-        <HStack alignItems="center" justifyContent={userNameJustifyContent}>
-          <UserName isBubbleStyle={isBubbleStyle} theme={theme}>
-            {username}
-          </UserName>
-          {isGroupContextMessage && (
-            <Tooltip title={t('chat.message.useful.tip')}>
-              <Sparkle fill="var(--color-primary)" strokeWidth={0} size={18} />
-            </Tooltip>
-          )}
-        </HStack>
-        <InfoWrap className="message-header-info-wrap">
-          <MessageTime>{dayjs(message?.updatedAt ?? message.createdAt).format('MM/DD HH:mm')}</MessageTime>
-        </InfoWrap>
-      </UserWrap>
-      {isMultiSelectMode && (
-        <Checkbox
-          checked={isSelected}
-          onChange={(e) => handleSelectMessage(message.id, e.target.checked)}
-          style={{ position: 'absolute', right: 0, top: 0 }}
-        />
-      )}
-    </Container>
-  )
-})
+    return (
+      <Container className="message-header">
+        {isAssistantMessage ? (
+          <Avatar
+            src={avatarSource}
+            size={35}
+            style={{
+              borderRadius: '25%',
+              cursor: showMinappIcon ? 'pointer' : 'default',
+              border: isLocalAi ? '1px solid var(--color-border-soft)' : 'none',
+              filter: theme === 'dark' ? 'invert(0.05)' : undefined
+            }}
+            onClick={showMiniApp}>
+            {avatarName}
+          </Avatar>
+        ) : (
+          <>
+            {isEmoji(avatar) ? (
+              <EmojiAvatar onClick={() => UserPopup.show()} size={35} fontSize={20}>
+                {avatar}
+              </EmojiAvatar>
+            ) : (
+              <Avatar
+                src={avatar}
+                size={35}
+                style={{ borderRadius: '25%', cursor: 'pointer' }}
+                onClick={() => UserPopup.show()}
+              />
+            )}
+          </>
+        )}
+        <UserWrap>
+          <HStack alignItems="center" justifyContent={userNameJustifyContent}>
+            <UserName isBubbleStyle={isBubbleStyle} theme={theme}>
+              {username}
+            </UserName>
+            {isGroupContextMessage && (
+              <Tooltip title={t('chat.message.useful.tip')}>
+                <Sparkle fill="var(--color-primary)" strokeWidth={0} size={18} />
+              </Tooltip>
+            )}
+          </HStack>
+          <InfoWrap className="message-header-info-wrap">
+            <MessageTime>{dayjs(message?.updatedAt ?? message.createdAt).format('MM/DD HH:mm')}</MessageTime>
+          </InfoWrap>
+        </UserWrap>
+        {isMultiSelectMode && (
+          <Checkbox
+            checked={isSelected}
+            onChange={(e) => handleSelectMessage(message.id, e.target.checked)}
+            style={{ position: 'absolute', right: 0, top: 0 }}
+          />
+        )}
+      </Container>
+    )
+  }
+)
 
 MessageHeader.displayName = 'MessageHeader'
 

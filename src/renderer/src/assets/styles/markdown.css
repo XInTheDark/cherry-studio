@@ -391,3 +391,16 @@ mjx-container {
   position: absolute;
   display: none;
 }
+
+/* Thread selection comments (highlight spans injected post-render). */
+.markdown .thread-highlight {
+  background: rgba(0, 114, 245, 0.18);
+  border-radius: 4px;
+  padding: 0 1px;
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+
+.markdown .thread-highlight:hover {
+  background: rgba(0, 114, 245, 0.28);
+}

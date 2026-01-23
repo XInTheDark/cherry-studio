@@ -54,6 +54,7 @@ import {
   Languages,
   ListChecks,
   Menu,
+  MessageSquareText,
   NotebookPen,
   Save,
   Split,
@@ -109,6 +110,7 @@ type MessageMenubarButtonContext = {
   onCopy: (e: React.MouseEvent) => void
   onEdit: () => void | Promise<void>
   onMentionModel: (e: React.MouseEvent) => void | Promise<void>
+  onOpenThread: (e: React.MouseEvent) => void
   onRegenerate: (e?: React.MouseEvent) => void | Promise<void>
   onUseful: (e: React.MouseEvent) => void
   removeMessageBlock: MessageOperationsHandlers['removeMessageBlock']
@@ -204,6 +206,14 @@ const MessageMenubar: FC<Props> = (props) => {
     EventEmitter.emit(EVENT_NAMES.NEW_BRANCH, index)
     window.toast.success(t('chat.message.new.branch.created'))
   }, [index, t])
+
+  const onOpenThread = useCallback(
+    (e: React.MouseEvent) => {
+      e.stopPropagation()
+      EventEmitter.emit(EVENT_NAMES.OPEN_THREAD_PANEL, { parentMessageId: message.id, focusComposer: true })
+    },
+    [message.id]
+  )
 
   const handleResendUserMessage = useCallback(
     async (messageUpdate?: Message) => {
@@ -548,6 +558,7 @@ const MessageMenubar: FC<Props> = (props) => {
     onCopy,
     onEdit,
     onMentionModel,
+    onOpenThread,
     onRegenerate,
     onUseful,
     removeMessageBlock,
@@ -678,6 +689,13 @@ const buttonRenderers: Record<MessageMenubarButtonId, MessageMenubarButtonRender
       </Tooltip>
     )
   },
+  thread: ({ onOpenThread, softHoverBg, t }) => (
+    <Tooltip title={t('thread.new')} mouseEnterDelay={0.8}>
+      <ActionButton className="message-action-button" onClick={onOpenThread} $softHoverBg={softHoverBg}>
+        <MessageSquareText size={15} />
+      </ActionButton>
+    </Tooltip>
+  ),
   copy: ({ onCopy, softHoverBg, copied, t }) => (
     <Tooltip title={t('common.copy')} mouseEnterDelay={0.8}>
       <ActionButton className="message-action-button" onClick={onCopy} $softHoverBg={softHoverBg}>

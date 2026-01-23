@@ -30,6 +30,7 @@ import type { NavigateFunction } from 'react-router'
 import { getAssistantById, getAssistantProvider, getDefaultModel } from './AssistantService'
 import { EVENT_NAMES, EventEmitter } from './EventService'
 import FileManager from './FileManager'
+import { isThreadTopicId, parseThreadTopicId } from './ThreadService'
 
 const logger = loggerService.withContext('MessagesService')
 
@@ -81,6 +82,28 @@ export async function locateToMessage(navigate: NavigateFunction, message: Messa
 
   SearchPopup.hide()
   const assistant = getAssistantById(message.assistantId)
+
+  // Thread messages belong to hidden thread topics; locating them should take the user to the
+  // parent message in the parent topic and open the thread panel (best UX).
+  if (isThreadTopicId(message.topicId)) {
+    const ref = parseThreadTopicId(message.topicId)
+    if (ref) {
+      const parentTopic = await getTopicById(ref.parentTopicId)
+
+      navigate('/', { state: { assistant, topic: parentTopic } })
+
+      setTimeout(() => EventEmitter.emit(EVENT_NAMES.SHOW_TOPIC_SIDEBAR), 0)
+      setTimeout(() => {
+        EventEmitter.emit(EVENT_NAMES.LOCATE_MESSAGE + ':' + ref.parentMessageId)
+        EventEmitter.emit(EVENT_NAMES.OPEN_THREAD_PANEL, {
+          parentMessageId: ref.parentMessageId,
+          threadTopicId: message.topicId
+        })
+      }, 300)
+      return
+    }
+  }
+
   const topic = await getTopicById(message.topicId)
 
   navigate('/', { state: { assistant, topic } })

@@ -3,6 +3,7 @@ import i18n from '@renderer/i18n'
 import { fetchMessagesSummary } from '@renderer/services/ApiService'
 import { EVENT_NAMES, EventEmitter } from '@renderer/services/EventService'
 import { deleteMessageFiles } from '@renderer/services/MessagesService'
+import { isThreadTopicId, parseThreadTopicId } from '@renderer/services/ThreadService'
 import store from '@renderer/store'
 import { updateTopic } from '@renderer/store/assistants'
 import { setNewlyRenamedTopics, setRenamingTopics } from '@renderer/store/runtime'
@@ -75,7 +76,37 @@ export async function getTopicById(topicId: string) {
   const topics = assistants.map((assistant) => assistant.topics).flat()
   const topic = topics.find((topic) => topic.id === topicId)
   const messages = await TopicManager.getTopicMessages(topicId)
-  return { ...topic, messages } as Topic
+
+  if (topic) {
+    return { ...topic, messages } as Topic
+  }
+
+  // Fallback: topic isn't present in assistant store (e.g. hidden thread topics).
+  const now = new Date().toISOString()
+  const inferredAssistantId = messages[0]?.assistantId ?? ''
+  const createdAt = messages[0]?.createdAt ?? now
+  const last = messages.at(-1)
+  const updatedAt = last?.updatedAt ?? last?.createdAt ?? createdAt
+
+  let name = i18n.t('thread.title')
+  if (isThreadTopicId(topicId)) {
+    const ref = parseThreadTopicId(topicId)
+    if (ref) {
+      const parent = topics.find((t) => t.id === ref.parentTopicId)
+      if (parent) {
+        name = `${i18n.t('thread.title')} · ${parent.name}`
+      }
+    }
+  }
+
+  return {
+    id: topicId,
+    assistantId: inferredAssistantId,
+    name,
+    createdAt,
+    updatedAt,
+    messages
+  } as Topic
 }
 
 /**

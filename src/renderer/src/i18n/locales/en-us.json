@@ -4970,6 +4970,21 @@
       "title": "Page Zoom"
     }
   },
+  "thread": {
+    "back": "Back",
+    "cancel": "Cancel",
+    "create_failed": "Failed to create thread",
+    "new": "New thread",
+    "reply": "Reply in thread",
+    "reply_in_thread": "Reply in thread",
+    "reply_placeholder": "Write a reply…",
+    "send": "Send",
+    "start": "Start a thread",
+    "start_placeholder": "Write a message to start a thread…",
+    "threads_one": "{{count}} thread",
+    "threads_other": "{{count}} threads",
+    "title": "Thread"
+  },
   "title": {
     "apps": "Apps",
     "code": "Code",

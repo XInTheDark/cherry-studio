@@ -198,6 +198,15 @@ const MessageBlockRenderer: React.FC<Props> = ({ blocks, message }) => {
             const mainTextBlock = block
             // Find the associated citation block ID from the references
             const citationBlockId = mainTextBlock.citationReferences?.[0]?.citationBlockId
+            const threadHighlights =
+              message.threads
+                ?.filter((th) => th.anchor?.blockId === block.id && (th.anchor?.exact?.trim()?.length ?? 0) > 0)
+                .map((th) => ({
+                  parentMessageId: message.id,
+                  threadTopicId: th.topicId,
+                  starterPrompt: th.starterPrompt,
+                  anchor: th.anchor!
+                })) ?? []
 
             blockComponent = (
               <MainTextBlock
@@ -206,6 +215,7 @@ const MessageBlockRenderer: React.FC<Props> = ({ blocks, message }) => {
                 // Pass only the ID string
                 citationBlockId={citationBlockId}
                 role={message.role}
+                threadHighlights={threadHighlights}
               />
             )
             break

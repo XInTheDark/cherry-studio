@@ -4970,6 +4970,21 @@
       "title": "缩放"
     }
   },
+  "thread": {
+    "back": "返回",
+    "cancel": "取消",
+    "create_failed": "创建线程失败",
+    "new": "新建线程",
+    "reply": "在线程中回复",
+    "reply_in_thread": "在线程中回复",
+    "reply_placeholder": "输入回复…",
+    "send": "发送",
+    "start": "开始一个线程",
+    "start_placeholder": "输入内容以创建线程…",
+    "threads_one": "{{count}} 个线程",
+    "threads_other": "{{count}} 个线程",
+    "title": "线程"
+  },
   "title": {
     "apps": "小程序",
     "code": "Code",

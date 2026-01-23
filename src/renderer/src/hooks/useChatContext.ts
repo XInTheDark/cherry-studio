@@ -6,13 +6,21 @@ import { messageBlocksSelectors } from '@renderer/store/messageBlock'
 import { selectMessagesForTopic } from '@renderer/store/newMessage'
 import { setActiveTopic, setSelectedMessageIds, toggleMultiSelectMode } from '@renderer/store/runtime'
 import type { Topic } from '@renderer/types'
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useDispatch, useSelector, useStore } from 'react-redux'
 
 const logger = loggerService.withContext('useChatContext')
 
-export const useChatContext = (activeTopic: Topic) => {
+export type ChatContextOptions = {
+  // When rendering messages in nested contexts (e.g. thread panels), we must NOT
+  // overwrite the global active topic in runtime state.
+  setActiveTopic?: boolean
+  // Multi-select is a global mode; nested renderers should generally disable it.
+  enableMultiSelect?: boolean
+}
+
+export const useChatContext = (activeTopic: Topic, options?: ChatContextOptions) => {
   const { t } = useTranslation()
   const dispatch = useDispatch()
   const store = useStore<RootState>()
@@ -20,19 +28,30 @@ export const useChatContext = (activeTopic: Topic) => {
 
   const [messageRefs, setMessageRefs] = useState<Map<string, HTMLElement>>(new Map())
 
-  const isMultiSelectMode = useSelector((state: RootState) => state.runtime.chat.isMultiSelectMode)
-  const selectedMessageIds = useSelector((state: RootState) => state.runtime.chat.selectedMessageIds)
+  const enableMultiSelect = options?.enableMultiSelect ?? true
+  const shouldSetActiveTopic = options?.setActiveTopic ?? true
+
+  const isMultiSelectModeRaw = useSelector((state: RootState) => state.runtime.chat.isMultiSelectMode)
+  const selectedMessageIdsRaw = useSelector((state: RootState) => state.runtime.chat.selectedMessageIds)
+
+  const isMultiSelectMode = enableMultiSelect ? isMultiSelectModeRaw : false
+  const selectedMessageIds = useMemo(
+    () => (enableMultiSelect ? selectedMessageIdsRaw : []),
+    [enableMultiSelect, selectedMessageIdsRaw]
+  )
 
   useEffect(() => {
+    if (!enableMultiSelect) return
     const unsubscribe = EventEmitter.on(EVENT_NAMES.CHANGE_TOPIC, () => {
       dispatch(toggleMultiSelectMode(false))
     })
     return () => unsubscribe()
-  }, [dispatch])
+  }, [dispatch, enableMultiSelect])
 
   useEffect(() => {
+    if (!shouldSetActiveTopic) return
     dispatch(setActiveTopic(activeTopic))
-  }, [dispatch, activeTopic])
+  }, [dispatch, activeTopic, shouldSetActiveTopic])
 
   const handleToggleMultiSelectMode = useCallback(
     (value: boolean) => {
@@ -81,6 +100,7 @@ export const useChatContext = (activeTopic: Topic) => {
 
   const handleSelectMessage = useCallback(
     (messageId: string, selected: boolean) => {
+      if (!enableMultiSelect) return
       dispatch(
         setSelectedMessageIds(
           selected
@@ -91,7 +111,7 @@ export const useChatContext = (activeTopic: Topic) => {
         )
       )
     },
-    [dispatch, selectedMessageIds]
+    [dispatch, enableMultiSelect, selectedMessageIds]
   )
 
   const handleMultiSelectAction = useCallback(

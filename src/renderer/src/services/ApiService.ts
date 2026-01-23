@@ -110,7 +110,10 @@ export async function transformMessagesAndFetch(
 
   // Compute effective assistant system prompt (default prompt prefixing, etc.)
   // before any per-request injections (e.g. knowledge base system prompt prefix).
-  const assistant = applyDefaultAssistantPromptPrefix(rawAssistant)
+  // NOTE: rawAssistant often originates from Redux state and may be frozen/read-only.
+  // transformMessagesAndFetch performs per-request prompt injections via assignment, so we
+  // must always work on a mutable copy to avoid mutating stored assistant definitions.
+  const assistant = { ...applyDefaultAssistantPromptPrefix(rawAssistant) }
 
   let originalPrompt: string | undefined = undefined
   try {

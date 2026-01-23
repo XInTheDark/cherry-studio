@@ -4970,6 +4970,21 @@
       "title": "ページズーム"
     }
   },
+  "thread": {
+    "back": "[to be translated]:Back",
+    "cancel": "[to be translated]:Cancel",
+    "create_failed": "[to be translated]:Failed to create thread",
+    "new": "[to be translated]:New thread",
+    "reply": "[to be translated]:Reply in thread",
+    "reply_in_thread": "[to be translated]:Reply in thread",
+    "reply_placeholder": "[to be translated]:Write a reply…",
+    "send": "[to be translated]:Send",
+    "start": "[to be translated]:Start a thread",
+    "start_placeholder": "[to be translated]:Write a message to start a thread…",
+    "threads_one": "[to be translated]:{{count}} thread",
+    "threads_other": "[to be translated]:{{count}} threads",
+    "title": "[to be translated]:Thread"
+  },
   "title": {
     "apps": "アプリ",
     "code": "Code",

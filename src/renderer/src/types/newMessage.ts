@@ -18,6 +18,7 @@ import type {
   WebSearchSource
 } from '.'
 import type { SerializedError } from './error'
+import type { ThreadSummary } from './thread'
 
 // MessageBlock 类型枚举 - 根据实际API返回特性优化
 export enum MessageBlockType {
@@ -221,6 +222,10 @@ export type Message = {
   // raw data
   // TODO: add this providerMetadata to MessageBlock to save raw provider data for each block
   providerMetadata?: ProviderMetadata
+
+  // Threads anchored to this message (Discord-like threads + selection comments).
+  // Persisted inside topic.messages JSON (Dexie), no schema change required.
+  threads?: ThreadSummary[]
 }
 
 export interface Response {

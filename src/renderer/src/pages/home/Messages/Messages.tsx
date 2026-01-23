@@ -42,6 +42,8 @@ import MessageGroup from './MessageGroup'
 import NarrowLayout from './NarrowLayout'
 import Prompt from './Prompt'
 import { MessagesContainer, ScrollContainer } from './shared'
+import ThreadHighlightTooltip from './Threads/ThreadHighlightTooltip'
+import ThreadSelectionPopover from './Threads/ThreadSelectionPopover'
 
 interface MessagesProps {
   assistant: Assistant
@@ -344,6 +346,8 @@ const Messages: React.FC<MessagesProps> = ({ assistant, topic, setActiveTopic, o
         messageElements={messageElements.current}
         handleSelectMessage={handleSelectMessage}
       />
+      {!isMultiSelectMode && <ThreadSelectionPopover assistant={assistant} topic={topic} />}
+      <ThreadHighlightTooltip />
     </MessagesContainer>
   )
 }

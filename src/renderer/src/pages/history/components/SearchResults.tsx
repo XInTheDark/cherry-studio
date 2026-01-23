@@ -1,6 +1,7 @@
 import { LoadingIcon } from '@renderer/components/Icons'
 import db from '@renderer/databases'
 import useScrollPosition from '@renderer/hooks/useScrollPosition'
+import { isThreadTopicId, parseThreadTopicId } from '@renderer/services/ThreadService'
 import { selectTopicsMap } from '@renderer/store/assistants'
 import type { Topic } from '@renderer/types'
 import { type Message, MessageBlockType } from '@renderer/types/newMessage'
@@ -8,6 +9,7 @@ import { List, Spin, Typography } from 'antd'
 import { useLiveQuery } from 'dexie-react-hooks'
 import type { FC } from 'react'
 import { memo, useCallback, useEffect, useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { useSelector } from 'react-redux'
 import styled from 'styled-components'
 
@@ -181,6 +183,7 @@ const buildSearchSnippet = (text: string, terms: string[]) => {
 const SearchResults: FC<Props> = ({ keywords, onMessageClick, onTopicClick, ...props }) => {
   const { handleScroll, containerRef } = useScrollPosition('SearchResults')
   const observerRef = useRef<MutationObserver | null>(null)
+  const { t } = useTranslation()
 
   const [searchTerms, setSearchTerms] = useState<string[]>(
     keywords
@@ -228,7 +231,24 @@ const SearchResults: FC<Props> = ({ keywords, onMessageClick, onTopicClick, ...p
       blocks.map(async (block) => {
         const message = messages?.find((message) => message.id === block.messageId)
         if (message) {
-          const topic = storeTopicsMap.get(message.topicId)
+          const topic =
+            storeTopicsMap.get(message.topicId) ??
+            (() => {
+              // Hidden thread topics won't exist in the assistant store map.
+              if (!isThreadTopicId(message.topicId)) return undefined
+              const ref = parseThreadTopicId(message.topicId)
+              const parentTopic = ref ? storeTopicsMap.get(ref.parentTopicId) : undefined
+              const label = parentTopic ? `${t('thread.title')} · ${parentTopic.name}` : t('thread.title')
+              return {
+                id: message.topicId,
+                assistantId: message.assistantId,
+                name: label,
+                createdAt: message.createdAt,
+                updatedAt: message.updatedAt ?? message.createdAt,
+                messages: []
+              } as Topic
+            })()
+
           if (topic) {
             return {
               message,
@@ -250,7 +270,7 @@ const SearchResults: FC<Props> = ({ keywords, onMessageClick, onTopicClick, ...p
     })
     setSearchTerms(newSearchTerms)
     setIsLoading(false)
-  }, [keywords, storeTopicsMap, topics])
+  }, [keywords, storeTopicsMap, t, topics])
 
   const highlightText = (text: string) => {
     const uniqueTerms = Array.from(new Set(searchTerms.filter((term) => term.length > 0)))

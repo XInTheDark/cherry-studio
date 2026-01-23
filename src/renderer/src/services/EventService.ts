@@ -25,5 +25,10 @@ export const EVENT_NAMES = {
   RESEND_MESSAGE: 'RESEND_MESSAGE',
   SHOW_MODEL_SELECTOR: 'SHOW_MODEL_SELECTOR',
   EDIT_CODE_BLOCK: 'EDIT_CODE_BLOCK',
-  CHANGE_TOPIC: 'CHANGE_TOPIC'
+  CHANGE_TOPIC: 'CHANGE_TOPIC',
+
+  // Threads / selection comments
+  OPEN_THREAD_PANEL: 'OPEN_THREAD_PANEL', // payload: { parentMessageId, threadTopicId?: string, focusComposer?: boolean }
+  THREAD_HIGHLIGHT_HOVER: 'THREAD_HIGHLIGHT_HOVER', // payload: { prompt: string, rect: DOMRect }
+  THREAD_HIGHLIGHT_LEAVE: 'THREAD_HIGHLIGHT_LEAVE' // payload: void
 }

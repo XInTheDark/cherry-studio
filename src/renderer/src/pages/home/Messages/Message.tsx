@@ -3,7 +3,7 @@ import HorizontalScrollContainer from '@renderer/components/HorizontalScrollCont
 import Scrollbar from '@renderer/components/Scrollbar'
 import { useMessageEditing } from '@renderer/context/MessageEditingContext'
 import { useAssistant } from '@renderer/hooks/useAssistant'
-import { useChatContext } from '@renderer/hooks/useChatContext'
+import { type ChatContextOptions, useChatContext } from '@renderer/hooks/useChatContext'
 import { useMessageOperations } from '@renderer/hooks/useMessageOperations'
 import { useModel } from '@renderer/hooks/useModel'
 import { useSettings } from '@renderer/hooks/useSettings'
@@ -19,7 +19,7 @@ import { scrollIntoView } from '@renderer/utils/dom'
 import { isMessageProcessing } from '@renderer/utils/messageUtils/is'
 import { Divider } from 'antd'
 import type { Dispatch, FC, SetStateAction } from 'react'
-import React, { memo, useCallback, useEffect, useRef } from 'react'
+import React, { memo, useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import styled from 'styled-components'
 
@@ -29,6 +29,7 @@ import MessageErrorBoundary from './MessageErrorBoundary'
 import MessageHeader from './MessageHeader'
 import MessageMenubar from './MessageMenubar'
 import MessageOutline from './MessageOutline'
+import ThreadPanel from './Threads/ThreadPanel'
 
 interface Props {
   message: Message
@@ -43,6 +44,8 @@ interface Props {
   onSetMessages?: Dispatch<SetStateAction<Message[]>>
   onUpdateUseful?: (msgId: string) => void
   isGroupContextMessage?: boolean
+  // When rendering messages in nested views (thread panels), prevent global chat context updates.
+  chatContextOptions?: ChatContextOptions
 }
 
 const logger = loggerService.withContext('MessageItem')
@@ -65,11 +68,12 @@ const MessageItem: FC<Props> = ({
   hideMenuBar = false,
   isGrouped,
   onUpdateUseful,
-  isGroupContextMessage
+  isGroupContextMessage,
+  chatContextOptions
 }) => {
   const { t } = useTranslation()
   const { assistant, setModel } = useAssistant(message.assistantId)
-  const { isMultiSelectMode } = useChatContext(topic)
+  const { isMultiSelectMode } = useChatContext(topic, chatContextOptions)
   const model = useModel(getMessageModelId(message), message.model?.provider) || message.model
   const { messageFont, fontSize, messageStyle, showMessageOutline } = useSettings()
   const { editMessageBlocks, resendUserMessageWithEdit, editMessage } = useMessageOperations(topic)
@@ -77,6 +81,9 @@ const MessageItem: FC<Props> = ({
   const { editingMessageId, startEditing, stopEditing } = useMessageEditing()
   const { setTimeoutTimer } = useTimer()
   const isEditing = editingMessageId === message.id
+  const [isThreadPanelOpen, setIsThreadPanelOpen] = useState(false)
+  const [threadTopicIdToOpen, setThreadTopicIdToOpen] = useState<string | undefined>(undefined)
+  const [threadFocusComposer, setThreadFocusComposer] = useState(false)
 
   useEffect(() => {
     if (isEditing && messageContainerRef.current) {
@@ -122,6 +129,7 @@ const MessageItem: FC<Props> = ({
   const isAssistantMessage = message.role === 'assistant'
   const isProcessing = isMessageProcessing(message)
   const showMenubar = !hideMenuBar && !isEditing && !isProcessing
+  const threadCount = message.threads?.length ?? 0
 
   const messageHighlightHandler = useCallback(
     (highlight: boolean = true) => {
@@ -153,6 +161,19 @@ const MessageItem: FC<Props> = ({
     const unsubscribes = [EventEmitter.on(EVENT_NAMES.LOCATE_MESSAGE + ':' + message.id, messageHighlightHandler)]
     return () => unsubscribes.forEach((unsub) => unsub())
   }, [message.id, messageHighlightHandler])
+
+  useEffect(() => {
+    const unsubscribe = EventEmitter.on(
+      EVENT_NAMES.OPEN_THREAD_PANEL,
+      (payload: { parentMessageId: string; threadTopicId?: string; focusComposer?: boolean }) => {
+        if (payload.parentMessageId !== message.id) return
+        setIsThreadPanelOpen(true)
+        setThreadTopicIdToOpen(payload.threadTopicId)
+        setThreadFocusComposer(!!payload.focusComposer)
+      }
+    )
+    return () => unsubscribe()
+  }, [message.id])
 
   // Listen for external edit requests and activate editor for this message if it matches
   useEffect(() => {
@@ -194,6 +215,9 @@ const MessageItem: FC<Props> = ({
           'message-assistant': isAssistantMessage,
           'message-user': !isAssistantMessage
         })}
+        data-thread-message-id={message.id}
+        data-thread-topic-id={topic.id}
+        data-thread-assistant-id={message.assistantId}
         ref={messageContainerRef}>
         <MessageHeader
           message={message}
@@ -202,6 +226,7 @@ const MessageItem: FC<Props> = ({
           key={getModelUniqId(model)}
           topic={topic}
           isGroupContextMessage={isGroupContextMessage}
+          chatContextOptions={chatContextOptions}
         />
         {isEditing && (
           <MessageEditor
@@ -253,6 +278,40 @@ const MessageItem: FC<Props> = ({
                 </HorizontalScrollContainer>
               </MessageFooter>
             )}
+
+            {assistant && (isThreadPanelOpen || threadCount > 0) && (
+              <ThreadRowContainer>
+                {threadCount > 0 && (
+                  <ThreadRowButton
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      setIsThreadPanelOpen((prev) => !prev)
+                      if (!isThreadPanelOpen) {
+                        setThreadTopicIdToOpen(undefined)
+                      }
+                      setThreadFocusComposer(false)
+                    }}>
+                    {t('thread.threads', { count: threadCount })}
+                  </ThreadRowButton>
+                )}
+
+                {isThreadPanelOpen && (
+                  <ThreadPanel
+                    assistant={assistant}
+                    parentTopic={topic}
+                    parentMessage={message}
+                    initialThreadTopicId={threadTopicIdToOpen}
+                    focusComposer={threadFocusComposer}
+                    onClose={() => {
+                      setIsThreadPanelOpen(false)
+                      setThreadTopicIdToOpen(undefined)
+                      setThreadFocusComposer(false)
+                    }}
+                  />
+                )}
+              </ThreadRowContainer>
+            )}
           </>
         )}
       </MessageContainer>
@@ -301,6 +360,24 @@ const MessageFooter = styled.div`
   gap: 10px;
   margin-left: 46px;
   margin-top: 3px;
+`
+
+const ThreadRowContainer = styled.div`
+  margin-left: 46px;
+  margin-top: 6px;
+`
+
+const ThreadRowButton = styled.button`
+  cursor: pointer;
+  border: none;
+  background: transparent;
+  padding: 4px 0;
+  font-size: 12px;
+  color: var(--color-link);
+
+  &:hover {
+    text-decoration: underline;
+  }
 `
 
 const NewContextMessage = styled.div<{ isMultiSelectMode: boolean }>`

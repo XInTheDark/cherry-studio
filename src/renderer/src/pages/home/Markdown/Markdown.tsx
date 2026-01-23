@@ -7,12 +7,15 @@ import ImageViewer from '@renderer/components/ImageViewer'
 import MarkdownShadowDOMRenderer from '@renderer/components/MarkdownShadowDOMRenderer'
 import { useSettings } from '@renderer/hooks/useSettings'
 import { useSmoothStream } from '@renderer/hooks/useSmoothStream'
+import { EVENT_NAMES, EventEmitter } from '@renderer/services/EventService'
+import { findBestAnchorOffsets, rangeFromOffsets } from '@renderer/services/ThreadService'
 import type {
   CompactMessageBlock,
   MainTextMessageBlock,
   ThinkingMessageBlock,
   TranslationMessageBlock
 } from '@renderer/types/newMessage'
+import type { ThreadAnchor } from '@renderer/types/thread'
 import { removeSvgEmptyLines } from '@renderer/utils/formats'
 import { processLatexBrackets } from '@renderer/utils/markdown'
 import { isEmpty } from 'lodash'
@@ -46,9 +49,15 @@ interface Props {
   block: MainTextMessageBlock | TranslationMessageBlock | ThinkingMessageBlock | CompactMessageBlock
   // 可选的后处理函数，用于在流式渲染过程中处理文本（如引用标签转换）
   postProcess?: (text: string) => string
+  threadHighlights?: Array<{
+    parentMessageId: string
+    threadTopicId: string
+    starterPrompt: string
+    anchor: ThreadAnchor
+  }>
 }
 
-const Markdown: FC<Props> = ({ block, postProcess }) => {
+const Markdown: FC<Props> = ({ block, postProcess, threadHighlights }) => {
   const { t } = useTranslation()
   const { mathEngine, mathEnableSingleDollar } = useSettings()
 
@@ -58,6 +67,8 @@ const Markdown: FC<Props> = ({ block, postProcess }) => {
 
   const prevContentRef = useRef(block.content)
   const prevBlockIdRef = useRef(block.id)
+  const containerRef = useRef<HTMLDivElement | null>(null)
+  const lastHoverElRef = useRef<HTMLElement | null>(null)
 
   const { addChunk, reset } = useSmoothStream({
     onUpdate: (rawText) => {
@@ -93,6 +104,95 @@ const Markdown: FC<Props> = ({ block, postProcess }) => {
     const isStreaming = block.status === 'streaming'
     setIsStreamDone(!isStreaming)
   }, [block.content, block.id, block.status, addChunk, reset])
+
+  // Apply (and keep updating) thread highlights as the markdown content streams/changes.
+  useEffect(() => {
+    const root = containerRef.current
+    if (!root) return
+    if (!threadHighlights || threadHighlights.length === 0) {
+      // Clear any previously inserted highlights.
+      const existing = root.querySelectorAll<HTMLElement>('[data-thread-highlight="1"]')
+      existing.forEach((el) => {
+        const parent = el.parentNode
+        if (!parent) return
+        while (el.firstChild) parent.insertBefore(el.firstChild, el)
+        parent.removeChild(el)
+      })
+      return
+    }
+
+    // Remove old highlights before re-applying (keeps offsets stable and avoids nested spans).
+    const existing = root.querySelectorAll<HTMLElement>('[data-thread-highlight="1"]')
+    existing.forEach((el) => {
+      const parent = el.parentNode
+      if (!parent) return
+      while (el.firstChild) parent.insertBefore(el.firstChild, el)
+      parent.removeChild(el)
+    })
+
+    const text = root.textContent ?? ''
+    for (const hl of threadHighlights) {
+      const offsets = findBestAnchorOffsets(text, hl.anchor)
+      if (!offsets) continue
+      const range = rangeFromOffsets(root, offsets.start, offsets.end)
+      if (!range) continue
+
+      try {
+        const span = document.createElement('span')
+        span.className = 'thread-highlight'
+        span.dataset.threadHighlight = '1'
+        span.dataset.threadTopicId = hl.threadTopicId
+        span.dataset.threadParentMessageId = hl.parentMessageId
+        span.dataset.threadStarterPrompt = hl.starterPrompt
+
+        const contents = range.extractContents()
+        span.appendChild(contents)
+        range.insertNode(span)
+      } catch {
+        // Some ranges can't be wrapped safely; ignore.
+      }
+    }
+  }, [threadHighlights, displayedContent])
+
+  const handleMouseOver = useCallback((e: React.MouseEvent) => {
+    const target = e.target as HTMLElement | null
+    if (!target) return
+    const el = target.closest<HTMLElement>('[data-thread-highlight="1"]')
+    if (!el) {
+      if (lastHoverElRef.current) {
+        lastHoverElRef.current = null
+        EventEmitter.emit(EVENT_NAMES.THREAD_HIGHLIGHT_LEAVE)
+      }
+      return
+    }
+
+    if (lastHoverElRef.current === el) return
+    lastHoverElRef.current = el
+
+    const prompt = el.dataset.threadStarterPrompt ?? ''
+    const rect = el.getBoundingClientRect()
+    EventEmitter.emit(EVENT_NAMES.THREAD_HIGHLIGHT_HOVER, { prompt, rect })
+  }, [])
+
+  const handleMouseLeave = useCallback(() => {
+    lastHoverElRef.current = null
+    EventEmitter.emit(EVENT_NAMES.THREAD_HIGHLIGHT_LEAVE)
+  }, [])
+
+  const handleClick = useCallback((e: React.MouseEvent) => {
+    const target = e.target as HTMLElement | null
+    if (!target) return
+    const el = target.closest<HTMLElement>('[data-thread-highlight="1"]')
+    if (!el) return
+
+    const parentMessageId = el.dataset.threadParentMessageId
+    const threadTopicId = el.dataset.threadTopicId
+    if (!parentMessageId || !threadTopicId) return
+
+    e.preventDefault()
+    e.stopPropagation()
+    EventEmitter.emit(EVENT_NAMES.OPEN_THREAD_PANEL, { parentMessageId, threadTopicId })
+  }, [])
 
   const remarkPlugins = useMemo(() => {
     const plugins = [
@@ -154,7 +254,12 @@ const Markdown: FC<Props> = ({ block, postProcess }) => {
   }, [])
 
   return (
-    <div className="markdown">
+    <div
+      className="markdown"
+      ref={containerRef}
+      onMouseOver={handleMouseOver}
+      onMouseLeave={handleMouseLeave}
+      onClick={handleClick}>
       <ReactMarkdown
         rehypePlugins={rehypePlugins}
         remarkPlugins={remarkPlugins}
