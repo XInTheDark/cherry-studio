@@ -422,25 +422,19 @@ const ThreadChatView: FC<{
       }
 
       const onScroll = () => {
-        // In this app's inverted message list, scrollTop === 0 means "at bottom / latest".
-        // Collapse as soon as the user moves away from the bottom.
-        setParentCollapsed(el.scrollTop > 0)
-      }
-
-      const onWheel = (e: WheelEvent) => {
-        // On macOS, "rubberband" scrolling can fire wheel events even when scrollTop doesn't change.
-        // This makes the collapse feel responsive even for short threads.
-        if (el.scrollTop !== 0) return
-        if (e.deltaY > 0) setParentCollapsed(true)
-        if (e.deltaY < 0) setParentCollapsed(false)
+        // Deterministic behavior (no flicker):
+        // - expanded only when the user is fully scrolled to the *top* (oldest)
+        // - collapsed everywhere else
+        const maxScrollTop = Math.max(0, el.scrollHeight - el.clientHeight)
+        const atTop = maxScrollTop - el.scrollTop <= 1
+        const nextCollapsed = !atTop
+        setParentCollapsed((prev) => (prev === nextCollapsed ? prev : nextCollapsed))
       }
 
       el.addEventListener('scroll', onScroll)
-      el.addEventListener('wheel', onWheel, { passive: true })
       onScroll()
       detach = () => {
         el.removeEventListener('scroll', onScroll)
-        el.removeEventListener('wheel', onWheel)
       }
     }
 
