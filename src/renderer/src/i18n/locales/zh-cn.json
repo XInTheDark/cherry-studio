@@ -4975,6 +4975,8 @@
     "cancel": "取消",
     "create_failed": "创建线程失败",
     "new": "新建线程",
+    "on_message": "讨论串引用消息",
+    "on_topic": "讨论串 · {{name}}",
     "reply": "在线程中回复",
     "reply_in_thread": "在线程中回复",
     "reply_placeholder": "输入回复…",

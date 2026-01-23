@@ -30,6 +30,9 @@ import Inputbar from './Inputbar/Inputbar'
 import AgentSessionMessages from './Messages/AgentSessionMessages'
 import ChatNavigation from './Messages/ChatNavigation'
 import Messages from './Messages/Messages'
+import ThreadHighlightTooltip from './Messages/Threads/ThreadHighlightTooltip'
+import ThreadSelectionTracker from './Messages/Threads/ThreadSelectionTracker'
+import ThreadSidebar from './Messages/Threads/ThreadSidebar'
 import Tabs from './Tabs'
 
 const logger = loggerService.withContext('Chat')
@@ -203,23 +206,30 @@ const Chat: FC<Props> = (props) => {
               style={{ height: `calc(${mainHeight} - var(--navbar-height))` }}>
               {activeTopicOrSession === 'topic' && (
                 <>
-                  <Messages
-                    key={props.activeTopic.id}
-                    assistant={assistant}
-                    topic={props.activeTopic}
-                    setActiveTopic={props.setActiveTopic}
-                    onComponentUpdate={messagesComponentUpdateHandler}
-                    onFirstUpdate={messagesComponentFirstUpdateHandler}
-                  />
-                  <ContentSearch
-                    ref={contentSearchRef}
-                    searchTarget={mainRef as React.RefObject<HTMLElement>}
-                    filter={contentSearchFilter}
-                    includeUser={filterIncludeUser}
-                    onIncludeUserChange={userOutlinedItemClickHandler}
-                  />
-                  {messageNavigation === 'buttons' && <ChatNavigation containerId="messages" />}
-                  <Inputbar assistant={assistant} setActiveTopic={props.setActiveTopic} topic={props.activeTopic} />
+                  <div style={{ display: 'flex', flex: 1, minHeight: 0, minWidth: 0 }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, minWidth: 0 }}>
+                      <Messages
+                        key={props.activeTopic.id}
+                        assistant={assistant}
+                        topic={props.activeTopic}
+                        setActiveTopic={props.setActiveTopic}
+                        onComponentUpdate={messagesComponentUpdateHandler}
+                        onFirstUpdate={messagesComponentFirstUpdateHandler}
+                      />
+                      <ContentSearch
+                        ref={contentSearchRef}
+                        searchTarget={mainRef as React.RefObject<HTMLElement>}
+                        filter={contentSearchFilter}
+                        includeUser={filterIncludeUser}
+                        onIncludeUserChange={userOutlinedItemClickHandler}
+                      />
+                      {messageNavigation === 'buttons' && <ChatNavigation containerId="messages" />}
+                      <Inputbar assistant={assistant} setActiveTopic={props.setActiveTopic} topic={props.activeTopic} />
+                    </div>
+                    <ThreadSidebar />
+                  </div>
+                  <ThreadSelectionTracker />
+                  <ThreadHighlightTooltip />
                 </>
               )}
               {activeTopicOrSession === 'session' && !activeAgentId && <AgentInvalid />}

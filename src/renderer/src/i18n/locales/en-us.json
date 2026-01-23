@@ -4975,6 +4975,8 @@
     "cancel": "Cancel",
     "create_failed": "Failed to create thread",
     "new": "New thread",
+    "on_message": "Thread on message",
+    "on_topic": "Thread on {{name}}",
     "reply": "Reply in thread",
     "reply_in_thread": "Reply in thread",
     "reply_placeholder": "Write a reply…",

@@ -19,7 +19,7 @@ import { scrollIntoView } from '@renderer/utils/dom'
 import { isMessageProcessing } from '@renderer/utils/messageUtils/is'
 import { Divider } from 'antd'
 import type { Dispatch, FC, SetStateAction } from 'react'
-import React, { memo, useCallback, useEffect, useRef, useState } from 'react'
+import React, { memo, useCallback, useEffect, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import styled from 'styled-components'
 
@@ -29,7 +29,6 @@ import MessageErrorBoundary from './MessageErrorBoundary'
 import MessageHeader from './MessageHeader'
 import MessageMenubar from './MessageMenubar'
 import MessageOutline from './MessageOutline'
-import ThreadPanel from './Threads/ThreadPanel'
 
 interface Props {
   message: Message
@@ -81,9 +80,6 @@ const MessageItem: FC<Props> = ({
   const { editingMessageId, startEditing, stopEditing } = useMessageEditing()
   const { setTimeoutTimer } = useTimer()
   const isEditing = editingMessageId === message.id
-  const [isThreadPanelOpen, setIsThreadPanelOpen] = useState(false)
-  const [threadTopicIdToOpen, setThreadTopicIdToOpen] = useState<string | undefined>(undefined)
-  const [threadFocusComposer, setThreadFocusComposer] = useState(false)
 
   useEffect(() => {
     if (isEditing && messageContainerRef.current) {
@@ -161,19 +157,6 @@ const MessageItem: FC<Props> = ({
     const unsubscribes = [EventEmitter.on(EVENT_NAMES.LOCATE_MESSAGE + ':' + message.id, messageHighlightHandler)]
     return () => unsubscribes.forEach((unsub) => unsub())
   }, [message.id, messageHighlightHandler])
-
-  useEffect(() => {
-    const unsubscribe = EventEmitter.on(
-      EVENT_NAMES.OPEN_THREAD_PANEL,
-      (payload: { parentMessageId: string; threadTopicId?: string; focusComposer?: boolean }) => {
-        if (payload.parentMessageId !== message.id) return
-        setIsThreadPanelOpen(true)
-        setThreadTopicIdToOpen(payload.threadTopicId)
-        setThreadFocusComposer(!!payload.focusComposer)
-      }
-    )
-    return () => unsubscribe()
-  }, [message.id])
 
   // Listen for external edit requests and activate editor for this message if it matches
   useEffect(() => {
@@ -279,37 +262,20 @@ const MessageItem: FC<Props> = ({
               </MessageFooter>
             )}
 
-            {assistant && (isThreadPanelOpen || threadCount > 0) && (
+            {assistant && threadCount > 0 && (
               <ThreadRowContainer>
-                {threadCount > 0 && (
-                  <ThreadRowButton
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      setIsThreadPanelOpen((prev) => !prev)
-                      if (!isThreadPanelOpen) {
-                        setThreadTopicIdToOpen(undefined)
-                      }
-                      setThreadFocusComposer(false)
-                    }}>
-                    {t('thread.threads', { count: threadCount })}
-                  </ThreadRowButton>
-                )}
-
-                {isThreadPanelOpen && (
-                  <ThreadPanel
-                    assistant={assistant}
-                    parentTopic={topic}
-                    parentMessage={message}
-                    initialThreadTopicId={threadTopicIdToOpen}
-                    focusComposer={threadFocusComposer}
-                    onClose={() => {
-                      setIsThreadPanelOpen(false)
-                      setThreadTopicIdToOpen(undefined)
-                      setThreadFocusComposer(false)
-                    }}
-                  />
-                )}
+                <ThreadRowButton
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    EventEmitter.emit(EVENT_NAMES.OPEN_THREAD_PANEL, {
+                      parentTopicId: topic.id,
+                      assistantId: message.assistantId,
+                      parentMessageId: message.id
+                    })
+                  }}>
+                  {t('thread.threads', { count: threadCount })}
+                </ThreadRowButton>
               </ThreadRowContainer>
             )}
           </>

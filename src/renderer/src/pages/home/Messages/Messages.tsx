@@ -3,6 +3,7 @@ import ContextMenu from '@renderer/components/ContextMenu'
 import { LoadingIcon } from '@renderer/components/Icons'
 import { LOAD_MORE_COUNT } from '@renderer/config/constant'
 import { useAssistant } from '@renderer/hooks/useAssistant'
+import type { ChatContextOptions } from '@renderer/hooks/useChatContext'
 import { useChatContext } from '@renderer/hooks/useChatContext'
 import { useMessageOperations, useTopicMessages } from '@renderer/hooks/useMessageOperations'
 import useScrollPosition from '@renderer/hooks/useScrollPosition'
@@ -42,8 +43,6 @@ import MessageGroup from './MessageGroup'
 import NarrowLayout from './NarrowLayout'
 import Prompt from './Prompt'
 import { MessagesContainer, ScrollContainer } from './shared'
-import ThreadHighlightTooltip from './Threads/ThreadHighlightTooltip'
-import ThreadSelectionPopover from './Threads/ThreadSelectionPopover'
 
 interface MessagesProps {
   assistant: Assistant
@@ -51,11 +50,35 @@ interface MessagesProps {
   setActiveTopic: (topic: Topic) => void
   onComponentUpdate?(): void
   onFirstUpdate?(): void
+  // When rendering messages in nested contexts (thread sidebars), prevent global chat state changes.
+  chatContextOptions?: ChatContextOptions
+  // Thread topics clone context messages; callers can hide the prefix.
+  skipLeadingMessages?: number
+  // Disable global event handlers (NEW_CONTEXT, CLEAR_MESSAGES, etc.) for nested message views.
+  enableGlobalEvents?: boolean
+  // Disable global shortcuts in nested views to avoid conflicts with main chat.
+  enableShortcuts?: boolean
+  // Optional hint shown when there are no visible messages.
+  emptyHint?: string
+  // Hide the "Prompt" section in nested views like thread sidebars.
+  hidePrompt?: boolean
 }
 
 const logger = loggerService.withContext('Messages')
 
-const Messages: React.FC<MessagesProps> = ({ assistant, topic, setActiveTopic, onComponentUpdate, onFirstUpdate }) => {
+const Messages: React.FC<MessagesProps> = ({
+  assistant,
+  topic,
+  setActiveTopic,
+  onComponentUpdate,
+  onFirstUpdate,
+  chatContextOptions,
+  skipLeadingMessages = 0,
+  enableGlobalEvents = true,
+  enableShortcuts = true,
+  emptyHint,
+  hidePrompt = false
+}) => {
   const { containerRef: scrollContainerRef, handleScroll: handleScrollPosition } = useScrollPosition(
     `topic-${topic.id}`
   )
@@ -68,11 +91,15 @@ const Messages: React.FC<MessagesProps> = ({ assistant, topic, setActiveTopic, o
   const { showPrompt, messageNavigation } = useSettings()
   const { t } = useTranslation()
   const dispatch = useAppDispatch()
-  const messages = useTopicMessages(topic.id)
+  const rawMessages = useTopicMessages(topic.id)
+  const messages = useMemo(
+    () => (skipLeadingMessages > 0 ? rawMessages.slice(skipLeadingMessages) : rawMessages),
+    [rawMessages, skipLeadingMessages]
+  )
   const { displayCount, clearTopicMessages, deleteMessage, createTopicBranch } = useMessageOperations(topic)
   const { setTimeoutTimer } = useTimer()
 
-  const { isMultiSelectMode, handleSelectMessage } = useChatContext(topic)
+  const { isMultiSelectMode, handleSelectMessage } = useChatContext(topic, chatContextOptions)
 
   const messageElements = useRef<Map<string, HTMLElement>>(new Map())
   const messagesRef = useRef<Message[]>(messages)
@@ -120,6 +147,7 @@ const Messages: React.FC<MessagesProps> = ({ assistant, topic, setActiveTopic, o
   )
 
   useEffect(() => {
+    if (!enableGlobalEvents) return
     const unsubscribes = [
       EventEmitter.on(EVENT_NAMES.SEND_MESSAGE, scrollToBottom),
       EventEmitter.on(EVENT_NAMES.CLEAR_MESSAGES, async (data: Topic) => {
@@ -240,7 +268,7 @@ const Messages: React.FC<MessagesProps> = ({ assistant, topic, setActiveTopic, o
 
     return () => unsubscribes.forEach((unsub) => unsub())
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [assistant, dispatch, scrollToBottom, topic, isProcessingContext])
+  }, [assistant, dispatch, enableGlobalEvents, scrollToBottom, t, topic, isProcessingContext])
 
   useEffect(() => {
     runAsyncFunction(async () => {
@@ -269,20 +297,28 @@ const Messages: React.FC<MessagesProps> = ({ assistant, topic, setActiveTopic, o
     )
   }, [displayMessages.length, hasMore, isLoadingMore, messages, setTimeoutTimer])
 
-  useShortcut('copy_last_message', () => {
-    const lastMessage = last(messages)
-    if (lastMessage) {
-      navigator.clipboard.writeText(getMainTextContent(lastMessage))
-      window.toast.success(t('message.copy.success'))
-    }
-  })
+  useShortcut(
+    'copy_last_message',
+    () => {
+      const lastMessage = last(messages)
+      if (lastMessage) {
+        navigator.clipboard.writeText(getMainTextContent(lastMessage))
+        window.toast.success(t('message.copy.success'))
+      }
+    },
+    { enabled: enableShortcuts }
+  )
 
-  useShortcut('edit_last_user_message', () => {
-    const lastUserMessage = messagesRef.current.findLast((m) => m.role === 'user' && m.type !== 'clear')
-    if (lastUserMessage) {
-      EventEmitter.emit(EVENT_NAMES.EDIT_MESSAGE, lastUserMessage.id)
-    }
-  })
+  useShortcut(
+    'edit_last_user_message',
+    () => {
+      const lastUserMessage = messagesRef.current.findLast((m) => m.role === 'user' && m.type !== 'clear')
+      if (lastUserMessage) {
+        EventEmitter.emit(EVENT_NAMES.EDIT_MESSAGE, lastUserMessage.id)
+      }
+    },
+    { enabled: enableShortcuts }
+  )
 
   useEffect(() => {
     requestAnimationFrame(() => onComponentUpdate?.())
@@ -326,8 +362,10 @@ const Messages: React.FC<MessagesProps> = ({ assistant, topic, setActiveTopic, o
                   messages={groupMessages}
                   topic={topic}
                   registerMessageElement={registerMessageElement}
+                  chatContextOptions={chatContextOptions}
                 />
               ))}
+              {displayMessages.length === 0 && emptyHint && <EmptyHint>{emptyHint}</EmptyHint>}
               {isLoadingMore && (
                 <LoaderContainer>
                   <LoadingIcon color="var(--color-text-2)" />
@@ -337,7 +375,7 @@ const Messages: React.FC<MessagesProps> = ({ assistant, topic, setActiveTopic, o
           </ContextMenu>
         </InfiniteScroll>
 
-        {showPrompt && <Prompt assistant={assistant} key={assistant.prompt} topic={topic} />}
+        {showPrompt && !hidePrompt && <Prompt assistant={assistant} key={assistant.prompt} topic={topic} />}
       </NarrowLayout>
       {messageNavigation === 'anchor' && <MessageAnchorLine messages={displayMessages} />}
       <SelectionBox
@@ -346,8 +384,6 @@ const Messages: React.FC<MessagesProps> = ({ assistant, topic, setActiveTopic, o
         messageElements={messageElements.current}
         handleSelectMessage={handleSelectMessage}
       />
-      {!isMultiSelectMode && <ThreadSelectionPopover assistant={assistant} topic={topic} />}
-      <ThreadHighlightTooltip />
     </MessagesContainer>
   )
 }
@@ -395,6 +431,12 @@ const LoaderContainer = styled.div`
   width: 100%;
   background: var(--color-background);
   pointer-events: none;
+`
+
+const EmptyHint = styled.div`
+  padding: 12px;
+  color: var(--color-text-3);
+  font-size: 13px;
 `
 
 export default Messages

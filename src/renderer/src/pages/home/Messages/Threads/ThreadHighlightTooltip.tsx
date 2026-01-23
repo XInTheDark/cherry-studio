@@ -29,8 +29,17 @@ const ThreadHighlightTooltip: FC = () => {
 
   const anchorStyle = useMemo(() => {
     if (!hover) return { left: -9999, top: -9999 }
-    const x = hover.rect.left + hover.rect.width / 2
-    const y = hover.rect.top
+    const desiredX = hover.rect.left + hover.rect.width / 2
+    const desiredY = hover.rect.top
+
+    const container = document.getElementById('chat-main')
+    if (!container) return { left: desiredX, top: desiredY }
+
+    const r = container.getBoundingClientRect()
+    // Keep tooltip anchor within the chat viewport so it can't "escape" the UI.
+    const margin = 8
+    const x = Math.min(r.right - margin, Math.max(r.left + margin, desiredX))
+    const y = Math.min(r.bottom - margin, Math.max(r.top + margin, desiredY))
     return { left: x, top: y }
   }, [hover])
 
@@ -39,7 +48,12 @@ const ThreadHighlightTooltip: FC = () => {
   if (!hover || !title) return null
 
   return (
-    <Tooltip title={title} open={true} placement="top" destroyTooltipOnHide>
+    <Tooltip
+      title={title}
+      open={true}
+      placement="top"
+      destroyTooltipOnHide
+      getPopupContainer={() => document.getElementById('chat-main') ?? document.body}>
       <Anchor
         onMouseEnter={() => {
           // keep open

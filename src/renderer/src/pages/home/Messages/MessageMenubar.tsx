@@ -210,9 +210,14 @@ const MessageMenubar: FC<Props> = (props) => {
   const onOpenThread = useCallback(
     (e: React.MouseEvent) => {
       e.stopPropagation()
-      EventEmitter.emit(EVENT_NAMES.OPEN_THREAD_PANEL, { parentMessageId: message.id, focusComposer: true })
+      EventEmitter.emit(EVENT_NAMES.OPEN_THREAD_PANEL, {
+        parentTopicId: topic.id,
+        assistantId: message.assistantId,
+        parentMessageId: message.id,
+        focusComposer: true
+      })
     },
-    [message.id]
+    [message.assistantId, message.id, topic.id]
   )
 
   const handleResendUserMessage = useCallback(

@@ -1,6 +1,7 @@
 import { loggerService } from '@logger'
 import Scrollbar from '@renderer/components/Scrollbar'
 import { MessageEditingProvider } from '@renderer/context/MessageEditingContext'
+import type { ChatContextOptions } from '@renderer/hooks/useChatContext'
 import { useChatContext } from '@renderer/hooks/useChatContext'
 import { useMessageOperations } from '@renderer/hooks/useMessageOperations'
 import { useSettings } from '@renderer/hooks/useSettings'
@@ -25,15 +26,16 @@ interface Props {
   messages: (Message & { index: number })[]
   topic: Topic
   registerMessageElement?: (id: string, element: HTMLElement | null) => void
+  chatContextOptions?: ChatContextOptions
 }
 
-const MessageGroup = ({ messages, topic, registerMessageElement }: Props) => {
+const MessageGroup = ({ messages, topic, registerMessageElement, chatContextOptions }: Props) => {
   const messageLength = messages.length
 
   // Hooks
   const { editMessage } = useMessageOperations(topic)
   const { multiModelMessageStyle: multiModelMessageStyleSetting, gridColumns, gridPopoverTrigger } = useSettings()
-  const { isMultiSelectMode } = useChatContext(topic)
+  const { isMultiSelectMode } = useChatContext(topic, chatContextOptions)
   const maxWidth = useChatMaxWidth()
   const { setTimeoutTimer } = useTimer()
 
@@ -220,6 +222,7 @@ const MessageGroup = ({ messages, topic, registerMessageElement }: Props) => {
             onUpdateUseful={onUpdateUseful}
             isGroupContextMessage={isGrouped && message.id === groupContextMessageId}
             {...messageProps}
+            chatContextOptions={chatContextOptions}
           />
         </MessageWrapper>
       )
@@ -238,7 +241,11 @@ const MessageGroup = ({ messages, topic, registerMessageElement }: Props) => {
                     selected: message.id === selectedMessageId
                   }
                 ])}>
-                <MessageItem onUpdateUseful={onUpdateUseful} {...messageProps} />
+                <MessageItem
+                  onUpdateUseful={onUpdateUseful}
+                  {...messageProps}
+                  chatContextOptions={chatContextOptions}
+                />
               </MessageWrapper>
             }
             trigger={gridPopoverTrigger}
@@ -262,7 +269,8 @@ const MessageGroup = ({ messages, topic, registerMessageElement }: Props) => {
       selectedMessageId,
       onUpdateUseful,
       groupContextMessageId,
-      gridPopoverTrigger
+      gridPopoverTrigger,
+      chatContextOptions
     ]
   )
 

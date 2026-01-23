@@ -4975,6 +4975,8 @@
     "cancel": "取消",
     "create_failed": "建立討論串失敗",
     "new": "新增討論串",
+    "on_message": "討論串引用訊息",
+    "on_topic": "討論串 · {{name}}",
     "reply": "在討論串中回覆",
     "reply_in_thread": "在討論串中回覆",
     "reply_placeholder": "輸入回覆…",

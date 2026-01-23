@@ -28,7 +28,10 @@ export const EVENT_NAMES = {
   CHANGE_TOPIC: 'CHANGE_TOPIC',
 
   // Threads / selection comments
-  OPEN_THREAD_PANEL: 'OPEN_THREAD_PANEL', // payload: { parentMessageId, threadTopicId?: string, focusComposer?: boolean }
+  // payload: { parentTopicId?: string, assistantId?: string, parentMessageId, threadTopicId?: string, focusComposer?: boolean, draft?: string, anchor?: ThreadAnchor }
+  OPEN_THREAD_PANEL: 'OPEN_THREAD_PANEL',
+  // payload: { parentTopicId: string, parentMessageId: string, key: string }
+  THREAD_STARTER_APPEND_DRAFT: 'THREAD_STARTER_APPEND_DRAFT',
   THREAD_HIGHLIGHT_HOVER: 'THREAD_HIGHLIGHT_HOVER', // payload: { prompt: string, rect: DOMRect }
   THREAD_HIGHLIGHT_LEAVE: 'THREAD_HIGHLIGHT_LEAVE' // payload: void
 }

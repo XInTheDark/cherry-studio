@@ -66,6 +66,9 @@ interface Props {
   assistant: Assistant
   setActiveTopic: (topic: Topic) => void
   topic: Topic
+  // By default, the input draft is stored under a single global key. Thread sidebars
+  // render a second input, so allow callers to isolate drafts per thread.
+  draftCacheKey?: string
 }
 
 type ProviderActionHandlers = {
@@ -77,11 +80,7 @@ type ProviderActionHandlers = {
   toggleExpanded: (nextState?: boolean) => void
 }
 
-interface InputbarInnerProps extends Props {
-  actionsRef: React.RefObject<ProviderActionHandlers>
-}
-
-const Inputbar: FC<Props> = ({ assistant: initialAssistant, setActiveTopic, topic }) => {
+const Inputbar: FC<Props> = ({ assistant: initialAssistant, setActiveTopic, topic, draftCacheKey }) => {
   const actionsRef = useRef<ProviderActionHandlers>({
     resizeTextArea: () => {},
     addNewTopic: () => {},
@@ -92,6 +91,7 @@ const Inputbar: FC<Props> = ({ assistant: initialAssistant, setActiveTopic, topi
   })
 
   const [initialMentionedModels] = useState(() => getValidatedCachedModels(initialAssistant.id))
+  const draftKey = draftCacheKey ?? INPUTBAR_DRAFT_CACHE_KEY
 
   const initialState = useMemo(
     () => ({
@@ -121,12 +121,24 @@ const Inputbar: FC<Props> = ({ assistant: initialAssistant, setActiveTopic, topi
         setActiveTopic={setActiveTopic}
         topic={topic}
         actionsRef={actionsRef}
+        draftCacheKey={draftKey}
       />
     </InputbarToolsProvider>
   )
 }
 
-const InputbarInner: FC<InputbarInnerProps> = ({ assistant: initialAssistant, setActiveTopic, topic, actionsRef }) => {
+interface InputbarInnerProps extends Props {
+  actionsRef: React.RefObject<ProviderActionHandlers>
+  draftCacheKey: string
+}
+
+const InputbarInner: FC<InputbarInnerProps> = ({
+  assistant: initialAssistant,
+  setActiveTopic,
+  topic,
+  actionsRef,
+  draftCacheKey
+}) => {
   const scope = topic.type ?? TopicType.Chat
   const config = getInputbarConfig(scope)
 
@@ -135,8 +147,8 @@ const InputbarInner: FC<InputbarInnerProps> = ({ assistant: initialAssistant, se
   const { setCouldAddImageFile } = useInputbarToolsInternalDispatch()
 
   const { text, setText } = useInputText({
-    initialValue: CacheService.get<string>(INPUTBAR_DRAFT_CACHE_KEY) ?? '',
-    onChange: (value) => CacheService.set(INPUTBAR_DRAFT_CACHE_KEY, value, DRAFT_CACHE_TTL)
+    initialValue: CacheService.get<string>(draftCacheKey) ?? '',
+    onChange: (value) => CacheService.set(draftCacheKey, value, DRAFT_CACHE_TTL)
   })
   const {
     textareaRef,
