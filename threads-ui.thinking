@@ -32,3 +32,11 @@ Validation checklist
 - `pnpm lint`
 - `pnpm test`
 - `pnpm format`
+
+Next requested additions
+- When creating a thread from a highlight, inject the highlighted excerpt into the first user message
+  sent to the model, so replies are grounded.
+- Support deleting a thread "cleanly":
+  - remove thread summary from parent message (removes highlight/comment + thread entry)
+  - clear thread topic messages/blocks/files
+  - delete the hidden thread topic record from Dexie if present

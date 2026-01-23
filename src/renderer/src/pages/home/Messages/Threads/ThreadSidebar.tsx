@@ -6,14 +6,14 @@ import { EVENT_NAMES, EventEmitter } from '@renderer/services/EventService'
 import { parseThreadTopicId } from '@renderer/services/ThreadService'
 import store, { useAppDispatch, useAppSelector } from '@renderer/store'
 import { loadTopicMessagesThunk } from '@renderer/store/thunk/messageThunk'
-import { createThreadFromMessageThunk } from '@renderer/store/thunk/threadThunk'
+import { createThreadFromMessageThunk, deleteThreadThunk } from '@renderer/store/thunk/threadThunk'
 import type { Topic } from '@renderer/types'
 import type { Message } from '@renderer/types/newMessage'
 import type { ThreadAnchor, ThreadSummary } from '@renderer/types/thread'
 import { getMainTextContent } from '@renderer/utils/messageUtils/find'
 import { Button, Divider } from 'antd'
 import dayjs from 'dayjs'
-import { ChevronLeft, X } from 'lucide-react'
+import { ChevronLeft, Trash2, X } from 'lucide-react'
 import type { FC } from 'react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -239,6 +239,16 @@ const ThreadSidebar: FC<Props> = ({ width = 380 }) => {
           assistantId={activeRoute.assistantId}
           parentMessageId={activeRoute.parentMessageId}
           threadTopicId={activeRoute.threadTopicId}
+          onDeleted={() => {
+            setStack([
+              {
+                type: 'messageThreads',
+                parentTopicId: activeRoute.parentTopicId,
+                assistantId: activeRoute.assistantId,
+                parentMessageId: activeRoute.parentMessageId
+              }
+            ])
+          }}
         />
       )}
     </Container>
@@ -277,7 +287,8 @@ const MessageThreadsView: FC<{
           parentMessageId,
           assistantId,
           starterPrompt: trimmed,
-          anchor
+          anchor,
+          highlightedText: selectedText
         }) as any
       )
 
@@ -288,7 +299,26 @@ const MessageThreadsView: FC<{
 
       onOpenThread(summary.topicId)
     },
-    [anchor, assistantId, dispatch, onOpenThread, parentMessageId, parentTopicId, t]
+    [anchor, assistantId, dispatch, onOpenThread, parentMessageId, parentTopicId, selectedText, t]
+  )
+
+  const confirmDeleteThread = useCallback(
+    (threadTopicId: string) => {
+      window.modal.confirm({
+        title: t('thread.delete'),
+        content: t('thread.delete_confirm'),
+        centered: true,
+        onOk: async () => {
+          const ok = await dispatch(deleteThreadThunk({ parentTopicId, parentMessageId, threadTopicId }) as any)
+          if (!ok) {
+            window.toast?.error?.(t('thread.delete_failed'))
+            return
+          }
+          window.toast?.success?.(t('common.delete_success'))
+        }
+      })
+    },
+    [dispatch, parentMessageId, parentTopicId, t]
   )
 
   return (
@@ -312,9 +342,41 @@ const MessageThreadsView: FC<{
 
       <ThreadList>
         {threads.map((th) => (
-          <ThreadListItem key={th.id} onClick={() => onOpenThread(th.topicId)}>
-            <ThreadPrompt title={th.starterPrompt}>{th.starterPrompt}</ThreadPrompt>
-            <ThreadMeta>{dayjs(th.updatedAt ?? th.createdAt).format('MM/DD HH:mm')}</ThreadMeta>
+          <ThreadListItem
+            key={th.id}
+            role="button"
+            tabIndex={0}
+            onClick={() => onOpenThread(th.topicId)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault()
+                onOpenThread(th.topicId)
+              }
+            }}>
+            <ThreadListItemMain>
+              <ThreadPrompt title={th.starterPrompt}>{th.starterPrompt}</ThreadPrompt>
+              <ThreadMeta>{dayjs(th.updatedAt ?? th.createdAt).format('MM/DD HH:mm')}</ThreadMeta>
+            </ThreadListItemMain>
+
+            <ThreadListItemActions>
+              <ThreadDeleteIcon
+                role="button"
+                tabIndex={0}
+                title={t('thread.delete')}
+                onClick={(e) => {
+                  e.stopPropagation()
+                  confirmDeleteThread(th.topicId)
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault()
+                    e.stopPropagation()
+                    confirmDeleteThread(th.topicId)
+                  }
+                }}>
+                <Trash2 size={14} />
+              </ThreadDeleteIcon>
+            </ThreadListItemActions>
           </ThreadListItem>
         ))}
       </ThreadList>
@@ -327,7 +389,8 @@ const ThreadChatView: FC<{
   assistantId: string
   parentMessageId: string
   threadTopicId: string
-}> = ({ parentTopicId, assistantId, parentMessageId, threadTopicId }) => {
+  onDeleted?: () => void
+}> = ({ parentTopicId, assistantId, parentMessageId, threadTopicId, onDeleted }) => {
   const { t } = useTranslation()
   const dispatch = useAppDispatch()
 
@@ -425,6 +488,23 @@ const ThreadChatView: FC<{
     return <EmptyState>{t('common.loading')}</EmptyState>
   }
 
+  const confirmDelete = () => {
+    window.modal.confirm({
+      title: t('thread.delete'),
+      content: t('thread.delete_confirm'),
+      centered: true,
+      onOk: async () => {
+        const ok = await dispatch(deleteThreadThunk({ parentTopicId, parentMessageId, threadTopicId }) as any)
+        if (!ok) {
+          window.toast?.error?.(t('thread.delete_failed'))
+          return
+        }
+        window.toast?.success?.(t('common.delete_success'))
+        onDeleted?.()
+      }
+    })
+  }
+
   return (
     <ThreadChatContainer>
       {parentMessage && (
@@ -445,7 +525,12 @@ const ThreadChatView: FC<{
           ) : null}
         </ParentMessageCard>
       )}
-      {starterPrompt?.trim() ? <ThreadHeaderTitle title={starterPrompt}>{starterPrompt}</ThreadHeaderTitle> : null}
+      <ThreadHeaderRow>
+        {starterPrompt?.trim() ? <ThreadHeaderTitle title={starterPrompt}>{starterPrompt}</ThreadHeaderTitle> : <div />}
+        <Button size="small" type="text" icon={<Trash2 size={16} />} onClick={confirmDelete}>
+          {t('thread.delete')}
+        </Button>
+      </ThreadHeaderRow>
       <ThreadChatBody>
         <Messages
           assistant={assistant}
@@ -528,15 +613,44 @@ const ThreadList = styled.div`
   gap: 8px;
 `
 
-const ThreadListItem = styled.button`
+const ThreadListItem = styled.div`
   border: 1px solid var(--color-border-soft);
   background: var(--color-background-soft);
   border-radius: 10px;
   padding: 10px;
   text-align: left;
   cursor: pointer;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
   &:hover {
     border-color: var(--color-border);
+  }
+`
+
+const ThreadListItemMain = styled.div`
+  min-width: 0;
+`
+
+const ThreadListItemActions = styled.div`
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+`
+
+const ThreadDeleteIcon = styled.div`
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 8px;
+  cursor: pointer;
+  color: var(--color-text-3);
+  &:hover {
+    background: var(--color-background);
+    color: var(--color-text);
   }
 `
 
@@ -576,6 +690,13 @@ const ThreadHeaderTitle = styled.div`
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+`
+
+const ThreadHeaderRow = styled.div`
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
 `
 
 const ParentMessageCard = styled.div<{ $collapsed: boolean }>`

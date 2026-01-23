@@ -179,7 +179,8 @@ const ThreadSelectionPopover: FC<{ assistant: Assistant; topic: Topic }> = ({ as
         parentMessageId: selectionCtx.parentMessageId,
         assistantId: selectionCtx.assistantId,
         starterPrompt: content,
-        anchor: selectionCtx.anchor
+        anchor: selectionCtx.anchor,
+        highlightedText: selectionCtx.selectedText
       }) as any
     )
 
