@@ -62,6 +62,7 @@ const Chat: FC<Props> = (props) => {
   const mainRef = React.useRef<HTMLDivElement>(null)
   const contentSearchRef = React.useRef<ContentSearchRef>(null)
   const [filterIncludeUser, setFilterIncludeUser] = useState(false)
+  const [isChatFindActive, setIsChatFindActive] = useState(false)
 
   const { setTimeoutTimer } = useTimer()
 
@@ -216,6 +217,7 @@ const Chat: FC<Props> = (props) => {
                           setActiveTopic={props.setActiveTopic}
                           onComponentUpdate={messagesComponentUpdateHandler}
                           onFirstUpdate={messagesComponentFirstUpdateHandler}
+                          autoExpandForSearch={isChatFindActive}
                         />
                         <ContentSearch
                           ref={contentSearchRef}
@@ -223,6 +225,7 @@ const Chat: FC<Props> = (props) => {
                           filter={contentSearchFilter}
                           includeUser={filterIncludeUser}
                           onIncludeUserChange={userOutlinedItemClickHandler}
+                          onActiveChange={setIsChatFindActive}
                         />
                       </div>
 

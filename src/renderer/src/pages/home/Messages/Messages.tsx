@@ -64,6 +64,9 @@ interface MessagesProps {
   emptyHint?: string
   // Hide the "Prompt" section in nested views like thread sidebars.
   hidePrompt?: boolean
+  // When enabled (e.g. in-chat find), progressively render older messages so DOM-based search sees more matches.
+  // Bounded by time + batch caps to avoid freezing on huge topics.
+  autoExpandForSearch?: boolean
 }
 
 const logger = loggerService.withContext('Messages')
@@ -80,7 +83,8 @@ const Messages: React.FC<MessagesProps> = ({
   enableGlobalEvents = true,
   enableShortcuts = true,
   emptyHint,
-  hidePrompt = false
+  hidePrompt = false,
+  autoExpandForSearch = false
 }) => {
   const { containerRef: scrollContainerRef, handleScroll: handleScrollPosition } = useScrollPosition(
     `topic-${topic.id}`
@@ -106,10 +110,16 @@ const Messages: React.FC<MessagesProps> = ({
 
   const messageElements = useRef<Map<string, HTMLElement>>(new Map())
   const messagesRef = useRef<Message[]>(messages)
+  const displayMessagesRef = useRef<Message[]>([])
+  const messagesLengthRef = useRef(0)
 
   useEffect(() => {
     messagesRef.current = messages
   }, [messages])
+
+  useEffect(() => {
+    displayMessagesRef.current = displayMessages
+  }, [displayMessages])
 
   const registerMessageElement = useCallback((id: string, element: HTMLElement | null) => {
     if (element) {
@@ -120,10 +130,62 @@ const Messages: React.FC<MessagesProps> = ({
   }, [])
 
   useEffect(() => {
-    const newDisplayMessages = computeDisplayMessages(messages, 0, displayCount)
-    setDisplayMessages(newDisplayMessages)
-    setHasMore(messages.length > displayCount)
-  }, [messages, displayCount])
+    const prevTotalLength = messagesLengthRef.current
+    const nextTotalLength = messages.length
+    const delta = nextTotalLength - prevTotalLength
+    messagesLengthRef.current = nextTotalLength
+
+    const baseDisplayMessages = computeDisplayMessages(messages, 0, displayCount)
+    const reversedMessages = [...messages].reverse()
+
+    const prevDisplayedLength = displayMessagesRef.current.length
+    const baseDisplayedLength = baseDisplayMessages.length
+
+    // `displayMessages` is always a prefix of `reversedMessages` (see computeDisplayMessages implementation).
+    // When the user has loaded more (or when search auto-expands), keep the already-rendered prefix length,
+    // and include any newly appended messages (delta > 0) so the newest content still appears.
+    const shouldPreserveExpanded = prevDisplayedLength > baseDisplayedLength || autoExpandForSearch
+
+    const desiredLength = (() => {
+      if (prevDisplayedLength === 0) return baseDisplayedLength
+      if (!shouldPreserveExpanded) return baseDisplayedLength
+      return Math.min(prevDisplayedLength + Math.max(0, delta), reversedMessages.length)
+    })()
+
+    const nextDisplayMessages = reversedMessages.slice(0, desiredLength)
+
+    setDisplayMessages(nextDisplayMessages)
+    displayMessagesRef.current = nextDisplayMessages
+    setHasMore(desiredLength < reversedMessages.length)
+  }, [autoExpandForSearch, displayCount, messages])
+
+  const appendMoreMessages = useCallback((batchGroupsCount: number) => {
+    const currentLength = displayMessagesRef.current.length
+    const currentMessages = messagesRef.current
+
+    if (currentMessages.length === 0) return
+
+    // No more items left to append.
+    if (currentLength >= currentMessages.length) {
+      setHasMore(false)
+      return
+    }
+
+    const newMessages = computeDisplayMessages(currentMessages, currentLength, batchGroupsCount)
+    if (newMessages.length === 0) {
+      setHasMore(false)
+      return
+    }
+
+    setDisplayMessages((prev) => {
+      const next = [...prev, ...newMessages]
+      displayMessagesRef.current = next
+      return next
+    })
+
+    const nextLength = currentLength + newMessages.length
+    setHasMore(nextLength < currentMessages.length)
+  }, [])
 
   // NOTE: 如果设置为平滑滚动会导致滚动条无法跟随生成的新消息保持在底部位置
   const scrollToBottom = useCallback(() => {
@@ -289,16 +351,51 @@ const Messages: React.FC<MessagesProps> = ({
     setTimeoutTimer(
       'loadMoreMessages',
       () => {
-        const currentLength = displayMessages.length
-        const newMessages = computeDisplayMessages(messages, currentLength, LOAD_MORE_COUNT)
-
-        setDisplayMessages((prev) => [...prev, ...newMessages])
-        setHasMore(currentLength + LOAD_MORE_COUNT < messages.length)
+        appendMoreMessages(LOAD_MORE_COUNT)
         setIsLoadingMore(false)
       },
       300
     )
-  }, [displayMessages.length, hasMore, isLoadingMore, messages, setTimeoutTimer])
+  }, [appendMoreMessages, hasMore, isLoadingMore, setTimeoutTimer])
+
+  // When in-chat search is open, progressively expand rendered history so DOM-based search sees more matches.
+  // Bound by a time budget and batch cap to avoid freezing on extremely large topics.
+  useEffect(() => {
+    if (!autoExpandForSearch) return
+
+    const AUTO_EXPAND_MAX_MS = 5000
+    const AUTO_EXPAND_MAX_BATCHES = 25 // ~500 groups max (LOAD_MORE_COUNT is 20)
+
+    let cancelled = false
+    const startedAt = performance.now()
+    let batches = 0
+
+    const step = () => {
+      if (cancelled) return
+      if (batches >= AUTO_EXPAND_MAX_BATCHES) return
+      if (performance.now() - startedAt >= AUTO_EXPAND_MAX_MS) return
+
+      const currentLength = displayMessagesRef.current.length
+      const total = messagesRef.current.length
+
+      if (total === 0 || currentLength >= total) {
+        setHasMore(false)
+        return
+      }
+
+      appendMoreMessages(LOAD_MORE_COUNT)
+      batches += 1
+
+      // Yield to allow React/DOM to render the newly added messages before the next search refresh.
+      setTimeout(step, 0)
+    }
+
+    step()
+
+    return () => {
+      cancelled = true
+    }
+  }, [appendMoreMessages, autoExpandForSearch])
 
   useShortcut(
     'copy_last_message',

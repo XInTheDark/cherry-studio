@@ -1,6 +1,6 @@
 import { ActionIconButton } from '@renderer/components/Buttons'
 import NarrowLayout from '@renderer/pages/home/Messages/NarrowLayout'
-import { scrollElementIntoView } from '@renderer/utils'
+import { scrollIntoView } from '@renderer/utils'
 import { Tooltip } from 'antd'
 import { debounce } from 'lodash'
 import { CaseSensitive, ChevronDown, ChevronUp, User, WholeWord, X } from 'lucide-react'
@@ -28,6 +28,11 @@ interface Props {
    * 搜索条定位方式
    */
   positionMode?: 'fixed' | 'absolute' | 'sticky'
+  /**
+   * Fired when the search UI becomes active/inactive.
+   * Used by chat to temporarily expand rendered messages so DOM-based search can find all matches.
+   */
+  onActiveChange?: (active: boolean) => void
 }
 
 enum SearchCompletedState {
@@ -51,6 +56,61 @@ export interface ContentSearchRef {
 
 const escapeRegExp = (string: string): string => {
   return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') // $& means the whole matched string
+}
+
+const getRangePrimaryRect = (range: Range): DOMRect | null => {
+  // Prefer client rects: they reflect the actual visual order in layouts where DOM order differs
+  // (e.g. column-reverse chat + incremental rendering).
+  const rects = Array.from(range.getClientRects())
+  const primary = rects.find((rect) => rect.width > 0 && rect.height > 0)
+  if (primary) return primary
+
+  const fallback = range.getBoundingClientRect()
+  if (fallback.width > 0 && fallback.height > 0) return fallback
+
+  return null
+}
+
+const sortRangesByVisualOrder = (ranges: Range[]): Range[] => {
+  return ranges
+    .map((range, index) => ({ range, index }))
+    .sort((a, b) => {
+      const rectA = getRangePrimaryRect(a.range)
+      const rectB = getRangePrimaryRect(b.range)
+
+      // Push "non-rendered" ranges to the end to avoid polluting navigation order.
+      if (!rectA && !rectB) return a.index - b.index
+      if (!rectA) return 1
+      if (!rectB) return -1
+
+      if (rectA.top !== rectB.top) return rectA.top - rectB.top
+      if (rectA.left !== rectB.left) return rectA.left - rectB.left
+
+      return a.index - b.index
+    })
+    .map(({ range }) => range)
+}
+
+const findClosestRangeIndex = (ranges: Range[], anchor: { top: number; left: number } | null): number | null => {
+  if (!anchor) return null
+  if (ranges.length === 0) return null
+
+  let bestIndex = 0
+  let bestScore = Number.POSITIVE_INFINITY
+
+  for (let i = 0; i < ranges.length; i += 1) {
+    const rect = getRangePrimaryRect(ranges[i])
+    if (!rect) continue
+
+    // Manhattan distance is sufficient here and avoids sqrt.
+    const score = Math.abs(rect.top - anchor.top) + Math.abs(rect.left - anchor.left)
+    if (score < bestScore) {
+      bestScore = score
+      bestIndex = i
+    }
+  }
+
+  return Number.isFinite(bestScore) ? bestIndex : null
 }
 
 const findRangesInTarget = (
@@ -136,7 +196,15 @@ const findRangesInTarget = (
 // eslint-disable-next-line @eslint-react/no-forward-ref
 export const ContentSearch = React.forwardRef<ContentSearchRef, Props>(
   (
-    { searchTarget, filter, includeUser = false, onIncludeUserChange, showUserToggle = true, positionMode = 'fixed' },
+    {
+      searchTarget,
+      filter,
+      includeUser = false,
+      onIncludeUserChange,
+      showUserToggle = true,
+      positionMode = 'fixed',
+      onActiveChange
+    },
     ref
   ) => {
     const target: HTMLElement | null = (() => {
@@ -155,64 +223,120 @@ export const ContentSearch = React.forwardRef<ContentSearchRef, Props>(
     const [allRanges, setAllRanges] = useState<Range[]>([])
     const [currentIndex, setCurrentIndex] = useState(-1)
     const prevSearchText = useRef('')
+    const lastLocatedAnchorRef = useRef<{ top: number; left: number } | null>(null)
     const { t } = useTranslation()
 
     const resetSearch = useCallback(() => {
       CSS.highlights.clear()
       setAllRanges([])
       setSearchCompleted(SearchCompletedState.NotSearched)
+      setCurrentIndex(-1)
+      lastLocatedAnchorRef.current = null
+    }, [])
+
+    const locateByIndexInternal = useCallback((ranges: Range[], index: number, shouldScroll = true) => {
+      // 清理旧的高亮
+      CSS.highlights.clear()
+
+      if (ranges.length > 0) {
+        // 1. 创建并注册所有匹配项的高亮
+        const allMatchesHighlight = new Highlight(...ranges)
+        CSS.highlights.set('search-matches', allMatchesHighlight)
+
+        // 2. 如果有当前项，为其创建并注册一个特殊的高亮
+        if (index !== -1 && ranges[index]) {
+          const currentMatchRange = ranges[index]
+          const currentMatchHighlight = new Highlight(currentMatchRange)
+          CSS.highlights.set('current-match', currentMatchHighlight)
+
+          // 3. 将当前项滚动到视图中
+          // 获取第一个文本节点的父元素来进行滚动
+          const parentElement = currentMatchRange.startContainer.parentElement
+          if (shouldScroll && parentElement) {
+            // IMPORTANT: Chat message list uses an inverted scroll layout (column-reverse + scrollTop=0 "bottom"),
+            // so manual scrollTop math is unreliable. Native scrollIntoView handles this correctly, and Chromium's
+            // `container: 'nearest'` keeps the scroll within the chat pane.
+            scrollIntoView(parentElement, {
+              behavior: 'smooth',
+              block: 'center',
+              inline: 'nearest',
+              container: 'nearest'
+            })
+          }
+
+          const rect = getRangePrimaryRect(currentMatchRange)
+          lastLocatedAnchorRef.current = rect ? { top: rect.top, left: rect.left } : null
+        }
+      }
     }, [])
 
     const locateByIndex = useCallback(
       (shouldScroll = true) => {
-        // 清理旧的高亮
-        CSS.highlights.clear()
-
-        if (allRanges.length > 0) {
-          // 1. 创建并注册所有匹配项的高亮
-          const allMatchesHighlight = new Highlight(...allRanges)
-          CSS.highlights.set('search-matches', allMatchesHighlight)
-
-          // 2. 如果有当前项，为其创建并注册一个特殊的高亮
-          if (currentIndex !== -1 && allRanges[currentIndex]) {
-            const currentMatchRange = allRanges[currentIndex]
-            const currentMatchHighlight = new Highlight(currentMatchRange)
-            CSS.highlights.set('current-match', currentMatchHighlight)
-
-            // 3. 将当前项滚动到视图中
-            // 获取第一个文本节点的父元素来进行滚动
-            const parentElement = currentMatchRange.startContainer.parentElement
-            if (shouldScroll && parentElement) {
-              // 优先在指定的滚动容器内滚动，避免滚动整个页面导致索引错乱/看起来"跳到第一条"
-              scrollElementIntoView(parentElement, target)
-            }
-          }
-        }
+        locateByIndexInternal(allRanges, currentIndex, shouldScroll)
       },
-      [allRanges, currentIndex, target]
+      [allRanges, currentIndex, locateByIndexInternal]
     )
 
-    const search = useCallback(
-      (jump = false) => {
+    const performSearch = useCallback(
+      ({
+        jump = false,
+        preserveSelection = false,
+        shouldScroll = false
+      }: {
+        jump?: boolean
+        preserveSelection?: boolean
+        shouldScroll?: boolean
+      } = {}) => {
         const searchText = searchInputRef.current?.value.trim() ?? null
         setSearchCompleted(SearchCompletedState.Searched)
-        if (target && searchText !== null && searchText !== '') {
-          const ranges = findRangesInTarget(target, filter, searchText, isCaseSensitive, isWholeWord)
-          setAllRanges(ranges)
-          setCurrentIndex(jump && ranges.length > 0 ? 0 : -1)
+
+        if (!target || searchText === null || searchText === '') {
+          resetSearch()
+          return
         }
+
+        const ranges = sortRangesByVisualOrder(
+          findRangesInTarget(target, filter, searchText, isCaseSensitive, isWholeWord)
+        )
+
+        let nextIndex = -1
+
+        if (ranges.length > 0) {
+          if (jump) {
+            nextIndex = 0
+          } else if (preserveSelection && currentIndex !== -1) {
+            // Keep the current selection stable when new messages are loaded or the DOM reflows.
+            // This avoids the "jumps around" feeling while the chat incrementally renders.
+            const closestIndex = findClosestRangeIndex(ranges, lastLocatedAnchorRef.current)
+            nextIndex = closestIndex ?? Math.min(currentIndex, ranges.length - 1)
+          } else {
+            nextIndex = -1
+          }
+        } else {
+          nextIndex = -1
+        }
+
+        setAllRanges(ranges)
+        setCurrentIndex(nextIndex)
+        locateByIndexInternal(ranges, nextIndex, shouldScroll)
       },
-      [target, filter, isCaseSensitive, isWholeWord]
+      [currentIndex, filter, isCaseSensitive, isWholeWord, locateByIndexInternal, resetSearch, target]
     )
 
     const implementation = useMemo(
       () => ({
         disable: () => {
+          if (!enableContentSearch) {
+            CSS.highlights.clear()
+            return
+          }
           setEnableContentSearch(false)
           CSS.highlights.clear()
+          onActiveChange?.(false)
         },
         enable: (initialText?: string) => {
           setEnableContentSearch(true)
+          onActiveChange?.(true)
           if (searchInputRef.current) {
             const inputEl = searchInputRef.current
             if (initialText && initialText.trim().length > 0) {
@@ -220,7 +344,9 @@ export const ContentSearch = React.forwardRef<ContentSearchRef, Props>(
               requestAnimationFrame(() => {
                 inputEl.focus()
                 inputEl.select()
-                search(false)
+                // Initial open should not auto-select a match (0/x is confusing) and should
+                // not inherit a previous selection from an earlier search session.
+                performSearch({ jump: false, preserveSelection: false, shouldScroll: false })
               })
             } else {
               requestAnimationFrame(() => {
@@ -231,11 +357,13 @@ export const ContentSearch = React.forwardRef<ContentSearchRef, Props>(
           }
         },
         searchNext: () => {
+          if (!enableContentSearch) return
           if (allRanges.length > 0) {
             setCurrentIndex((prev) => (prev < allRanges.length - 1 ? prev + 1 : 0))
           }
         },
         searchPrev: () => {
+          if (!enableContentSearch) return
           if (allRanges.length > 0) {
             setCurrentIndex((prev) => (prev > 0 ? prev - 1 : allRanges.length - 1))
           }
@@ -244,21 +372,30 @@ export const ContentSearch = React.forwardRef<ContentSearchRef, Props>(
           setSearchCompleted(SearchCompletedState.NotSearched)
         },
         search: () => {
-          search(true)
-          locateByIndex(true)
+          if (!enableContentSearch) return
+          performSearch({ jump: true, preserveSelection: false, shouldScroll: true })
         },
         silentSearch: () => {
-          search(false)
-          locateByIndex(false)
+          if (!enableContentSearch) return
+          performSearch({ jump: false, preserveSelection: true, shouldScroll: false })
         },
         focus: () => {
+          if (!enableContentSearch) return
           searchInputRef.current?.focus()
         }
       }),
-      [allRanges.length, locateByIndex, search]
+      [allRanges.length, enableContentSearch, onActiveChange, performSearch]
     )
 
-    const _searchHandlerDebounce = useMemo(() => debounce(implementation.search, 300), [implementation.search])
+    // While typing, update the match list/count without auto-jumping. Jumping is driven by Enter / next/prev.
+    const _searchHandlerDebounce = useMemo(
+      () =>
+        debounce(() => {
+          // Compute ranges but keep currentIndex at -1 so the UI shows 0/N until user navigates.
+          performSearch({ jump: false, preserveSelection: false, shouldScroll: false })
+        }, 250),
+      [performSearch]
+    )
 
     const searchHandler = useCallback(() => {
       _searchHandlerDebounce()
@@ -286,17 +423,21 @@ export const ContentSearch = React.forwardRef<ContentSearchRef, Props>(
             resetSearch()
             return
           }
-          if (event.shiftKey) {
-            implementation.searchPrev()
-          } else {
-            implementation.searchNext()
+          // If we don't have a selected match yet, Enter should jump to the first match (oldest),
+          // even if the debounced search hasn't fired yet.
+          if (allRanges.length === 0 || currentIndex === -1) {
+            implementation.search()
+            return
           }
+
+          if (event.shiftKey) implementation.searchPrev()
+          else implementation.searchNext()
         } else if (event.key === 'Escape') {
           event.stopPropagation()
           implementation.disable()
         }
       },
-      [implementation, resetSearch]
+      [allRanges.length, currentIndex, implementation, resetSearch]
     )
 
     const searchInputFocus = useCallback(() => {
@@ -316,9 +457,11 @@ export const ContentSearch = React.forwardRef<ContentSearchRef, Props>(
 
     useEffect(() => {
       if (enableContentSearch && searchInputRef.current?.value.trim()) {
-        search(true)
+        // Re-run search without forcing a selection. This is usually triggered by toggles.
+        // Preserve current selection when possible, but never auto-scroll.
+        performSearch({ jump: false, preserveSelection: true, shouldScroll: false })
       }
-    }, [isCaseSensitive, isWholeWord, enableContentSearch, search])
+    }, [isCaseSensitive, isWholeWord, enableContentSearch, performSearch])
 
     const prevButtonOnClick = () => {
       implementation.searchPrev()
