@@ -22,15 +22,6 @@ const isPrintableKey = (e: KeyboardEvent): boolean => {
   return true
 }
 
-const isTypingIntoEditable = (): boolean => {
-  const el = document.activeElement as HTMLElement | null
-  if (!el) return false
-  if (el.tagName === 'TEXTAREA') return true
-  if (el.tagName === 'INPUT') return true
-  if ((el as any).isContentEditable) return true
-  return false
-}
-
 const getSafeRect = (range: Range): DOMRect | null => {
   const rect = range.getBoundingClientRect()
   if (rect && (rect.width > 0 || rect.height > 0)) return rect
@@ -50,23 +41,20 @@ const ThreadSelectionTracker: FC = () => {
   const pendingDraftTargetRef = useRef<{ parentTopicId: string; parentMessageId: string } | null>(null)
   const pendingDraftUntilRef = useRef<number>(0)
 
-  const updateFromSelection = useCallback(() => {
+  const computeSelectionContext = useCallback((): SelectionContext | null => {
     const sel = document.getSelection()
     if (!sel || sel.rangeCount === 0) {
-      setSelectionCtx(null)
-      return
+      return null
     }
 
     const range = sel.getRangeAt(0)
     if (range.collapsed) {
-      setSelectionCtx(null)
-      return
+      return null
     }
 
     // If selection doesn't have a real rect, don't attach threads to it.
     if (!getSafeRect(range)) {
-      setSelectionCtx(null)
-      return
+      return null
     }
 
     const startEl =
@@ -74,22 +62,19 @@ const ThreadSelectionTracker: FC = () => {
     const endEl =
       (range.endContainer instanceof Element ? range.endContainer : range.endContainer.parentElement) ?? null
     if (!startEl || !endEl) {
-      setSelectionCtx(null)
-      return
+      return null
     }
 
     const blockEl = startEl.closest<HTMLElement>('[data-thread-block-id]')
     const endBlockEl = endEl.closest<HTMLElement>('[data-thread-block-id]')
     if (!blockEl || !endBlockEl || blockEl !== endBlockEl) {
       // v1: only allow main-text selection within a single block.
-      setSelectionCtx(null)
-      return
+      return null
     }
 
     const messageEl = blockEl.closest<HTMLElement>('[data-thread-message-id]')
     if (!messageEl) {
-      setSelectionCtx(null)
-      return
+      return null
     }
 
     const parentMessageId = messageEl.dataset.threadMessageId
@@ -97,56 +82,69 @@ const ThreadSelectionTracker: FC = () => {
     const assistantId = messageEl.dataset.threadAssistantId
     const blockId = blockEl.dataset.threadBlockId
     if (!parentMessageId || !parentTopicId || !assistantId || !blockId) {
-      setSelectionCtx(null)
-      return
+      return null
     }
 
     const selectedText = sel.toString().trim()
     if (!selectedText) {
-      setSelectionCtx(null)
-      return
+      return null
     }
 
     const anchorBase = buildThreadAnchorFromSelection(blockEl, range, { prefixLen: 48, suffixLen: 48 })
     if (!anchorBase) {
-      setSelectionCtx(null)
-      return
+      return null
     }
 
     const anchor: ThreadAnchor = { ...anchorBase, blockId }
 
-    setSelectionCtx({
+    return {
       parentMessageId,
       parentTopicId,
       assistantId,
       blockId,
       selectedText,
       anchor
-    })
+    }
   }, [])
+
+  const updateFromSelection = useCallback(() => {
+    const ctx = computeSelectionContext()
+    setSelectionCtx(ctx)
+
+    // A new, valid selection should reset the buffered-typing window so we don't
+    // accidentally consume keystrokes meant for the next selection flow.
+    if (ctx) {
+      pendingDraftTargetRef.current = null
+      pendingDraftUntilRef.current = 0
+    }
+  }, [computeSelectionContext])
 
   useEffect(() => {
     const onMouseUp = () => updateFromSelection()
+    const onPointerUp = () => updateFromSelection()
     const onSelectionChange = () => updateFromSelection()
     document.addEventListener('mouseup', onMouseUp)
+    document.addEventListener('pointerup', onPointerUp)
     document.addEventListener('selectionchange', onSelectionChange)
     return () => {
       document.removeEventListener('mouseup', onMouseUp)
+      document.removeEventListener('pointerup', onPointerUp)
       document.removeEventListener('selectionchange', onSelectionChange)
     }
   }, [updateFromSelection])
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
-      const ctx = selectionCtxRef.current
       if (!isPrintableKey(e)) return
-      if (isTypingIntoEditable()) return
+      const ctx = selectionCtxRef.current ?? computeSelectionContext()
 
       // If we just opened the thread sidebar and the textarea isn't focused yet,
       // buffer a couple of keystrokes so typing feels continuous.
       const now = Date.now()
       const pending = pendingDraftTargetRef.current
       if (!ctx && pending && now < pendingDraftUntilRef.current) {
+        // NOTE: During this small window we intentionally intercept typing even if the
+        // main input is focused, since the user is in the "selection -> type" flow.
         EventEmitter.emit(EVENT_NAMES.THREAD_STARTER_APPEND_DRAFT, {
           parentTopicId: pending.parentTopicId,
           parentMessageId: pending.parentMessageId,
@@ -158,6 +156,8 @@ const ThreadSelectionTracker: FC = () => {
       }
 
       if (!ctx) return
+      // If a selection exists in message content, typing should always open a thread
+      // (even if some input remains focused).
 
       // Open thread sidebar and focus the composer, seeded with the typed character.
       EventEmitter.emit(EVENT_NAMES.OPEN_THREAD_PANEL, {
@@ -189,7 +189,7 @@ const ThreadSelectionTracker: FC = () => {
 
     window.addEventListener('keydown', onKeyDown, true)
     return () => window.removeEventListener('keydown', onKeyDown, true)
-  }, [])
+  }, [computeSelectionContext])
 
   return null
 }

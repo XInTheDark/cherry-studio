@@ -50,6 +50,8 @@ interface MessagesProps {
   setActiveTopic: (topic: Topic) => void
   onComponentUpdate?(): void
   onFirstUpdate?(): void
+  // DOM id for the scroll container. Must be unique when multiple message views exist.
+  containerId?: string
   // When rendering messages in nested contexts (thread sidebars), prevent global chat state changes.
   chatContextOptions?: ChatContextOptions
   // Thread topics clone context messages; callers can hide the prefix.
@@ -72,6 +74,7 @@ const Messages: React.FC<MessagesProps> = ({
   setActiveTopic,
   onComponentUpdate,
   onFirstUpdate,
+  containerId = 'messages',
   chatContextOptions,
   skipLeadingMessages = 0,
   enableGlobalEvents = true,
@@ -340,7 +343,7 @@ const Messages: React.FC<MessagesProps> = ({
 
   return (
     <MessagesContainer
-      id="messages"
+      id={containerId}
       className="messages-container"
       ref={scrollContainerRef}
       key={assistant.id}
@@ -351,7 +354,7 @@ const Messages: React.FC<MessagesProps> = ({
           next={loadMoreMessages}
           hasMore={hasMore}
           loader={null}
-          scrollableTarget="messages"
+          scrollableTarget={containerId}
           inverse
           style={{ overflow: 'visible' }}>
           <ContextMenu>

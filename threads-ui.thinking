@@ -1,0 +1,34 @@
+Threads UI (Right Sidebar) - Work Plan / Notes
+
+Context
+- Discord-like threads UI is implemented as a right sidebar (not inline below messages).
+- Selecting text in a message + typing should start a new thread and seed the typed character.
+- Selection also creates a persistent "comment-style" highlight; hover shows tooltip; click opens the thread.
+
+User-reported issues to fix
+1) Thread chat scroll/collapse
+   - Scrolling in thread view doesn't reliably collapse the parent snippet card.
+   - Collapsed header should be very compact (1 line feels best).
+2) Selection -> type reliability
+   - After repeated use, selection + typing sometimes stops opening the thread starter.
+3) Thread starter composer UX
+   - Starter composer must reuse the same input box component (not a plain TextArea).
+
+Implementation plan
+- Starter composer:
+  - Replace the thread starter TextArea in `ThreadSidebar.tsx` with a small wrapper around `InputbarCore`.
+  - Keep the send behavior custom: create thread via `createThreadFromMessageThunk(...)`, then navigate to thread chat.
+  - Support "seed char" + buffered keystrokes via the existing EventEmitter flow.
+- Selection reliability:
+  - Extract a "computeSelectionContext()" function and call it both on selection events and on keydown (fallback).
+  - Listen on `pointerup` in addition to `mouseup` + `selectionchange`.
+  - Reset pending buffered-keystroke state when a new selection is detected.
+- Thread chat collapse:
+  - Collapse as soon as the user moves away from the bottom (`scrollTop > 0`).
+  - Add a wheel fallback so collapse still happens even when scrollTop doesn't change (macOS rubberband / short threads).
+  - Reduce collapsed header to a single line, tighter padding.
+
+Validation checklist
+- `pnpm lint`
+- `pnpm test`
+- `pnpm format`

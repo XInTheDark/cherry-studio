@@ -20,4 +20,6 @@ export const MessagesContainer = styled(Scrollbar)<ContainerProps>`
   overflow-x: hidden;
   z-index: 1;
   position: relative;
+  flex: 1;
+  min-height: 0;
 `

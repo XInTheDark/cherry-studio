@@ -10,8 +10,8 @@ import { createThreadFromMessageThunk } from '@renderer/store/thunk/threadThunk'
 import type { Topic } from '@renderer/types'
 import type { Message } from '@renderer/types/newMessage'
 import type { ThreadAnchor, ThreadSummary } from '@renderer/types/thread'
-import { Button, Divider, Input } from 'antd'
-import type { TextAreaRef } from 'antd/es/input/TextArea'
+import { getMainTextContent } from '@renderer/utils/messageUtils/find'
+import { Button, Divider } from 'antd'
 import dayjs from 'dayjs'
 import { ChevronLeft, X } from 'lucide-react'
 import type { FC } from 'react'
@@ -21,6 +21,7 @@ import styled from 'styled-components'
 
 import MessageContent from '../MessageContent'
 import Messages from '../Messages'
+import ThreadStarterInputbar from './ThreadStarterInputbar'
 
 const logger = loggerService.withContext('ThreadSidebar')
 
@@ -61,6 +62,13 @@ type Props = {
 
 const ThreadSidebar: FC<Props> = ({ width = 380 }) => {
   const { t } = useTranslation()
+
+  const [panelWidth, setPanelWidth] = useState(width)
+  const resizingRef = useRef<{
+    startX: number
+    startWidth: number
+    pointerId: number
+  } | null>(null)
 
   const [open, setOpen] = useState(false)
   const [stack, setStack] = useState<ThreadRoute[]>([])
@@ -155,7 +163,41 @@ const ThreadSidebar: FC<Props> = ({ width = 380 }) => {
   }
 
   return (
-    <Container style={{ width }}>
+    <Container style={{ width: panelWidth }}>
+      <ResizeHandle
+        onPointerDown={(e) => {
+          // Left-edge handle: moving left increases width; moving right decreases.
+          resizingRef.current = {
+            startX: e.clientX,
+            startWidth: panelWidth,
+            pointerId: e.pointerId
+          }
+          try {
+            ;(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)
+          } catch {
+            // ignore
+          }
+          document.body.style.userSelect = 'none'
+        }}
+        onPointerMove={(e) => {
+          const r = resizingRef.current
+          if (!r || r.pointerId !== e.pointerId) return
+          const delta = r.startX - e.clientX
+          const next = Math.max(320, Math.min(720, r.startWidth + delta))
+          setPanelWidth(next)
+        }}
+        onPointerUp={(e) => {
+          const r = resizingRef.current
+          if (!r || r.pointerId !== e.pointerId) return
+          resizingRef.current = null
+          document.body.style.userSelect = ''
+          try {
+            ;(e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId)
+          } catch {
+            // ignore
+          }
+        }}
+      />
       <Header>
         {stack.length > 1 ? (
           <Button size="small" type="text" icon={<ChevronLeft size={16} />} onClick={pop}>
@@ -218,61 +260,36 @@ const MessageThreadsView: FC<{
 
   const messageEntity = useAppSelector((s) => s.messages.entities[parentMessageId]) as Message | undefined
   const threads = (messageEntity?.threads ?? []) as ThreadSummary[]
+  const handleCreate = useCallback(
+    async (content: string) => {
+      const trimmed = content.trim()
+      if (!trimmed) return
 
-  const [starterPrompt, setStarterPrompt] = useState(draft ?? '')
-  const composerRef = useRef<TextAreaRef | null>(null)
-
-  useEffect(() => {
-    if (typeof draft === 'string') {
-      setStarterPrompt(draft)
-    }
-  }, [draft])
-
-  useEffect(() => {
-    const unsubscribe = EventEmitter.on(
-      EVENT_NAMES.THREAD_STARTER_APPEND_DRAFT,
-      (payload: { parentTopicId: string; parentMessageId: string; key: string }) => {
-        if (payload.parentTopicId !== parentTopicId) return
-        if (payload.parentMessageId !== parentMessageId) return
-        setStarterPrompt((prev) => prev + payload.key)
+      if (!parentTopicId || !assistantId) {
+        logger.error('Missing parentTopicId/assistantId for thread create', { parentTopicId, assistantId })
+        window.toast?.error?.(t('thread.create_failed'))
+        return
       }
-    )
-    return () => unsubscribe()
-  }, [parentMessageId, parentTopicId])
 
-  useEffect(() => {
-    if (!focusComposer) return
-    setTimeout(() => composerRef.current?.focus?.(), 0)
-  }, [focusComposer])
+      const summary = await dispatch(
+        createThreadFromMessageThunk({
+          parentTopicId,
+          parentMessageId,
+          assistantId,
+          starterPrompt: trimmed,
+          anchor
+        }) as any
+      )
 
-  const handleCreate = useCallback(async () => {
-    const content = starterPrompt.trim()
-    if (!content) return
+      if (!summary?.topicId) {
+        window.toast?.error?.(t('thread.create_failed'))
+        return
+      }
 
-    if (!parentTopicId || !assistantId) {
-      logger.error('Missing parentTopicId/assistantId for thread create', { parentTopicId, assistantId })
-      window.toast?.error?.(t('thread.create_failed'))
-      return
-    }
-
-    const summary = await dispatch(
-      createThreadFromMessageThunk({
-        parentTopicId,
-        parentMessageId,
-        assistantId,
-        starterPrompt: content,
-        anchor
-      }) as any
-    )
-
-    if (!summary?.topicId) {
-      window.toast?.error?.(t('thread.create_failed'))
-      return
-    }
-
-    setStarterPrompt('')
-    onOpenThread(summary.topicId)
-  }, [anchor, assistantId, dispatch, onOpenThread, parentMessageId, parentTopicId, starterPrompt, t])
+      onOpenThread(summary.topicId)
+    },
+    [anchor, assistantId, dispatch, onOpenThread, parentMessageId, parentTopicId, t]
+  )
 
   return (
     <div>
@@ -282,26 +299,14 @@ const MessageThreadsView: FC<{
         <HintText>{t('thread.start')}</HintText>
       )}
 
-      <Input.TextArea
-        ref={(el) => {
-          composerRef.current = el
-        }}
-        value={starterPrompt}
-        onChange={(e) => setStarterPrompt(e.target.value)}
+      <ThreadStarterInputbar
+        parentTopicId={parentTopicId}
+        parentMessageId={parentMessageId}
         placeholder={t('thread.start_placeholder')}
-        autoSize={{ minRows: 2, maxRows: 6 }}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter' && !e.shiftKey) {
-            e.preventDefault()
-            handleCreate()
-          }
-        }}
+        focusComposer={focusComposer}
+        draft={draft}
+        onSend={handleCreate}
       />
-      <Actions>
-        <Button size="small" type="primary" disabled={!starterPrompt.trim()} onClick={handleCreate}>
-          {t('thread.send')}
-        </Button>
-      </Actions>
 
       <Divider style={{ margin: '12px 0' }} />
 
@@ -338,6 +343,51 @@ const ThreadChatView: FC<{
     return topics.find((t) => t.id === parentTopicId)?.name ?? ''
   }, [parentTopicId])
 
+  const containerId = useMemo(() => `messages-thread-${threadTopicId}`, [threadTopicId])
+  const [parentCollapsed, setParentCollapsed] = useState(false)
+
+  useEffect(() => {
+    let cancelled = false
+    let detach: (() => void) | undefined
+
+    const attach = () => {
+      if (cancelled) return
+      const el = document.getElementById(containerId)
+      if (!el) {
+        setTimeout(attach, 50)
+        return
+      }
+
+      const onScroll = () => {
+        // In this app's inverted message list, scrollTop === 0 means "at bottom / latest".
+        // Collapse as soon as the user moves away from the bottom.
+        setParentCollapsed(el.scrollTop > 0)
+      }
+
+      const onWheel = (e: WheelEvent) => {
+        // On macOS, "rubberband" scrolling can fire wheel events even when scrollTop doesn't change.
+        // This makes the collapse feel responsive even for short threads.
+        if (el.scrollTop !== 0) return
+        if (e.deltaY > 0) setParentCollapsed(true)
+        if (e.deltaY < 0) setParentCollapsed(false)
+      }
+
+      el.addEventListener('scroll', onScroll)
+      el.addEventListener('wheel', onWheel, { passive: true })
+      onScroll()
+      detach = () => {
+        el.removeEventListener('scroll', onScroll)
+        el.removeEventListener('wheel', onWheel)
+      }
+    }
+
+    attach()
+    return () => {
+      cancelled = true
+      detach?.()
+    }
+  }, [containerId])
+
   const threadSummary = useMemo(() => {
     const threads = (parentMessage?.threads ?? []) as ThreadSummary[]
     return threads.find((th) => th.topicId === threadTopicId) ?? null
@@ -345,6 +395,11 @@ const ThreadChatView: FC<{
 
   const contextCount = threadSummary?.contextCount ?? 0
   const starterPrompt = threadSummary?.starterPrompt ?? ''
+  const parentSnippet = useMemo(() => (parentMessage ? getMainTextContent(parentMessage).trim() : ''), [parentMessage])
+  const parentLabel = useMemo(
+    () => (parentTopicName ? t('thread.on_topic', { name: parentTopicName }) : t('thread.on_message')),
+    [parentTopicName, t]
+  )
 
   const { assistant } = useAssistant(assistantId)
 
@@ -373,13 +428,21 @@ const ThreadChatView: FC<{
   return (
     <ThreadChatContainer>
       {parentMessage && (
-        <ParentMessageCard>
-          <ParentMessageTitle>
-            {parentTopicName ? t('thread.on_topic', { name: parentTopicName }) : t('thread.on_message')}
-          </ParentMessageTitle>
-          <ParentMessageBody>
-            <MessageContent message={parentMessage} />
-          </ParentMessageBody>
+        <ParentMessageCard $collapsed={parentCollapsed}>
+          {!parentCollapsed ? (
+            <ParentMessageTitle>{parentLabel}</ParentMessageTitle>
+          ) : (
+            <ParentMessageCollapsedLine title={`${parentLabel} — ${parentSnippet}`}>
+              <ParentMessageCollapsedLabel>{parentLabel}</ParentMessageCollapsedLabel>
+              <ParentMessageCollapsedSep> — </ParentMessageCollapsedSep>
+              <ParentMessageCollapsedSnippet>{parentSnippet}</ParentMessageCollapsedSnippet>
+            </ParentMessageCollapsedLine>
+          )}
+          {!parentCollapsed ? (
+            <ParentMessageBody>
+              <MessageContent message={parentMessage} />
+            </ParentMessageBody>
+          ) : null}
         </ParentMessageCard>
       )}
       {starterPrompt?.trim() ? <ThreadHeaderTitle title={starterPrompt}>{starterPrompt}</ThreadHeaderTitle> : null}
@@ -394,6 +457,7 @@ const ThreadChatView: FC<{
           skipLeadingMessages={contextCount}
           hidePrompt={true}
           emptyHint={visibleCount === 0 ? t('thread.reply_placeholder') : undefined}
+          containerId={containerId}
         />
         <Inputbar
           assistant={assistant}
@@ -414,6 +478,18 @@ const Container = styled.div`
   border-left: 1px solid var(--color-border-soft);
   background: var(--color-background);
   padding: 10px;
+  position: relative;
+`
+
+const ResizeHandle = styled.div`
+  position: absolute;
+  left: -4px;
+  top: 0;
+  bottom: 0;
+  width: 8px;
+  cursor: col-resize;
+  z-index: 10;
+  touch-action: none;
 `
 
 const Header = styled.div`
@@ -444,12 +520,6 @@ const SelectedText = styled.div`
   max-height: 80px;
   overflow: hidden;
   text-overflow: ellipsis;
-`
-
-const Actions = styled.div`
-  display: flex;
-  justify-content: flex-end;
-  margin-top: 8px;
 `
 
 const ThreadList = styled.div`
@@ -508,12 +578,13 @@ const ThreadHeaderTitle = styled.div`
   text-overflow: ellipsis;
 `
 
-const ParentMessageCard = styled.div`
+const ParentMessageCard = styled.div<{ $collapsed: boolean }>`
   border: 1px solid var(--color-border-soft);
   background: var(--color-background-soft);
   border-radius: 10px;
-  padding: 10px;
-  margin-bottom: 10px;
+  padding: ${({ $collapsed }) => ($collapsed ? '6px 10px' : '10px')};
+  margin-bottom: ${({ $collapsed }) => ($collapsed ? '6px' : '10px')};
+  transition: padding 0.15s ease, margin-bottom 0.15s ease;
 `
 
 const ParentMessageTitle = styled.div`
@@ -526,6 +597,29 @@ const ParentMessageBody = styled.div`
   max-height: 160px;
   overflow: hidden;
   mask-image: linear-gradient(to bottom, rgba(0, 0, 0, 1), rgba(0, 0, 0, 0));
+`
+
+const ParentMessageCollapsedLine = styled.div`
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 1;
+  overflow: hidden;
+  line-height: 1.35;
+  font-size: 12px;
+  color: var(--color-text);
+`
+
+const ParentMessageCollapsedLabel = styled.span`
+  color: var(--color-text-2);
+  font-weight: 500;
+`
+
+const ParentMessageCollapsedSep = styled.span`
+  color: var(--color-text-3);
+`
+
+const ParentMessageCollapsedSnippet = styled.span`
+  color: var(--color-text);
 `
 
 const EmptyState = styled.div`

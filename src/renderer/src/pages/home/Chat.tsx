@@ -208,23 +208,33 @@ const Chat: FC<Props> = (props) => {
                 <>
                   <div style={{ display: 'flex', flex: 1, minHeight: 0, minWidth: 0 }}>
                     <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, minWidth: 0 }}>
-                      <Messages
-                        key={props.activeTopic.id}
-                        assistant={assistant}
-                        topic={props.activeTopic}
-                        setActiveTopic={props.setActiveTopic}
-                        onComponentUpdate={messagesComponentUpdateHandler}
-                        onFirstUpdate={messagesComponentFirstUpdateHandler}
-                      />
-                      <ContentSearch
-                        ref={contentSearchRef}
-                        searchTarget={mainRef as React.RefObject<HTMLElement>}
-                        filter={contentSearchFilter}
-                        includeUser={filterIncludeUser}
-                        onIncludeUserChange={userOutlinedItemClickHandler}
-                      />
+                      <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, minWidth: 0 }}>
+                        <Messages
+                          key={props.activeTopic.id}
+                          assistant={assistant}
+                          topic={props.activeTopic}
+                          setActiveTopic={props.setActiveTopic}
+                          onComponentUpdate={messagesComponentUpdateHandler}
+                          onFirstUpdate={messagesComponentFirstUpdateHandler}
+                        />
+                        <ContentSearch
+                          ref={contentSearchRef}
+                          searchTarget={mainRef as React.RefObject<HTMLElement>}
+                          filter={contentSearchFilter}
+                          includeUser={filterIncludeUser}
+                          onIncludeUserChange={userOutlinedItemClickHandler}
+                        />
+                      </div>
+
                       {messageNavigation === 'buttons' && <ChatNavigation containerId="messages" />}
-                      <Inputbar assistant={assistant} setActiveTopic={props.setActiveTopic} topic={props.activeTopic} />
+
+                      <div style={{ marginTop: 'auto' }}>
+                        <Inputbar
+                          assistant={assistant}
+                          setActiveTopic={props.setActiveTopic}
+                          topic={props.activeTopic}
+                        />
+                      </div>
                     </div>
                     <ThreadSidebar />
                   </div>

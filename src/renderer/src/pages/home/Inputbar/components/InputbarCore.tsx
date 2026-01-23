@@ -44,6 +44,13 @@ const logger = loggerService.withContext('InputbarCore')
 export interface InputbarCoreProps {
   scope: InputbarScope
   placeholder?: string
+  /**
+   * Whether the textarea should autofocus when mounted.
+   * Default: true (keeps existing chat behavior).
+   *
+   * Thread sidebars often should not steal focus unless explicitly requested.
+   */
+  autoFocus?: boolean
 
   text: string
   onTextChange: (text: string) => void
@@ -103,6 +110,7 @@ const TextareaStyle: CSSProperties = {
 export const InputbarCore: FC<InputbarCoreProps> = ({
   scope,
   placeholder,
+  autoFocus = true,
   text,
   onTextChange,
   textareaRef,
@@ -640,7 +648,9 @@ export const InputbarCore: FC<InputbarCoreProps> = ({
     extras.push(<TranslateButton key="translate" text={text} onTranslated={onTranslated} isLoading={isTranslating} />)
     extras.push(<SendMessageButton sendMessage={handleSendMessage} disabled={isSendDisabled} />)
 
-    if (isLoading) {
+    // Only show a pause button when a pause handler exists (some embedded inputbars
+    // use "loading" as a transient UI state but cannot actually pause generation).
+    if (isLoading && onPause) {
       extras.push(
         <Tooltip key="pause" placement="top" title={t('chat.input.pause')} mouseLeaveDelay={0} arrow>
           <ActionIconButton onClick={onPause} style={{ marginRight: -2 }}>
@@ -684,7 +694,7 @@ export const InputbarCore: FC<InputbarCoreProps> = ({
             onFocus={handleFocus}
             onBlur={() => setInputFocus(false)}
             placeholder={isTranslating ? t('chat.input.translating') : placeholder}
-            autoFocus
+            autoFocus={autoFocus}
             variant="borderless"
             spellCheck={enableSpellCheck}
             rows={2}
