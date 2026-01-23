@@ -8,7 +8,7 @@ import MarkdownShadowDOMRenderer from '@renderer/components/MarkdownShadowDOMRen
 import { useSettings } from '@renderer/hooks/useSettings'
 import { useSmoothStream } from '@renderer/hooks/useSmoothStream'
 import { EVENT_NAMES, EventEmitter } from '@renderer/services/EventService'
-import { findBestAnchorOffsets, rangeFromOffsets } from '@renderer/services/ThreadService'
+import { findBestAnchorOffsets, wrapThreadHighlightSafely } from '@renderer/services/ThreadService'
 import type {
   CompactMessageBlock,
   MainTextMessageBlock,
@@ -134,20 +134,13 @@ const Markdown: FC<Props> = ({ block, postProcess, threadHighlights }) => {
     for (const hl of threadHighlights) {
       const offsets = findBestAnchorOffsets(text, hl.anchor)
       if (!offsets) continue
-      const range = rangeFromOffsets(root, offsets.start, offsets.end)
-      if (!range) continue
 
       try {
-        const span = document.createElement('span')
-        span.className = 'thread-highlight'
-        span.dataset.threadHighlight = '1'
-        span.dataset.threadTopicId = hl.threadTopicId
-        span.dataset.threadParentMessageId = hl.parentMessageId
-        span.dataset.threadStarterPrompt = hl.starterPrompt
-
-        const contents = range.extractContents()
-        span.appendChild(contents)
-        range.insertNode(span)
+        wrapThreadHighlightSafely(root, offsets, {
+          threadTopicId: hl.threadTopicId,
+          parentMessageId: hl.parentMessageId,
+          starterPrompt: hl.starterPrompt
+        })
       } catch {
         // Some ranges can't be wrapped safely; ignore.
       }

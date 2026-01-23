@@ -1,5 +1,5 @@
 import { EVENT_NAMES, EventEmitter } from '@renderer/services/EventService'
-import { findBestAnchorOffsets, rangeFromOffsets } from '@renderer/services/ThreadService'
+import { findBestAnchorOffsets, wrapThreadHighlightSafely } from '@renderer/services/ThreadService'
 import type { ThreadAnchor } from '@renderer/types/thread'
 import type { FC } from 'react'
 import { useCallback, useEffect, useRef } from 'react'
@@ -34,20 +34,13 @@ const ThreadedPlainText: FC<{ text: string; threadHighlights?: ThreadHighlight[]
     for (const hl of threadHighlights) {
       const offsets = findBestAnchorOffsets(contentText, hl.anchor)
       if (!offsets) continue
-      const range = rangeFromOffsets(root, offsets.start, offsets.end)
-      if (!range) continue
 
       try {
-        const span = document.createElement('span')
-        span.className = 'thread-highlight'
-        span.dataset.threadHighlight = '1'
-        span.dataset.threadTopicId = hl.threadTopicId
-        span.dataset.threadParentMessageId = hl.parentMessageId
-        span.dataset.threadStarterPrompt = hl.starterPrompt
-
-        const contents = range.extractContents()
-        span.appendChild(contents)
-        range.insertNode(span)
+        wrapThreadHighlightSafely(root, offsets, {
+          threadTopicId: hl.threadTopicId,
+          parentMessageId: hl.parentMessageId,
+          starterPrompt: hl.starterPrompt
+        })
       } catch {
         // ignore
       }
