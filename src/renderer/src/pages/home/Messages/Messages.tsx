@@ -211,10 +211,49 @@ const Messages: React.FC<MessagesProps> = ({
     [clearTopicMessages, topic.id]
   )
 
+  const revealAndLocateMessage = useCallback(
+    (messageId: string, highlight: boolean = true) => {
+      const currentMessages = messagesRef.current
+      if (!currentMessages.length) return
+
+      const reversedMessages = [...currentMessages].reverse()
+      const targetIndex = reversedMessages.findIndex((m) => m.id === messageId)
+      if (targetIndex === -1) return
+
+      const desiredLength = targetIndex + 1
+      const currentLength = displayMessagesRef.current.length
+
+      if (currentLength < desiredLength) {
+        const nextDisplayMessages = reversedMessages.slice(0, desiredLength)
+        setDisplayMessages(nextDisplayMessages)
+        displayMessagesRef.current = nextDisplayMessages
+        setHasMore(desiredLength < reversedMessages.length)
+      }
+
+      // Wait a tick for render to ensure the target DOM node exists, then use existing locate logic.
+      setTimeoutTimer(
+        `revealAndLocateMessage:${messageId}`,
+        () => EventEmitter.emit(EVENT_NAMES.LOCATE_MESSAGE + ':' + messageId, highlight),
+        100
+      )
+    },
+    [setTimeoutTimer]
+  )
+
   useEffect(() => {
     if (!enableGlobalEvents) return
     const unsubscribes = [
       EventEmitter.on(EVENT_NAMES.SEND_MESSAGE, scrollToBottom),
+      EventEmitter.on(
+        EVENT_NAMES.REVEAL_MESSAGE,
+        (payload: { topicId: string; messageId: string; highlight?: boolean }) => {
+          if (containerId !== 'messages') return
+          if (!payload?.topicId || payload.topicId !== topic.id) return
+          if (!payload?.messageId) return
+
+          revealAndLocateMessage(payload.messageId, payload.highlight ?? true)
+        }
+      ),
       EventEmitter.on(EVENT_NAMES.CLEAR_MESSAGES, async (data: Topic) => {
         window.modal.confirm({
           title: t('chat.input.clear.title'),
@@ -333,7 +372,17 @@ const Messages: React.FC<MessagesProps> = ({
 
     return () => unsubscribes.forEach((unsub) => unsub())
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [assistant, dispatch, enableGlobalEvents, scrollToBottom, t, topic, isProcessingContext])
+  }, [
+    assistant,
+    containerId,
+    dispatch,
+    enableGlobalEvents,
+    isProcessingContext,
+    revealAndLocateMessage,
+    scrollToBottom,
+    t,
+    topic
+  ])
 
   useEffect(() => {
     runAsyncFunction(async () => {

@@ -834,6 +834,8 @@
       "last": "Already at the last message",
       "next": "Next Message",
       "prev": "Previous Message",
+      "toc": "Messages",
+      "toc_empty": "No messages yet",
       "top": "Back to top"
     },
     "resend": "Resend",

@@ -27,6 +27,10 @@ export const EVENT_NAMES = {
   EDIT_CODE_BLOCK: 'EDIT_CODE_BLOCK',
   CHANGE_TOPIC: 'CHANGE_TOPIC',
 
+  // Messages TOC / navigation
+  // payload: { topicId: string, messageId: string, highlight?: boolean }
+  REVEAL_MESSAGE: 'REVEAL_MESSAGE',
+
   // Threads / selection comments
   // payload: { parentTopicId?: string, assistantId?: string, parentMessageId, threadTopicId?: string, focusComposer?: boolean, draft?: string, anchor?: ThreadAnchor }
   OPEN_THREAD_PANEL: 'OPEN_THREAD_PANEL',
