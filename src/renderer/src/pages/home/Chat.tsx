@@ -25,6 +25,7 @@ import { useTranslation } from 'react-i18next'
 import styled from 'styled-components'
 
 import ChatNavbar from './ChatNavbar'
+import MessagesTocPanel from './components/MessagesTocPanel'
 import AgentSessionInputbar from './Inputbar/AgentSessionInputbar'
 import Inputbar from './Inputbar/Inputbar'
 import AgentSessionMessages from './Messages/AgentSessionMessages'
@@ -63,6 +64,7 @@ const Chat: FC<Props> = (props) => {
   const contentSearchRef = React.useRef<ContentSearchRef>(null)
   const [filterIncludeUser, setFilterIncludeUser] = useState(false)
   const [isChatFindActive, setIsChatFindActive] = useState(false)
+  const [isMessagesTocOpen, setIsMessagesTocOpen] = useState(false)
 
   const { setTimeoutTimer } = useTimer()
 
@@ -201,6 +203,8 @@ const Chat: FC<Props> = (props) => {
               setActiveTopic={props.setActiveTopic}
               setActiveAssistant={props.setActiveAssistant}
               position="left"
+              messagesTocOpen={isMessagesTocOpen}
+              onToggleMessagesToc={() => setIsMessagesTocOpen((prev) => !prev)}
             />
             <div
               className="flex flex-1 flex-col justify-between"
@@ -208,6 +212,13 @@ const Chat: FC<Props> = (props) => {
               {activeTopicOrSession === 'topic' && (
                 <>
                   <div style={{ display: 'flex', flex: 1, minHeight: 0, minWidth: 0 }}>
+                    {isMessagesTocOpen && (
+                      <MessagesTocPanel
+                        topic={props.activeTopic}
+                        onClose={() => setIsMessagesTocOpen(false)}
+                        containerId="messages"
+                      />
+                    )}
                     <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, minWidth: 0 }}>
                       <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, minWidth: 0 }}>
                         <Messages

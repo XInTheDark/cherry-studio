@@ -29,9 +29,18 @@ interface Props {
   setActiveTopic: (topic: Topic) => void
   setActiveAssistant: (assistant: Assistant) => void
   position: 'left' | 'right'
+  messagesTocOpen: boolean
+  onToggleMessagesToc: () => void
 }
 
-const HeaderNavbar: FC<Props> = ({ activeAssistant, setActiveAssistant, activeTopic, setActiveTopic }) => {
+const HeaderNavbar: FC<Props> = ({
+  activeAssistant,
+  setActiveAssistant,
+  activeTopic,
+  setActiveTopic,
+  messagesTocOpen,
+  onToggleMessagesToc
+}) => {
   const { assistant } = useAssistant(activeAssistant.id)
   const { showAssistants, toggleShowAssistants } = useShowAssistants()
   const { topicPosition, narrowMode } = useSettings()
@@ -101,7 +110,7 @@ const HeaderNavbar: FC<Props> = ({ activeAssistant, setActiveAssistant, activeTo
       </div>
       <HStack alignItems="center" gap={8}>
         {isTopNavbar && <UpdateAppButton />}
-        <MessagesTocButton topic={activeTopic} />
+        <MessagesTocButton open={messagesTocOpen} onToggle={onToggleMessagesToc} />
         <SettingsButton assistant={assistant} />
         {isTopNavbar && (
           <Tooltip title={t('navbar.expand')} mouseEnterDelay={0.8}>
