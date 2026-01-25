@@ -1,5 +1,6 @@
 import { loggerService } from '@logger'
 import Ellipsis from '@renderer/components/Ellipsis'
+import { DEFAULT_KNOWLEDGE_DOCUMENT_COUNT, KNOWLEDGE_DOCUMENT_COUNT_FULL_FILES_RAW } from '@renderer/config/constant'
 import { useFiles } from '@renderer/hooks/useFiles'
 import { useKnowledge } from '@renderer/hooks/useKnowledge'
 import FileItem from '@renderer/pages/files/FileItem'
@@ -9,7 +10,7 @@ import { getProviderName } from '@renderer/services/ProviderService'
 import type { FileMetadata, FileTypes, KnowledgeBase, KnowledgeItem } from '@renderer/types'
 import { isKnowledgeFileItem } from '@renderer/types'
 import { formatFileSize, uuid } from '@renderer/utils'
-import { bookExts, documentExts, textExts, thirdPartyApplicationExts } from '@shared/config/constant'
+import { bookExts, documentExts, imageExts, textExts, thirdPartyApplicationExts } from '@shared/config/constant'
 import { Button, Tooltip, Upload } from 'antd'
 import dayjs from 'dayjs'
 import type { FC } from 'react'
@@ -42,7 +43,7 @@ interface KnowledgeContentProps {
   preprocessMap: Map<string, boolean>
 }
 
-const fileTypes = [...bookExts, ...thirdPartyApplicationExts, ...documentExts, ...textExts]
+const baseFileTypes = [...bookExts, ...thirdPartyApplicationExts, ...documentExts, ...textExts]
 
 const getDisplayTime = (item: KnowledgeItem) => {
   const timestamp = item.updated_at && item.updated_at > item.created_at ? item.updated_at : item.created_at
@@ -52,11 +53,16 @@ const getDisplayTime = (item: KnowledgeItem) => {
 const KnowledgeFiles: FC<KnowledgeContentProps> = ({ selectedBase, progressMap, preprocessMap }) => {
   const { t } = useTranslation()
   const [windowHeight, setWindowHeight] = useState(window.innerHeight)
-  const { onSelectFile, selecting } = useFiles({ extensions: fileTypes })
 
   const { base, fileItems, addFiles, refreshItem, removeItem, getProcessingStatus } = useKnowledge(
     selectedBase.id || ''
   )
+
+  const enableRawFilesMode =
+    (base?.documentCount ?? DEFAULT_KNOWLEDGE_DOCUMENT_COUNT) === KNOWLEDGE_DOCUMENT_COUNT_FULL_FILES_RAW
+  const fileTypes = enableRawFilesMode ? [...baseFileTypes, ...imageExts] : baseFileTypes
+
+  const { onSelectFile, selecting } = useFiles({ extensions: fileTypes })
 
   useEffect(() => {
     const handleResize = () => {
@@ -167,7 +173,9 @@ const KnowledgeFiles: FC<KnowledgeContentProps> = ({ selectedBase, progressMap, 
             openFileDialogOnClick={false}>
             <p className="ant-upload-text">{t('knowledge.drag_file')}</p>
             <p className="ant-upload-hint">
-              {t('knowledge.file_hint', { file_types: 'TXT, MD, HTML, PDF, DOCX, PPTX, XLSX, EPUB...' })}
+              {enableRawFilesMode
+                ? t('knowledge.file_hint', { file_types: 'TXT, MD, HTML, PDF, DOCX, PPTX, XLSX, EPUB, PNG, JPG...' })
+                : t('knowledge.file_hint', { file_types: 'TXT, MD, HTML, PDF, DOCX, PPTX, XLSX, EPUB...' })}
             </p>
           </Dragger>
         </div>
@@ -201,7 +209,7 @@ const KnowledgeFiles: FC<KnowledgeContentProps> = ({ selectedBase, progressMap, 
                       extra: `${getDisplayTime(item)} · ${formatFileSize(file.size)}`,
                       actions: (
                         <FlexAlignCenter>
-                          {item.uniqueId && (
+                          {item.uniqueId && !item.uniqueId.startsWith('raw:') && (
                             <Button type="text" icon={<RefreshIcon />} onClick={() => refreshItem(item)} />
                           )}
                           {showPreprocessIcon(item) && (

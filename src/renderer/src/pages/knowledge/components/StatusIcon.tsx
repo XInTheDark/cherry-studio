@@ -34,6 +34,13 @@ const StatusIcon: FC<StatusIconProps> = ({
   return useMemo(() => {
     if (!status) {
       if (item?.uniqueId) {
+        if (item.uniqueId.startsWith('raw:')) {
+          return (
+            <Tooltip title={t('knowledge.status_completed')} placement="left">
+              <CheckCircleOutlined style={{ color: '#52c41a' }} />
+            </Tooltip>
+          )
+        }
         if (isPreprocessed && item.type === 'file') {
           return (
             <Tooltip title={t('knowledge.status_preprocess_completed')} placement="left">

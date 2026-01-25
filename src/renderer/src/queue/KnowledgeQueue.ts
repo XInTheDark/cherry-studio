@@ -1,4 +1,5 @@
 import { loggerService } from '@logger'
+import { DEFAULT_KNOWLEDGE_DOCUMENT_COUNT, KNOWLEDGE_DOCUMENT_COUNT_FULL_FILES_RAW } from '@renderer/config/constant'
 import db from '@renderer/databases'
 import { getStoreSetting } from '@renderer/hooks/useSettings'
 import { getKnowledgeBaseParams } from '@renderer/services/KnowledgeService'
@@ -10,7 +11,7 @@ import {
   updateBaseItemUniqueId,
   updateItemProcessingStatus
 } from '@renderer/store/knowledge'
-import type { KnowledgeItem } from '@renderer/types'
+import { type FileMetadata, FileTypes, type KnowledgeItem } from '@renderer/types'
 import { uuid } from '@renderer/utils'
 import type { LoaderReturn } from '@shared/config/types'
 import { t } from 'i18next'
@@ -147,6 +148,9 @@ class KnowledgeQueue {
         throw new Error(`[KnowledgeQueue] Source item ${item.id} not found in base ${baseId}`)
       }
 
+      const enableRawFilesMode =
+        (base.documentCount ?? DEFAULT_KNOWLEDGE_DOCUMENT_COUNT) === KNOWLEDGE_DOCUMENT_COUNT_FULL_FILES_RAW
+
       let result: LoaderReturn | null = null
       let note, content
 
@@ -162,6 +166,22 @@ class KnowledgeQueue {
           }
           break
         default: {
+          // Raw mode supports attaching images directly to the model. The KB embedding/indexing pipeline is
+          // text-centric and does not support images; skip indexing to avoid permanent failures.
+          if (enableRawFilesMode && sourceItem.type === 'file') {
+            const file = sourceItem.content as FileMetadata
+            if (file?.type === FileTypes.IMAGE) {
+              const uniqueId = `raw:${file.id}`
+              result = {
+                entriesAdded: 0,
+                uniqueId,
+                uniqueIds: [uniqueId],
+                loaderType: 'raw'
+              }
+              break
+            }
+          }
+
           result = await window.api.knowledgeBase.add({
             base: baseParams,
             item: sourceItem,
@@ -221,7 +241,12 @@ class KnowledgeQueue {
           updateBaseItemIsPreprocessed({
             baseId,
             itemId: item.id,
-            isPreprocessed: !!base.preprocessProvider
+            isPreprocessed:
+              enableRawFilesMode &&
+              sourceItem.type === 'file' &&
+              (sourceItem.content as FileMetadata)?.type === FileTypes.IMAGE
+                ? false
+                : !!base.preprocessProvider
           })
         )
       }
