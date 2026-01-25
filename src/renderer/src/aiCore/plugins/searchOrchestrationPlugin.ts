@@ -10,6 +10,11 @@ import { type AiRequestContext, definePlugin } from '@cherrystudio/ai-core'
 import { loggerService } from '@logger'
 // import { generateObject } from '@cherrystudio/ai-core'
 import {
+  DEFAULT_KNOWLEDGE_DOCUMENT_COUNT,
+  KNOWLEDGE_DOCUMENT_COUNT_FULL_FILES,
+  KNOWLEDGE_DOCUMENT_COUNT_FULL_FILES_RAW
+} from '@renderer/config/constant'
+import {
   SEARCH_SUMMARY_PROMPT,
   SEARCH_SUMMARY_PROMPT_KNOWLEDGE_ONLY,
   SEARCH_SUMMARY_PROMPT_WEB_ONLY
@@ -264,12 +269,21 @@ export const searchOrchestrationPlugin = (assistant: Assistant, topicId: string)
         userMessages[context.requestId] = lastUserMessage
 
         // 判断是否需要各种搜索
-        const knowledgeBaseIds = assistant.knowledge_bases?.map((base) => base.id)
-        const hasKnowledgeBase = !isEmpty(knowledgeBaseIds)
+        // Knowledge search tool should only apply to chunk-based KBs.
+        // Full-files modes already provide the entire KB content (text) or attach raw files, so
+        // passing the KB search tool to the model is redundant and can confuse behavior.
+        const chunkKnowledgeBaseIds =
+          assistant.knowledge_bases
+            ?.filter((base) => {
+              const count = base.documentCount ?? DEFAULT_KNOWLEDGE_DOCUMENT_COUNT
+              return count !== KNOWLEDGE_DOCUMENT_COUNT_FULL_FILES && count !== KNOWLEDGE_DOCUMENT_COUNT_FULL_FILES_RAW
+            })
+            .map((base) => base.id) ?? []
+        const hasChunkKnowledgeBase = !isEmpty(chunkKnowledgeBaseIds)
         const knowledgeRecognition = assistant.knowledgeRecognition || 'off'
         const globalMemoryEnabled = selectGlobalMemoryEnabled(store.getState())
         const shouldWebSearch = !!assistant.webSearchProviderId
-        const shouldKnowledgeSearch = hasKnowledgeBase && knowledgeRecognition === 'on'
+        const shouldKnowledgeSearch = hasChunkKnowledgeBase && knowledgeRecognition === 'on'
         const shouldMemorySearch = globalMemoryEnabled && assistant.enableMemory
 
         // 执行意图分析
@@ -328,10 +342,16 @@ export const searchOrchestrationPlugin = (assistant: Assistant, topicId: string)
         }
 
         // 📚 知识库搜索工具配置
-        const knowledgeBaseIds = assistant.knowledge_bases?.map((base) => base.id)
-        const hasKnowledgeBase = !isEmpty(knowledgeBaseIds)
+        const chunkKnowledgeBaseIds =
+          assistant.knowledge_bases
+            ?.filter((base) => {
+              const count = base.documentCount ?? DEFAULT_KNOWLEDGE_DOCUMENT_COUNT
+              return count !== KNOWLEDGE_DOCUMENT_COUNT_FULL_FILES && count !== KNOWLEDGE_DOCUMENT_COUNT_FULL_FILES_RAW
+            })
+            .map((base) => base.id) ?? []
+        const hasChunkKnowledgeBase = !isEmpty(chunkKnowledgeBaseIds)
         const knowledgeRecognition = assistant.knowledgeRecognition || 'off'
-        const shouldKnowledgeSearch = hasKnowledgeBase && knowledgeRecognition === 'on'
+        const shouldKnowledgeSearch = hasChunkKnowledgeBase && knowledgeRecognition === 'on'
 
         if (shouldKnowledgeSearch) {
           // on 模式：根据意图识别结果决定是否添加工具
@@ -343,12 +363,13 @@ export const searchOrchestrationPlugin = (assistant: Assistant, topicId: string)
           if (needsKnowledgeSearch && analysisResult.knowledge) {
             // logger.info('📚 Adding knowledge search tool (intent-based)')
             const userMessage = userMessages[context.requestId]
-            params.tools['builtin_knowledge_search'] = knowledgeSearchTool(
+            params.tools['builtin_knowledge_search'] = knowledgeSearchTool({
               assistant,
-              analysisResult.knowledge,
-              getMessageContent(userMessage),
-              topicId
-            )
+              extractedKeywords: analysisResult.knowledge,
+              topicId,
+              userMessage: getMessageContent(userMessage),
+              knowledgeBaseIds: chunkKnowledgeBaseIds
+            })
           }
         }
 

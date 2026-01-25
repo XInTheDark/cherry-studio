@@ -10,12 +10,19 @@ import * as z from 'zod'
  * 知识库搜索工具
  * 使用预提取关键词，直接使用插件阶段分析的搜索意图，避免重复分析
  */
-export const knowledgeSearchTool = (
-  assistant: Assistant,
-  extractedKeywords: KnowledgeExtractResults,
-  topicId: string,
+export const knowledgeSearchTool = ({
+  assistant,
+  extractedKeywords,
+  topicId,
+  userMessage,
+  knowledgeBaseIds
+}: {
+  assistant: Assistant
+  extractedKeywords: KnowledgeExtractResults
+  topicId: string
   userMessage?: string
-) => {
+  knowledgeBaseIds?: string[]
+}) => {
   return tool({
     name: 'builtin_knowledge_search',
     description: `Knowledge base search tool for retrieving information from user's private knowledge base. This searches your local collection of documents, web content, notes, and other materials you have stored.
@@ -36,8 +43,8 @@ You can use this tool as-is, or provide additionalContext to refine the search f
     execute: async ({ additionalContext }) => {
       // try {
       // 获取助手的知识库配置
-      const knowledgeBaseIds = assistant.knowledge_bases?.map((base) => base.id)
-      const hasKnowledgeBase = !isEmpty(knowledgeBaseIds)
+      const effectiveKnowledgeBaseIds = knowledgeBaseIds ?? assistant.knowledge_bases?.map((base) => base.id)
+      const hasKnowledgeBase = !isEmpty(effectiveKnowledgeBaseIds)
       const knowledgeRecognition = assistant.knowledgeRecognition || 'on'
 
       // 检查是否有知识库
@@ -87,7 +94,7 @@ You can use this tool as-is, or provide additionalContext to refine the search f
       }
 
       // 执行知识库搜索
-      const knowledgeReferences = await processKnowledgeSearch(extractResults, knowledgeBaseIds, topicId)
+      const knowledgeReferences = await processKnowledgeSearch(extractResults, effectiveKnowledgeBaseIds, topicId)
       const knowledgeReferencesData = knowledgeReferences.map((ref: KnowledgeReference) => ({
         id: ref.id,
         content: ref.content,

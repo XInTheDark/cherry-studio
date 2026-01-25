@@ -434,7 +434,15 @@ const buildFullFilesKnowledgeContext = async ({
       continue
     }
 
-    const items = base.items.filter((item) => (item.type === 'file' || item.type === 'note') && !!item.uniqueId)
+    // Raw-only KB items (uniqueId starts with `raw:`) are not indexed/extracted and therefore cannot be
+    // fetched via getDocuments. Skip them in text full-files injection to avoid errors if the user
+    // switches modes after adding raw-only items (e.g. images).
+    const items = base.items.filter(
+      (item) =>
+        (item.type === 'file' || item.type === 'note') &&
+        !!item.uniqueId &&
+        !(typeof item.uniqueId === 'string' && item.uniqueId.startsWith('raw:'))
+    )
     if (items.length === 0) {
       continue
     }
