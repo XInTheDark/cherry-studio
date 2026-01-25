@@ -1,4 +1,5 @@
 import { loggerService } from '@logger'
+import { API_SERVER_DEFAULTS } from '@shared/config/constant'
 import axios from 'axios'
 import type { ProxyConfig } from 'electron'
 import { app, session } from 'electron'
@@ -339,6 +340,47 @@ class SelectiveDispatcher extends Dispatcher {
   }
 }
 
+class TimeoutDispatcher extends Dispatcher {
+  private innerDispatcher: Dispatcher
+  private getTimeoutMs: () => number
+
+  constructor(innerDispatcher: Dispatcher, getTimeoutMs: () => number) {
+    super()
+    this.innerDispatcher = innerDispatcher
+    this.getTimeoutMs = getTimeoutMs
+  }
+
+  dispatch(opts: Dispatcher.DispatchOptions, handler: Dispatcher.DispatchHandlers) {
+    const timeoutMs = this.getTimeoutMs()
+    // Only apply defaults if the request didn't specify its own timeouts.
+    if (opts.headersTimeout != null && opts.bodyTimeout != null) {
+      return this.innerDispatcher.dispatch(opts, handler)
+    }
+
+    const nextOpts: Dispatcher.DispatchOptions = { ...opts }
+    if (nextOpts.headersTimeout == null) nextOpts.headersTimeout = timeoutMs
+    if (nextOpts.bodyTimeout == null) nextOpts.bodyTimeout = timeoutMs
+    return this.innerDispatcher.dispatch(nextOpts, handler)
+  }
+
+  async close(): Promise<void> {
+    try {
+      await this.innerDispatcher.close()
+    } catch (error) {
+      logger.error('Failed to close dispatcher:', error as Error)
+      this.innerDispatcher.destroy()
+    }
+  }
+
+  async destroy(): Promise<void> {
+    try {
+      await this.innerDispatcher.destroy()
+    } catch (error) {
+      logger.error('Failed to destroy dispatcher:', error as Error)
+    }
+  }
+}
+
 export class ProxyManager {
   private config: ProxyConfig = { mode: 'direct' }
   private systemProxyInterval: NodeJS.Timeout | null = null
@@ -346,6 +388,8 @@ export class ProxyManager {
 
   private proxyDispatcher: Dispatcher | null = null
   private proxyAgent: ProxyAgent | null = null
+
+  private requestTimeoutMinutes: number = API_SERVER_DEFAULTS.REQUEST_TIMEOUT_MINUTES
 
   private originalGlobalDispatcher: Dispatcher
   private originalSocksDispatcher: Dispatcher
@@ -365,6 +409,23 @@ export class ProxyManager {
     this.originalHttpsGet = https.get
     this.originalHttpsRequest = https.request
     this.originalAxiosAdapter = axios.defaults.adapter
+  }
+
+  setRequestTimeoutMinutes(minutes: number): void {
+    const normalized =
+      typeof minutes === 'number' && Number.isFinite(minutes)
+        ? Math.max(0, Math.floor(minutes))
+        : API_SERVER_DEFAULTS.REQUEST_TIMEOUT_MINUTES
+    this.requestTimeoutMinutes = normalized
+    logger.debug('Updated global request timeout minutes', { requestTimeoutMinutes: this.requestTimeoutMinutes })
+  }
+
+  private getRequestTimeoutMs(): number {
+    return this.requestTimeoutMinutes === 0 ? 0 : this.requestTimeoutMinutes * 60_000
+  }
+
+  private wrapDispatcherWithTimeouts(dispatcher: Dispatcher): Dispatcher {
+    return new TimeoutDispatcher(dispatcher, () => this.getRequestTimeoutMs())
   }
 
   private async monitorSystemProxy(): Promise<void> {
@@ -548,8 +609,8 @@ export class ProxyManager {
   private setGlobalFetchProxy(config: ProxyConfig) {
     const proxyUrl = config.proxyRules
     if (config.mode === 'direct' || !proxyUrl) {
-      setGlobalDispatcher(this.originalGlobalDispatcher)
-      global[Symbol.for('undici.globalDispatcher.1')] = this.originalSocksDispatcher
+      setGlobalDispatcher(this.wrapDispatcherWithTimeouts(this.originalGlobalDispatcher))
+      global[Symbol.for('undici.globalDispatcher.1')] = this.wrapDispatcherWithTimeouts(this.originalSocksDispatcher)
       this.proxyDispatcher?.close()
       this.proxyDispatcher = null
       axios.defaults.adapter = this.originalAxiosAdapter
@@ -562,7 +623,7 @@ export class ProxyManager {
     const url = new URL(proxyUrl)
     if (url.protocol === 'http:' || url.protocol === 'https:') {
       this.proxyDispatcher = new SelectiveDispatcher(new EnvHttpProxyAgent(), this.originalGlobalDispatcher)
-      setGlobalDispatcher(this.proxyDispatcher)
+      setGlobalDispatcher(this.wrapDispatcherWithTimeouts(this.proxyDispatcher))
       return
     }
 
@@ -576,7 +637,7 @@ export class ProxyManager {
       }),
       this.originalSocksDispatcher
     )
-    global[Symbol.for('undici.globalDispatcher.1')] = this.proxyDispatcher
+    global[Symbol.for('undici.globalDispatcher.1')] = this.wrapDispatcherWithTimeouts(this.proxyDispatcher)
   }
 
   private async setSessionsProxy(config: ProxyConfig): Promise<void> {

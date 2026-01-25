@@ -3,6 +3,11 @@ export type ApiServerConfig = {
   host: string
   port: number
   apiKey: string
+  /**
+   * HTTP server request timeout in minutes.
+   * - 0 means disable (no timeout).
+   */
+  requestTimeoutMinutes: number
 }
 
 export type GetApiServerStatusResult = {

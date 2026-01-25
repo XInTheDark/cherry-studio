@@ -2057,7 +2057,8 @@ const migrateConfig = {
           enabled: false,
           host: API_SERVER_DEFAULTS.HOST,
           port: API_SERVER_DEFAULTS.PORT,
-          apiKey: `cs-sk-${uuid()}`
+          apiKey: `cs-sk-${uuid()}`,
+          requestTimeoutMinutes: API_SERVER_DEFAULTS.REQUEST_TIMEOUT_MINUTES
         }
       }
       return state
@@ -3157,6 +3158,33 @@ const migrateConfig = {
       return state
     } catch (error) {
       logger.error('migrate 192 error', error as Error)
+      return state
+    }
+  },
+  '193': (state: RootState) => {
+    try {
+      // Add configurable API server request timeout (minutes). 0 means disable.
+      if (!state.settings.apiServer) {
+        state.settings.apiServer = {
+          enabled: false,
+          host: API_SERVER_DEFAULTS.HOST,
+          port: API_SERVER_DEFAULTS.PORT,
+          apiKey: `cs-sk-${uuid()}`,
+          requestTimeoutMinutes: API_SERVER_DEFAULTS.REQUEST_TIMEOUT_MINUTES
+        }
+        logger.info('migrate 193 success')
+        return state
+      }
+
+      const requestTimeoutMinutes = state.settings.apiServer.requestTimeoutMinutes
+      if (typeof requestTimeoutMinutes !== 'number' || requestTimeoutMinutes < 0) {
+        state.settings.apiServer.requestTimeoutMinutes = API_SERVER_DEFAULTS.REQUEST_TIMEOUT_MINUTES
+      }
+
+      logger.info('migrate 193 success')
+      return state
+    } catch (error) {
+      logger.error('migrate 193 error', error as Error)
       return state
     }
   }

@@ -13,6 +13,9 @@ This file provides guidance to AI coding assistants when working with code in th
 - **Lint, test, and format before completion**: Coding tasks are only complete after running `pnpm lint`, `pnpm test`, and `pnpm format` successfully.
 - **Write conventional commits**: Commit small, focused changes using Conventional Commit messages (e.g., `feat:`, `fix:`, `refactor:`, `docs:`).
 
+## for UI
+Before you try to create new component, check if there is already an existing component that does the work! The existing components are well designed.
+
 ## Pull Request Workflow (CRITICAL)
 
 When creating a Pull Request, you MUST:

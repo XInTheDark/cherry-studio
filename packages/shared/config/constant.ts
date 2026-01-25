@@ -9,7 +9,10 @@ export const bookExts = ['.epub']
 
 export const API_SERVER_DEFAULTS = {
   HOST: '127.0.0.1',
-  PORT: 23333
+  PORT: 23333,
+  // Node's default http server requestTimeout is 5 minutes; use a larger default to avoid cutting off long requests.
+  // 0 means disable (no request timeout).
+  REQUEST_TIMEOUT_MINUTES: 30
 }
 
 /**

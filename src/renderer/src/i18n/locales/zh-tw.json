@@ -349,6 +349,12 @@
         "helpText": "停止伺服器以變更連接埠",
         "label": "連接埠"
       },
+      "requestTimeoutMinutes": {
+        "description": "請求在中止前允許的最長時間（分鐘）。同時套用於 API 伺服器與聊天請求。設為 0 表示停用。",
+        "helpText": "重新啟動伺服器以套用至 API 伺服器（聊天請求會立即生效）",
+        "label": "請求逾時",
+        "unit": "分鐘"
+      },
       "url": {
         "copyTooltip": "複製 URL",
         "label": "URL"

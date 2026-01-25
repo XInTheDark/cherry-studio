@@ -2,7 +2,7 @@ import { useTheme } from '@renderer/context/ThemeProvider'
 import { useApiServer } from '@renderer/hooks/useApiServer'
 import type { RootState } from '@renderer/store'
 import { useAppDispatch } from '@renderer/store'
-import { setApiServerApiKey, setApiServerPort } from '@renderer/store/settings'
+import { setApiServerApiKey, setApiServerPort, setApiServerRequestTimeoutMinutes } from '@renderer/store/settings'
 import { formatErrorMessage } from '@renderer/utils/error'
 import { API_SERVER_DEFAULTS } from '@shared/config/constant'
 import { Alert, Button, Input, InputNumber, Tooltip, Typography } from 'antd'
@@ -61,6 +61,14 @@ const ApiServerSettings: FC = () => {
     if (port >= 1000 && port <= 65535) {
       dispatch(setApiServerPort(port))
     }
+  }
+
+  const handleRequestTimeoutMinutesChange = (value: string | number | null) => {
+    const timeoutMinutes = typeof value === 'number' ? value : typeof value === 'string' ? Number(value) : 0
+    if (!Number.isFinite(timeoutMinutes) || timeoutMinutes < 0) {
+      return
+    }
+    dispatch(setApiServerRequestTimeoutMinutes(Math.floor(timeoutMinutes)))
   }
 
   const openApiDocs = () => {
@@ -150,6 +158,28 @@ const ApiServerSettings: FC = () => {
           </Tooltip>
         </ControlSection>
       </ServerControlPanel>
+
+      {/* Request timeout configuration */}
+      <ConfigurationField style={{ marginBottom: 16 }}>
+        <FieldLabel>{t('apiServer.fields.requestTimeoutMinutes.label')}</FieldLabel>
+        <FieldDescription>{t('apiServer.fields.requestTimeoutMinutes.description')}</FieldDescription>
+        <TimeoutInputRow>
+          <TimeoutInput
+            value={apiServerConfig.requestTimeoutMinutes ?? API_SERVER_DEFAULTS.REQUEST_TIMEOUT_MINUTES}
+            onChange={handleRequestTimeoutMinutesChange}
+            min={0}
+            max={1440}
+            step={1}
+            precision={0}
+            disabled={apiServerLoading}
+            size="middle"
+          />
+          <Text type="secondary">{t('apiServer.fields.requestTimeoutMinutes.unit')}</Text>
+        </TimeoutInputRow>
+        {apiServerRunning && (
+          <FieldDescription>{t('apiServer.fields.requestTimeoutMinutes.helpText')}</FieldDescription>
+        )}
+      </ConfigurationField>
 
       {/* API Key Configuration */}
       <ConfigurationField>
@@ -302,6 +332,18 @@ const StyledInputNumber = styled(InputNumber)`
   border-radius: 6px;
   border: 1.5px solid var(--color-border);
   margin-right: 5px;
+`
+
+const TimeoutInputRow = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 8px;
+`
+
+const TimeoutInput = styled(InputNumber)`
+  width: 120px;
+  border-radius: 6px;
+  border: 1.5px solid var(--color-border);
 `
 
 const StartButton = styled.div<{ $loading: boolean }>`

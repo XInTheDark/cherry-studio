@@ -349,6 +349,12 @@
         "helpText": "停止服务器以更改端口",
         "label": "端口"
       },
+      "requestTimeoutMinutes": {
+        "description": "请求在中止前允许的最长时间（分钟）。同时应用于 API 服务器和聊天请求。设置为 0 表示禁用。",
+        "helpText": "重启服务器以应用到 API 服务器（聊天请求会立即生效）",
+        "label": "请求超时",
+        "unit": "分钟"
+      },
       "url": {
         "copyTooltip": "复制 URL",
         "label": "URL"

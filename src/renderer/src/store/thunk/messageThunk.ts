@@ -47,6 +47,7 @@ import {
 } from '@renderer/utils/messageUtils/create'
 import { getMainTextContent } from '@renderer/utils/messageUtils/find'
 import { getTopicQueue, waitForTopicQueue } from '@renderer/utils/queue'
+import { API_SERVER_DEFAULTS } from '@shared/config/constant'
 import { IpcChannel } from '@shared/IpcChannel'
 import { defaultAppHeaders } from '@shared/utils'
 import type { TextStreamPart } from 'ai'
@@ -827,6 +828,10 @@ const fetchAndProcessAssistantResponseImpl = async (
     const abortController = new AbortController()
     addAbortController(userMessageId!, () => abortController.abort())
 
+    const requestTimeoutMinutes =
+      getState().settings.apiServer?.requestTimeoutMinutes ?? API_SERVER_DEFAULTS.REQUEST_TIMEOUT_MINUTES
+    const requestTimeoutMs = requestTimeoutMinutes <= 0 ? 0 : requestTimeoutMinutes * 60_000
+
     await transformMessagesAndFetch(
       {
         messages: messagesForContext,
@@ -837,7 +842,7 @@ const fetchAndProcessAssistantResponseImpl = async (
         callbacks,
         options: {
           signal: abortController.signal,
-          timeout: 30000,
+          timeout: requestTimeoutMs,
           headers: defaultAppHeaders()
         }
       },

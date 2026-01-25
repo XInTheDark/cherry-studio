@@ -349,6 +349,12 @@
         "helpText": "Stop server to change port",
         "label": "Port"
       },
+      "requestTimeoutMinutes": {
+        "description": "Maximum time in minutes before requests are aborted. Applies to API Server and chat requests. Set to 0 to disable.",
+        "helpText": "Restart server to apply to API Server (chat applies immediately)",
+        "label": "Request Timeout",
+        "unit": "minutes"
+      },
       "url": {
         "copyTooltip": "Copy URL",
         "label": "URL"

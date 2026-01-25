@@ -35,6 +35,7 @@ import type { StreamTextParams } from '@renderer/types/aiCoreTypes'
 import { mapRegexToPatterns } from '@renderer/utils/blacklistMatchPattern'
 import { replacePromptVariables } from '@renderer/utils/prompt'
 import { isAIGatewayProvider, isAwsBedrockProvider, isSupportUrlContextProvider } from '@renderer/utils/provider'
+import { API_SERVER_DEFAULTS } from '@shared/config/constant'
 import type { ModelMessage, Tool } from 'ai'
 import { stepCountIs } from 'ai'
 
@@ -249,6 +250,17 @@ export async function buildStreamTextParams(
   // Note: standardParams (topK, frequencyPenalty, presencePenalty, stopSequences, seed)
   // are extracted from custom parameters and passed directly to streamText()
   // instead of being placed in providerOptions
+  const configuredTimeoutMinutes =
+    store.getState().settings.apiServer?.requestTimeoutMinutes ?? API_SERVER_DEFAULTS.REQUEST_TIMEOUT_MINUTES
+  const configuredTimeoutMs = configuredTimeoutMinutes <= 0 ? 0 : configuredTimeoutMinutes * 60_000
+  const timeoutMs = options.requestOptions?.timeout ?? configuredTimeoutMs
+
+  let abortSignal = options.requestOptions?.signal
+  if (typeof timeoutMs === 'number' && timeoutMs > 0) {
+    const timeoutSignal = AbortSignal.timeout(timeoutMs)
+    abortSignal = abortSignal ? AbortSignal.any([abortSignal, timeoutSignal]) : timeoutSignal
+  }
+
   const params: StreamTextParams = {
     messages: sdkMessages,
     maxOutputTokens: getMaxTokens(assistant, model),
@@ -256,7 +268,7 @@ export async function buildStreamTextParams(
     topP: getTopP(assistant, model),
     // Include AI SDK standard params extracted from custom parameters
     ...standardParams,
-    abortSignal: options.requestOptions?.signal,
+    abortSignal,
     headers,
     providerOptions,
     stopWhen: stepCountIs(resolveMaxSteps(assistant)),

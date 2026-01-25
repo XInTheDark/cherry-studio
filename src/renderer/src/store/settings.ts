@@ -527,7 +527,8 @@ export const initialState: SettingsState = {
     enabled: false,
     host: API_SERVER_DEFAULTS.HOST,
     port: API_SERVER_DEFAULTS.PORT,
-    apiKey: `cs-sk-${uuid()}`
+    apiKey: `cs-sk-${uuid()}`,
+    requestTimeoutMinutes: API_SERVER_DEFAULTS.REQUEST_TIMEOUT_MINUTES
   },
   showMessageOutline: false
 }
@@ -987,6 +988,12 @@ const settingsSlice = createSlice({
         apiKey: action.payload
       }
     },
+    setApiServerRequestTimeoutMinutes: (state, action: PayloadAction<number>) => {
+      state.apiServer = {
+        ...state.apiServer,
+        requestTimeoutMinutes: action.payload
+      }
+    },
     setShowMessageOutline: (state, action: PayloadAction<boolean>) => {
       state.showMessageOutline = action.payload
     }
@@ -1125,7 +1132,8 @@ export const {
   // API Server actions
   setApiServerEnabled,
   setApiServerPort,
-  setApiServerApiKey
+  setApiServerApiKey,
+  setApiServerRequestTimeoutMinutes
 } = settingsSlice.actions
 
 export default settingsSlice.reducer

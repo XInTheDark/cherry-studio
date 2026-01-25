@@ -1,6 +1,7 @@
 import { createServer } from 'node:http'
 
 import { loggerService } from '@logger'
+import { API_SERVER_DEFAULTS } from '@shared/config/constant'
 import { IpcChannel } from '@shared/IpcChannel'
 
 import { windowService } from '../services/WindowService'
@@ -9,8 +10,6 @@ import { config } from './config'
 
 const logger = loggerService.withContext('ApiServer')
 
-const GLOBAL_REQUEST_TIMEOUT_MS = 5 * 60_000
-const GLOBAL_HEADERS_TIMEOUT_MS = GLOBAL_REQUEST_TIMEOUT_MS + 5_000
 const GLOBAL_KEEPALIVE_TIMEOUT_MS = 60_000
 
 export class ApiServer {
@@ -29,11 +28,11 @@ export class ApiServer {
     }
 
     // Load config
-    const { port, host } = await config.load()
+    const { port, host, requestTimeoutMinutes } = await config.load()
 
     // Create server with Express app
     this.server = createServer(app)
-    this.applyServerTimeouts(this.server)
+    this.applyServerTimeouts(this.server, requestTimeoutMinutes)
 
     // Start server
     return new Promise((resolve, reject) => {
@@ -57,9 +56,18 @@ export class ApiServer {
     })
   }
 
-  private applyServerTimeouts(server: ReturnType<typeof createServer>): void {
-    server.requestTimeout = GLOBAL_REQUEST_TIMEOUT_MS
-    server.headersTimeout = Math.max(GLOBAL_HEADERS_TIMEOUT_MS, server.requestTimeout + 1_000)
+  private applyServerTimeouts(server: ReturnType<typeof createServer>, requestTimeoutMinutes: number): void {
+    const normalizedMinutes =
+      typeof requestTimeoutMinutes === 'number' && requestTimeoutMinutes >= 0
+        ? requestTimeoutMinutes
+        : API_SERVER_DEFAULTS.REQUEST_TIMEOUT_MINUTES
+
+    // 0 minutes means disable the request timeout entirely.
+    const requestTimeoutMs = normalizedMinutes === 0 ? 0 : normalizedMinutes * 60_000
+    const headersTimeoutMs = requestTimeoutMs === 0 ? 0 : requestTimeoutMs + 5_000
+
+    server.requestTimeout = requestTimeoutMs
+    server.headersTimeout = headersTimeoutMs === 0 ? 0 : Math.max(headersTimeoutMs, server.requestTimeout + 1_000)
     server.keepAliveTimeout = GLOBAL_KEEPALIVE_TIMEOUT_MS
     server.setTimeout(0)
   }

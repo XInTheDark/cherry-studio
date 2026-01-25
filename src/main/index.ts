@@ -8,6 +8,7 @@ import '@main/config'
 import { loggerService } from '@logger'
 import { electronApp, optimizer } from '@electron-toolkit/utils'
 import { replaceDevtoolsFont } from '@main/utils/windowUtil'
+import { API_SERVER_DEFAULTS } from '@shared/config/constant'
 import { app, crashReporter } from 'electron'
 import installExtension, { REACT_DEVELOPER_TOOLS, REDUX_DEVTOOLS } from 'electron-devtools-installer'
 import { isDev, isLinux, isWin } from './constant'
@@ -24,12 +25,14 @@ import mcpService from './services/MCPService'
 import { localTransferService } from './services/LocalTransferService'
 import { nodeTraceService } from './services/NodeTraceService'
 import powerMonitorService from './services/PowerMonitorService'
+import { proxyManager } from './services/ProxyManager'
 import {
   CHERRY_STUDIO_PROTOCOL,
   handleProtocolUrl,
   registerProtocolClient,
   setupAppImageDeepLink
 } from './services/ProtocolClient'
+import { reduxService } from './services/ReduxService'
 import selectionService, { initSelectionService } from './services/SelectionService'
 import { registerShortcuts } from './services/ShortcutService'
 import { TrayService } from './services/TrayService'
@@ -159,6 +162,35 @@ if (!app.requestSingleInstanceLock()) {
     registerShortcuts(mainWindow)
 
     await registerIpc(mainWindow, app)
+
+    // Keep the global Node HTTP client timeouts in sync with the "Request Timeout" setting.
+    // This prevents Undici defaults (~300s) from cutting off long-running requests.
+    runAsyncFunction(async () => {
+      const normalizeTimeoutMinutes = (value: unknown): number => {
+        const parsed = typeof value === 'number' ? value : typeof value === 'string' ? Number(value) : NaN
+        if (!Number.isFinite(parsed) || parsed < 0) {
+          return API_SERVER_DEFAULTS.REQUEST_TIMEOUT_MINUTES
+        }
+        return Math.floor(parsed)
+      }
+
+      try {
+        const initialTimeoutMinutes = await reduxService.select('state.settings.apiServer.requestTimeoutMinutes')
+        proxyManager.setRequestTimeoutMinutes(normalizeTimeoutMinutes(initialTimeoutMinutes))
+      } catch (error) {
+        logger.warn('Failed to read request timeout setting from Redux; using defaults', { error })
+        proxyManager.setRequestTimeoutMinutes(API_SERVER_DEFAULTS.REQUEST_TIMEOUT_MINUTES)
+      }
+
+      try {
+        await reduxService.subscribe('state.settings.apiServer.requestTimeoutMinutes', (value) => {
+          proxyManager.setRequestTimeoutMinutes(normalizeTimeoutMinutes(value))
+        })
+      } catch (error) {
+        logger.warn('Failed to subscribe to request timeout setting changes', { error })
+      }
+    })
+
     localTransferService.startDiscovery({ resetList: true })
 
     replaceDevtoolsFont(mainWindow)

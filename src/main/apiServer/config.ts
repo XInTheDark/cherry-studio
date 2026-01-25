@@ -30,7 +30,8 @@ class ConfigManager {
         enabled: serverSettings?.enabled ?? false,
         port: serverSettings?.port ?? API_SERVER_DEFAULTS.PORT,
         host: serverSettings?.host ?? API_SERVER_DEFAULTS.HOST,
-        apiKey: apiKey
+        apiKey: apiKey,
+        requestTimeoutMinutes: serverSettings?.requestTimeoutMinutes ?? API_SERVER_DEFAULTS.REQUEST_TIMEOUT_MINUTES
       }
       return this._config
     } catch (error: any) {
@@ -39,7 +40,8 @@ class ConfigManager {
         enabled: false,
         port: API_SERVER_DEFAULTS.PORT,
         host: API_SERVER_DEFAULTS.HOST,
-        apiKey: this.generateApiKey()
+        apiKey: this.generateApiKey(),
+        requestTimeoutMinutes: API_SERVER_DEFAULTS.REQUEST_TIMEOUT_MINUTES
       }
       return this._config
     }
