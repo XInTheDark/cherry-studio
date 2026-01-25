@@ -83,9 +83,16 @@ const GeneralSettingsPanel: React.FC<GeneralSettingsPanelProps> = ({ newBase, se
             1: '1',
             6: t('knowledge.document_count_default'),
             30: '30',
-            50: '50',
-            [KNOWLEDGE_DOCUMENT_COUNT_FULL_FILES]: t('knowledge.document_count_full_files'),
-            [KNOWLEDGE_DOCUMENT_COUNT_FULL_FILES_RAW]: t('knowledge.document_count_full_files_raw')
+            [KNOWLEDGE_DOCUMENT_COUNT_FULL_FILES]: {
+              // Avoid overlap with the adjacent max (raw) option label.
+              style: { transform: 'translateX(-100%)', whiteSpace: 'nowrap', fontSize: 12 },
+              label: t('knowledge.document_count_full_files')
+            },
+            [KNOWLEDGE_DOCUMENT_COUNT_FULL_FILES_RAW]: {
+              // Stack under the full-files label to keep the right edge readable.
+              style: { transform: 'translateX(-100%) translateY(16px)', whiteSpace: 'nowrap', fontSize: 12 },
+              label: t('knowledge.document_count_full_files_raw')
+            }
           }}
           onChange={(value) => setNewBase((prev) => ({ ...prev, documentCount: value }))}
         />

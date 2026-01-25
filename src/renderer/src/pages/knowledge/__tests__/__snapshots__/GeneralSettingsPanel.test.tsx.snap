@@ -109,7 +109,7 @@ exports[`GeneralSettingsPanel > basic rendering > should match snapshot 1`] = `
       </span>
     </div>
     <input
-      data-marks="{"1":"1","6":"knowledge.document_count_default","30":"30","50":"50","51":"knowledge.document_count_full_files","52":"knowledge.document_count_full_files_raw"}"
+      data-marks="{"1":"1","6":"knowledge.document_count_default","30":"30","51":{"style":{"transform":"translateX(-100%)","whiteSpace":"nowrap","fontSize":12},"label":"knowledge.document_count_full_files"},"52":{"style":{"transform":"translateX(-100%) translateY(16px)","whiteSpace":"nowrap","fontSize":12},"label":"knowledge.document_count_full_files_raw"}}"
       data-testid="document-count-slider"
       max="52"
       min="1"
