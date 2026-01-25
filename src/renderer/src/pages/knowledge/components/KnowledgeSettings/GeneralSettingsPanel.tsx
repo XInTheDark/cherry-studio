@@ -1,7 +1,11 @@
 import InputEmbeddingDimension from '@renderer/components/InputEmbeddingDimension'
 import ModelSelector from '@renderer/components/ModelSelector'
 import { InfoTooltip } from '@renderer/components/TooltipIcons'
-import { DEFAULT_KNOWLEDGE_DOCUMENT_COUNT, KNOWLEDGE_DOCUMENT_COUNT_FULL_FILES } from '@renderer/config/constant'
+import {
+  DEFAULT_KNOWLEDGE_DOCUMENT_COUNT,
+  KNOWLEDGE_DOCUMENT_COUNT_FULL_FILES,
+  KNOWLEDGE_DOCUMENT_COUNT_FULL_FILES_RAW
+} from '@renderer/config/constant'
 import { isEmbeddingModel } from '@renderer/config/models'
 import { useProviders } from '@renderer/hooks/useProvider'
 import { getModelUniqId } from '@renderer/services/ModelService'
@@ -72,7 +76,7 @@ const GeneralSettingsPanel: React.FC<GeneralSettingsPanelProps> = ({ newBase, se
         <Slider
           style={{ width: '97%' }}
           min={1}
-          max={KNOWLEDGE_DOCUMENT_COUNT_FULL_FILES}
+          max={KNOWLEDGE_DOCUMENT_COUNT_FULL_FILES_RAW}
           step={1}
           value={newBase.documentCount || DEFAULT_KNOWLEDGE_DOCUMENT_COUNT}
           marks={{
@@ -80,7 +84,8 @@ const GeneralSettingsPanel: React.FC<GeneralSettingsPanelProps> = ({ newBase, se
             6: t('knowledge.document_count_default'),
             30: '30',
             50: '50',
-            [KNOWLEDGE_DOCUMENT_COUNT_FULL_FILES]: t('knowledge.document_count_full_files')
+            [KNOWLEDGE_DOCUMENT_COUNT_FULL_FILES]: t('knowledge.document_count_full_files'),
+            [KNOWLEDGE_DOCUMENT_COUNT_FULL_FILES_RAW]: t('knowledge.document_count_full_files_raw')
           }}
           onChange={(value) => setNewBase((prev) => ({ ...prev, documentCount: value }))}
         />

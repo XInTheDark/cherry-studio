@@ -3,10 +3,12 @@ import type { Span } from '@opentelemetry/api'
 import { ModernAiProvider } from '@renderer/aiCore'
 import AiProvider from '@renderer/aiCore/legacy'
 import { getMessageContent } from '@renderer/aiCore/plugins/searchOrchestrationPlugin'
+import { convertFileBlockToFilePart } from '@renderer/aiCore/prepareParams/fileProcessor'
 import {
   DEFAULT_KNOWLEDGE_DOCUMENT_COUNT,
   DEFAULT_KNOWLEDGE_THRESHOLD,
-  KNOWLEDGE_DOCUMENT_COUNT_FULL_FILES
+  KNOWLEDGE_DOCUMENT_COUNT_FULL_FILES,
+  KNOWLEDGE_DOCUMENT_COUNT_FULL_FILES_RAW
 } from '@renderer/config/constant'
 import { getEmbeddingMaxContext } from '@renderer/config/embedings'
 import { REFERENCE_PROMPT } from '@renderer/config/prompts'
@@ -24,12 +26,13 @@ import {
 } from '@renderer/types'
 import type { Chunk } from '@renderer/types/chunk'
 import { ChunkType } from '@renderer/types/chunk'
+import type { FileMessageBlock } from '@renderer/types/newMessage'
 import { MessageBlockStatus, MessageBlockType } from '@renderer/types/newMessage'
 import { routeToEndpoint } from '@renderer/utils'
 import type { ExtractResults } from '@renderer/utils/extract'
 import { createCitationBlock } from '@renderer/utils/messageUtils/create'
 import { isAzureOpenAIProvider, isGeminiProvider } from '@renderer/utils/provider'
-import type { ModelMessage, UserModelMessage } from 'ai'
+import type { FilePart, ModelMessage, TextPart, UserModelMessage } from 'ai'
 import { isEmpty } from 'lodash'
 
 import { getProviderByModel } from './AssistantService'
@@ -368,8 +371,10 @@ export type KnowledgeInjectionResult = {
   systemPromptPrefix?: string
 }
 
-const buildFullFilesInjectionKey = (topicId: string, assistantId: string, baseId: string) =>
-  `${topicId}:${assistantId}:${baseId}`
+type FullFilesMode = 'text' | 'raw'
+
+const buildFullFilesInjectionKey = (topicId: string, assistantId: string, baseId: string, mode: FullFilesMode) =>
+  `${topicId}:${assistantId}:${baseId}:${mode}`
 
 const buildFullFilesSystemPromptSection = ({
   baseName,
@@ -391,6 +396,26 @@ const buildFullFilesSystemPromptSection = ({
   return header + body
 }
 
+const ensureUserMessageParts = (message: UserModelMessage): Array<TextPart | FilePart> => {
+  if (typeof message.content === 'string') {
+    const text = message.content
+    const parts: Array<TextPart | FilePart> = []
+    if (text) {
+      parts.push({ type: 'text', text })
+    }
+    message.content = parts
+    return parts
+  }
+
+  if (Array.isArray(message.content)) {
+    return message.content as Array<TextPart | FilePart>
+  }
+
+  // Defensive fallback: AI SDK expects user content to be string or parts array.
+  message.content = []
+  return message.content as Array<TextPart | FilePart>
+}
+
 const buildFullFilesKnowledgeContext = async ({
   assistant,
   bases,
@@ -404,7 +429,7 @@ const buildFullFilesKnowledgeContext = async ({
   const systemSections: string[] = []
 
   for (const base of bases) {
-    const injectionKey = buildFullFilesInjectionKey(topicId, assistant.id, base.id)
+    const injectionKey = buildFullFilesInjectionKey(topicId, assistant.id, base.id, 'text')
     if (fullFilesInjected.has(injectionKey)) {
       continue
     }
@@ -451,6 +476,7 @@ const buildFullFilesKnowledgeContext = async ({
           sourceUrl: `[${file.origin_name}](http://file/${file.name})`,
           metadata: {
             knowledgeFullFiles: true,
+            knowledgeFullFilesMode: 'text',
             knowledgeBaseId: base.id,
             knowledgeBaseName: base.name
           },
@@ -467,6 +493,7 @@ const buildFullFilesKnowledgeContext = async ({
           sourceUrl: typeof doc.source === 'string' && doc.source.startsWith('http') ? doc.source : '',
           metadata: {
             knowledgeFullFiles: true,
+            knowledgeFullFilesMode: 'text',
             knowledgeBaseId: base.id,
             knowledgeBaseName: base.name
           }
@@ -480,6 +507,114 @@ const buildFullFilesKnowledgeContext = async ({
   }
 
   return { systemPromptPrefix: systemSections.join('\n\n'), references }
+}
+
+const buildFullFilesRawKnowledgeContext = async ({
+  assistant,
+  bases,
+  topicId,
+  modelMessages
+}: {
+  assistant: Assistant
+  bases: KnowledgeBase[]
+  topicId: string
+  modelMessages: ModelMessage[]
+}): Promise<{ references: KnowledgeReference[] }> => {
+  const references: KnowledgeReference[] = []
+
+  const lastUserIndex = (() => {
+    for (let i = modelMessages.length - 1; i >= 0; i--) {
+      if (modelMessages[i]?.role === 'user') return i
+    }
+    return -1
+  })()
+
+  if (lastUserIndex < 0) return { references }
+
+  const lastUserMessage = modelMessages[lastUserIndex] as UserModelMessage
+  const userParts = ensureUserMessageParts(lastUserMessage)
+
+  // Some models/providers don't support native file input at all. We still allow the user to pick
+  // raw mode, but in strict mode we will skip unsupported files rather than falling back to text.
+  if (!assistant.model) {
+    logger.warn('Full-files raw injection skipped: missing assistant model')
+    return { references }
+  }
+
+  const systemMessages: ModelMessage[] = []
+
+  for (const base of bases) {
+    const injectionKey = buildFullFilesInjectionKey(topicId, assistant.id, base.id, 'raw')
+    if (fullFilesInjected.has(injectionKey)) {
+      continue
+    }
+
+    const items = base.items.filter((item) => item.type === 'file' && item.content)
+    if (items.length === 0) {
+      continue
+    }
+
+    let attachedAny = false
+
+    for (const item of items) {
+      const file = item.content as FileMetadata
+
+      let filePart: FilePart | null = null
+      try {
+        // Reuse the same native-file conversion logic as chat uploads (PDF/image/etc).
+        filePart = await convertFileBlockToFilePart({ file } as FileMessageBlock, assistant.model)
+      } catch (err) {
+        logger.warn('Failed to build raw file attachment for knowledge base item, skipping', {
+          baseId: base.id,
+          fileId: file?.id,
+          fileName: file?.origin_name,
+          err
+        })
+        continue
+      }
+
+      // Strict RAW mode: do not fall back to text extraction.
+      if (!filePart) {
+        continue
+      }
+
+      attachedAny = true
+
+      // Preserve existing semantics: file uploads may produce `fileid://...` references that must
+      // be sent as system messages rather than user content parts.
+      if (typeof filePart.data === 'string' && filePart.data.startsWith('fileid://')) {
+        systemMessages.push({ role: 'system', content: filePart.data })
+      } else {
+        userParts.push(filePart)
+      }
+
+      references.push({
+        id: 0, // will be renumbered later
+        type: 'file',
+        content: 'Attached as raw file.',
+        sourceUrl: `[${file.origin_name}](http://file/${file.name})`,
+        metadata: {
+          knowledgeFullFiles: true,
+          knowledgeFullFilesMode: 'raw',
+          knowledgeBaseId: base.id,
+          knowledgeBaseName: base.name
+        },
+        file
+      })
+    }
+
+    // Only mark as injected when we actually attached at least one file.
+    if (attachedAny) {
+      fullFilesInjected.add(injectionKey)
+    }
+  }
+
+  // Insert system messages right before the last user message, matching the convertMessageToSdkParam convention.
+  if (systemMessages.length > 0) {
+    modelMessages.splice(lastUserIndex, 0, ...systemMessages)
+  }
+
+  return { references }
 }
 
 export const injectUserMessageWithKnowledgeSearchPrompt = async ({
@@ -514,8 +649,13 @@ export const injectUserMessageWithKnowledgeSearchPrompt = async ({
   const fullFilesBases = assistant.knowledge_bases.filter(
     (b) => (b.documentCount ?? DEFAULT_KNOWLEDGE_DOCUMENT_COUNT) === KNOWLEDGE_DOCUMENT_COUNT_FULL_FILES
   )
+  const fullFilesRawBases = assistant.knowledge_bases.filter(
+    (b) => (b.documentCount ?? DEFAULT_KNOWLEDGE_DOCUMENT_COUNT) === KNOWLEDGE_DOCUMENT_COUNT_FULL_FILES_RAW
+  )
   const chunkBases = assistant.knowledge_bases.filter(
-    (b) => (b.documentCount ?? DEFAULT_KNOWLEDGE_DOCUMENT_COUNT) !== KNOWLEDGE_DOCUMENT_COUNT_FULL_FILES
+    (b) =>
+      (b.documentCount ?? DEFAULT_KNOWLEDGE_DOCUMENT_COUNT) !== KNOWLEDGE_DOCUMENT_COUNT_FULL_FILES &&
+      (b.documentCount ?? DEFAULT_KNOWLEDGE_DOCUMENT_COUNT) !== KNOWLEDGE_DOCUMENT_COUNT_FULL_FILES_RAW
   )
 
   const question = getMessageContent(lastUserMessage) || ''
@@ -539,10 +679,17 @@ export const injectUserMessageWithKnowledgeSearchPrompt = async ({
       ? await buildFullFilesKnowledgeContext({ assistant, bases: fullFilesBases, topicId })
       : { systemPromptPrefix: '', references: [] }
 
-  const combinedReferences = [...chunkReferences, ...fullFilesResult.references].map((ref, index) => ({
-    ...ref,
-    id: index + 1
-  }))
+  const fullFilesRawResult =
+    fullFilesRawBases.length > 0
+      ? await buildFullFilesRawKnowledgeContext({ assistant, bases: fullFilesRawBases, topicId, modelMessages })
+      : { references: [] }
+
+  const combinedReferences = [...chunkReferences, ...fullFilesResult.references, ...fullFilesRawResult.references].map(
+    (ref, index) => ({
+      ...ref,
+      id: index + 1
+    })
+  )
 
   if (combinedReferences.length > 0) {
     await createKnowledgeReferencesBlock({
@@ -554,8 +701,8 @@ export const injectUserMessageWithKnowledgeSearchPrompt = async ({
   }
 
   // Only rewrite the user message with REFERENCE_PROMPT when chunk-based retrieval is used.
-  // For full-files-only mode, the full content is injected into the system prompt, and wrapping
-  // the user message with snippet-only references can accidentally bias the model to ignore the full context.
+  // For full-files-only mode (text or raw), the full context is provided out-of-band (system prompt or file parts),
+  // and wrapping the user message with snippet-only references can accidentally bias the model to ignore that context.
   if (chunkReferences.length > 0) {
     const referencesJson = JSON.stringify(combinedReferences, null, 2)
     const knowledgeSearchPrompt = REFERENCE_PROMPT.replace('{question}', question).replace(

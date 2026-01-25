@@ -349,6 +349,12 @@
         "helpText": "Server stoppen, um Port zu ändern",
         "label": "Port"
       },
+      "requestTimeoutMinutes": {
+        "description": "[to be translated]:Maximum time in minutes before requests are aborted. Applies to API Server and chat requests. Set to 0 to disable.",
+        "helpText": "[to be translated]:Restart server to apply to API Server (chat applies immediately)",
+        "label": "[to be translated]:Request Timeout",
+        "unit": "[to be translated]:minutes"
+      },
       "url": {
         "copyTooltip": "URL kopieren",
         "label": "URL"
@@ -834,6 +840,8 @@
       "last": "Bereits die letzte Nachricht",
       "next": "Nächste Nachricht",
       "prev": "Vorherige Nachricht",
+      "toc": "[to be translated]:Messages",
+      "toc_empty": "[to be translated]:No messages yet",
       "top": "Nach oben scrollen"
     },
     "resend": "Erneut senden",
@@ -1537,6 +1545,7 @@
     "chunk_size_too_large": "Segmentgröße darf Modellkontextlimit ({{max_context}}) nicht überschreiten",
     "chunk_size_tooltip": "Größe jedes Segments beim Aufteilen von Dokumenten, darf das Modellkontextlimit nicht überschreiten",
     "citations_full_files_enabled": "[to be translated]:Full files mode is enabled: full document contents are provided to the model.",
+    "citations_full_files_raw_enabled": "[to be translated]:Full files (raw) mode is enabled: raw files are attached to the model.",
     "clear_selection": "Auswahl löschen",
     "delete": "Löschen",
     "delete_confirm": "Möchten Sie diese Wissensdatenbank wirklich löschen?",
@@ -1553,6 +1562,7 @@
     "document_count": "Anzahl angeforderter Dokumentfragmente",
     "document_count_default": "Standard",
     "document_count_full_files": "[to be translated]:Full files",
+    "document_count_full_files_raw": "[to be translated]:Full files (raw)",
     "document_count_help": "Mehr Dokumentfragmente bedeuten mehr Informationen, aber auch höheren Token-Verbrauch",
     "drag_file": "Datei hierher ziehen",
     "drag_image": "Bild hierher ziehen",
@@ -4974,6 +4984,9 @@
     "back": "[to be translated]:Back",
     "cancel": "[to be translated]:Cancel",
     "create_failed": "[to be translated]:Failed to create thread",
+    "delete": "[to be translated]:Delete thread",
+    "delete_confirm": "[to be translated]:Delete this thread? This will delete all replies and remove the highlight.",
+    "delete_failed": "[to be translated]:Failed to delete thread",
     "new": "[to be translated]:New thread",
     "on_message": "[to be translated]:Thread on message",
     "on_topic": "[to be translated]:Thread on {{name}}",

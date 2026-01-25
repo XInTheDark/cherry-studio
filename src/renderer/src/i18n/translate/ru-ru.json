@@ -349,6 +349,12 @@
         "helpText": "Остановите сервер для изменения порта",
         "label": "Порт"
       },
+      "requestTimeoutMinutes": {
+        "description": "[to be translated]:Maximum time in minutes before requests are aborted. Applies to API Server and chat requests. Set to 0 to disable.",
+        "helpText": "[to be translated]:Restart server to apply to API Server (chat applies immediately)",
+        "label": "[to be translated]:Request Timeout",
+        "unit": "[to be translated]:minutes"
+      },
       "url": {
         "copyTooltip": "Копировать URL",
         "label": "URL"
@@ -834,6 +840,8 @@
       "last": "Уже последнее сообщение",
       "next": "Следующее сообщение",
       "prev": "Предыдущее сообщение",
+      "toc": "[to be translated]:Messages",
+      "toc_empty": "[to be translated]:No messages yet",
       "top": "Вернуться наверх"
     },
     "resend": "Переотправить",
@@ -1537,6 +1545,7 @@
     "chunk_size_too_large": "Размер фрагмента не может превышать модель контекста ({{max_context}})",
     "chunk_size_tooltip": "Размер фрагмента, не превышающий модель контекста",
     "citations_full_files_enabled": "[to be translated]:Full files mode is enabled: full document contents are provided to the model.",
+    "citations_full_files_raw_enabled": "[to be translated]:Full files (raw) mode is enabled: raw files are attached to the model.",
     "clear_selection": "Очистить выбор",
     "delete": "Удалить",
     "delete_confirm": "Вы уверены, что хотите удалить эту базу знаний?",
@@ -1553,6 +1562,7 @@
     "document_count": "Количество запрошенных документов",
     "document_count_default": "По умолчанию",
     "document_count_full_files": "[to be translated]:Full files",
+    "document_count_full_files_raw": "[to be translated]:Full files (raw)",
     "document_count_help": "Количество запрошенных документов, вместе с ними передается больше информации, но и требуется больше токенов",
     "drag_file": "Перетащите файл сюда",
     "drag_image": "Перетащите изображение сюда",
@@ -4974,6 +4984,9 @@
     "back": "[to be translated]:Back",
     "cancel": "[to be translated]:Cancel",
     "create_failed": "[to be translated]:Failed to create thread",
+    "delete": "[to be translated]:Delete thread",
+    "delete_confirm": "[to be translated]:Delete this thread? This will delete all replies and remove the highlight.",
+    "delete_failed": "[to be translated]:Failed to delete thread",
     "new": "[to be translated]:New thread",
     "on_message": "[to be translated]:Thread on message",
     "on_topic": "[to be translated]:Thread on {{name}}",

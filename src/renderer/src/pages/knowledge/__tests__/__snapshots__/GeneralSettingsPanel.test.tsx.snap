@@ -109,9 +109,9 @@ exports[`GeneralSettingsPanel > basic rendering > should match snapshot 1`] = `
       </span>
     </div>
     <input
-      data-marks="{"1":"1","6":"knowledge.document_count_default","30":"30","50":"50","51":"knowledge.document_count_full_files"}"
+      data-marks="{"1":"1","6":"knowledge.document_count_default","30":"30","50":"50","51":"knowledge.document_count_full_files","52":"knowledge.document_count_full_files_raw"}"
       data-testid="document-count-slider"
-      max="51"
+      max="52"
       min="1"
       step="1"
       style="width: 97%;"

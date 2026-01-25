@@ -349,6 +349,12 @@
         "helpText": "ポートを変更するにはサーバーを停止してください",
         "label": "ポート"
       },
+      "requestTimeoutMinutes": {
+        "description": "[to be translated]:Maximum time in minutes before requests are aborted. Applies to API Server and chat requests. Set to 0 to disable.",
+        "helpText": "[to be translated]:Restart server to apply to API Server (chat applies immediately)",
+        "label": "[to be translated]:Request Timeout",
+        "unit": "[to be translated]:minutes"
+      },
       "url": {
         "copyTooltip": "URL をコピー",
         "label": "URL"
@@ -834,6 +840,8 @@
       "last": "最後のメッセージです",
       "next": "次のメッセージ",
       "prev": "前のメッセージ",
+      "toc": "[to be translated]:Messages",
+      "toc_empty": "[to be translated]:No messages yet",
       "top": "トップに戻る"
     },
     "resend": "再送信",
@@ -1537,6 +1545,7 @@
     "chunk_size_too_large": "チャンクサイズはモデルのコンテキスト制限を超えることはできません（{{max_context}}）",
     "chunk_size_tooltip": "ドキュメントを分割し、各チャンクのサイズ。モデルのコンテキスト制限を超えないようにしてください。",
     "citations_full_files_enabled": "[to be translated]:Full files mode is enabled: full document contents are provided to the model.",
+    "citations_full_files_raw_enabled": "[to be translated]:Full files (raw) mode is enabled: raw files are attached to the model.",
     "clear_selection": "選択をクリア",
     "delete": "削除",
     "delete_confirm": "このナレッジベースを削除してもよろしいですか？",
@@ -1553,6 +1562,7 @@
     "document_count": "要求されたドキュメント分段数",
     "document_count_default": "デフォルト",
     "document_count_full_files": "[to be translated]:Full files",
+    "document_count_full_files_raw": "[to be translated]:Full files (raw)",
     "document_count_help": "要求されたドキュメント分段数が多いほど、付随する情報が多くなりますが、トークンの消費量も増加します",
     "drag_file": "ファイルをここにドラッグ",
     "drag_image": "画像をここにドラッグ",
@@ -4974,6 +4984,9 @@
     "back": "[to be translated]:Back",
     "cancel": "[to be translated]:Cancel",
     "create_failed": "[to be translated]:Failed to create thread",
+    "delete": "[to be translated]:Delete thread",
+    "delete_confirm": "[to be translated]:Delete this thread? This will delete all replies and remove the highlight.",
+    "delete_failed": "[to be translated]:Failed to delete thread",
     "new": "[to be translated]:New thread",
     "on_message": "[to be translated]:Thread on message",
     "on_topic": "[to be translated]:Thread on {{name}}",

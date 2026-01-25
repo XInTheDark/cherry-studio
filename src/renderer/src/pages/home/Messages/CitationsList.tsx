@@ -44,7 +44,16 @@ const CitationsList: React.FC<CitationsListProps> = ({ citations }) => {
   const count = citations.length
   if (!count) return null
 
-  const fullFilesEnabled = citations.some((c) => c.type === 'knowledge' && c.metadata?.knowledgeFullFiles)
+  const fullFilesTextEnabled = citations.some(
+    (c) =>
+      c.type === 'knowledge' &&
+      c.metadata?.knowledgeFullFiles &&
+      // Backward compatible: older citations may not set a mode (treated as text mode).
+      (c.metadata?.knowledgeFullFilesMode ?? 'text') === 'text'
+  )
+  const fullFilesRawEnabled = citations.some(
+    (c) => c.type === 'knowledge' && c.metadata?.knowledgeFullFiles && c.metadata?.knowledgeFullFilesMode === 'raw'
+  )
 
   const popoverContent = (
     <PopoverContentContainer>
@@ -84,9 +93,14 @@ const CitationsList: React.FC<CitationsListProps> = ({ citations }) => {
               borderBottom: '0.5px solid var(--color-border)'
             }}>
             <div>{t('message.citations')}</div>
-            {fullFilesEnabled && (
+            {fullFilesTextEnabled && (
               <div style={{ marginTop: 6, fontWeight: 400, fontSize: 12, color: 'var(--color-text-2)' }}>
                 {t('knowledge.citations_full_files_enabled')}
+              </div>
+            )}
+            {fullFilesRawEnabled && (
+              <div style={{ marginTop: 6, fontWeight: 400, fontSize: 12, color: 'var(--color-text-2)' }}>
+                {t('knowledge.citations_full_files_raw_enabled')}
               </div>
             )}
           </div>

@@ -349,6 +349,12 @@
         "helpText": "Pare o servidor para alterar a porta",
         "label": "Porta"
       },
+      "requestTimeoutMinutes": {
+        "description": "[to be translated]:Maximum time in minutes before requests are aborted. Applies to API Server and chat requests. Set to 0 to disable.",
+        "helpText": "[to be translated]:Restart server to apply to API Server (chat applies immediately)",
+        "label": "[to be translated]:Request Timeout",
+        "unit": "[to be translated]:minutes"
+      },
       "url": {
         "copyTooltip": "Copiar URL",
         "label": "URL"
@@ -834,6 +840,8 @@
       "last": "Esta é a última mensagem",
       "next": "Próxima mensagem",
       "prev": "Mensagem anterior",
+      "toc": "[to be translated]:Messages",
+      "toc_empty": "[to be translated]:No messages yet",
       "top": "Voltar ao topo"
     },
     "resend": "Reenviar",
@@ -1537,6 +1545,7 @@
     "chunk_size_too_large": "O tamanho do bloco não pode exceder o limite de contexto do modelo ({{max_context}})",
     "chunk_size_tooltip": "Dividir o documento em blocos, o tamanho de cada bloco, que não pode exceder o limite de contexto do modelo",
     "citations_full_files_enabled": "[to be translated]:Full files mode is enabled: full document contents are provided to the model.",
+    "citations_full_files_raw_enabled": "[to be translated]:Full files (raw) mode is enabled: raw files are attached to the model.",
     "clear_selection": "Limpar seleção",
     "delete": "Excluir",
     "delete_confirm": "Tem certeza de que deseja excluir este repositório de conhecimento?",
@@ -1553,6 +1562,7 @@
     "document_count": "Número de fragmentos de documentos solicitados",
     "document_count_default": "Padrão",
     "document_count_full_files": "[to be translated]:Full files",
+    "document_count_full_files_raw": "[to be translated]:Full files (raw)",
     "document_count_help": "Quanto mais fragmentos de documentos solicitados, mais informações são incluídas, mas mais tokens são consumidos",
     "drag_file": "Arraste o arquivo aqui",
     "drag_image": "Arraste a imagem para aqui",
@@ -4974,6 +4984,9 @@
     "back": "[to be translated]:Back",
     "cancel": "[to be translated]:Cancel",
     "create_failed": "[to be translated]:Failed to create thread",
+    "delete": "[to be translated]:Delete thread",
+    "delete_confirm": "[to be translated]:Delete this thread? This will delete all replies and remove the highlight.",
+    "delete_failed": "[to be translated]:Failed to delete thread",
     "new": "[to be translated]:New thread",
     "on_message": "[to be translated]:Thread on message",
     "on_topic": "[to be translated]:Thread on {{name}}",

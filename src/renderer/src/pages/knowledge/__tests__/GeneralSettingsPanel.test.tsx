@@ -91,7 +91,8 @@ vi.mock('@renderer/config/models', () => ({
 // Mock constant
 vi.mock('@renderer/config/constant', () => ({
   DEFAULT_KNOWLEDGE_DOCUMENT_COUNT: 6,
-  KNOWLEDGE_DOCUMENT_COUNT_FULL_FILES: 51
+  KNOWLEDGE_DOCUMENT_COUNT_FULL_FILES: 51,
+  KNOWLEDGE_DOCUMENT_COUNT_FULL_FILES_RAW: 52
 }))
 
 // Mock react-i18next
