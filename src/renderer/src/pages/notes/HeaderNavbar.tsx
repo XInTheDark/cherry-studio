@@ -12,6 +12,7 @@ import { MoreHorizontal, PanelLeftClose, PanelRightClose, Star } from 'lucide-re
 import { useCallback, useEffect, useRef, useState } from 'react'
 import styled from 'styled-components'
 
+import CanvasHistoryPanel from './CanvasHistoryPanel'
 import { menuItems } from './MenuConfig'
 import NotesSettings from './NotesSettings'
 
@@ -25,7 +26,7 @@ const HeaderNavbar = ({ notesTree, getCurrentNoteContent, onToggleStar, onExpand
   >([])
   const [titleValue, setTitleValue] = useState('')
   const titleInputRef = useRef<any>(null)
-  const { settings, updateSettings } = useNotesSettings()
+  const { settings, notesPath, updateSettings } = useNotesSettings()
   const canShowStarButton = activeNode?.type === 'file' && onToggleStar
 
   const handleToggleShowWorkspace = useCallback(() => {
@@ -62,6 +63,25 @@ const HeaderNavbar = ({ notesTree, getCurrentNoteContent, onToggleStar, onExpand
       styles: { body: { padding: 0 } }
     })
   }, [])
+
+  const handleShowHistory = useCallback(() => {
+    if (!notesPath) {
+      window.toast?.warning?.(t('notes.history.no_active_canvas'))
+      return
+    }
+    if (!activeNode || activeNode.type !== 'file') {
+      window.toast?.warning?.(t('notes.history.no_active_canvas'))
+      return
+    }
+
+    GeneralPopup.show({
+      title: t('notes.history.title'),
+      content: <CanvasHistoryPanel notesPath={notesPath} filePath={activeNode.externalPath} />,
+      footer: null,
+      width: 720,
+      styles: { body: { padding: 0 } }
+    })
+  }, [activeNode, notesPath])
 
   const handleBreadcrumbClick = useCallback(
     (item: { treePath: string; isFolder: boolean }) => {
@@ -142,6 +162,8 @@ const HeaderNavbar = ({ notesTree, getCurrentNoteContent, onToggleStar, onExpand
       onClick: () => {
         if (item.copyAction) {
           handleCopyContent()
+        } else if (item.openHistoryPopup) {
+          handleShowHistory()
         } else if (item.showSettingsPopup) {
           handleShowSettings()
         } else if (item.action) {

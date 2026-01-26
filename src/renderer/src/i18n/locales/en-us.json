@@ -2261,6 +2261,29 @@
     "export_knowledge": "Export canvases to knowledge base",
     "export_success": "Successfully exported to the knowledge base",
     "folder": "folder",
+    "history": {
+      "actor": {
+        "assistant": "Assistant",
+        "human": "You",
+        "system": "System"
+      },
+      "canvas_id": "Canvas ID",
+      "empty": "No history yet",
+      "load_failed": "Failed to load history",
+      "no_active_canvas": "Select a canvas to view history",
+      "reason": {
+        "none": "No reason provided"
+      },
+      "restore": "Restore",
+      "restore_confirm": {
+        "content": "This will overwrite the current canvas content.",
+        "title": "Restore this version?"
+      },
+      "restore_failed": "Failed to restore version",
+      "restore_success": "Restored successfully",
+      "size": "Size: {{gzip}} B (compressed), {{raw}} B (raw)",
+      "title": "History"
+    },
     "new_folder": "New Folder",
     "new_note": "Create a new canvas",
     "no_content_to_copy": "No content to copy",

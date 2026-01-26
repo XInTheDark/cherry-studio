@@ -2261,6 +2261,29 @@
     "export_knowledge": "exporter la note vers la base de connaissances",
     "export_success": "Exporté avec succès vers la base de connaissances",
     "folder": "dossier",
+    "history": {
+      "actor": {
+        "assistant": "[to be translated]:Assistant",
+        "human": "[to be translated]:You",
+        "system": "[to be translated]:System"
+      },
+      "canvas_id": "[to be translated]:Canvas ID",
+      "empty": "[to be translated]:No history yet",
+      "load_failed": "[to be translated]:Failed to load history",
+      "no_active_canvas": "[to be translated]:Select a canvas to view history",
+      "reason": {
+        "none": "[to be translated]:No reason provided"
+      },
+      "restore": "[to be translated]:Restore",
+      "restore_confirm": {
+        "content": "[to be translated]:This will overwrite the current canvas content.",
+        "title": "[to be translated]:Restore this version?"
+      },
+      "restore_failed": "[to be translated]:Failed to restore version",
+      "restore_success": "[to be translated]:Restored successfully",
+      "size": "[to be translated]:Size: {{gzip}} B (compressed), {{raw}} B (raw)",
+      "title": "[to be translated]:History"
+    },
     "new_folder": "Nouveau dossier",
     "new_note": "Nouvelle note",
     "no_content_to_copy": "Aucun contenu à copier",

@@ -2261,6 +2261,29 @@
     "export_knowledge": "匯出畫布至知識庫",
     "export_success": "成功匯出至知識庫",
     "folder": "資料夾",
+    "history": {
+      "actor": {
+        "assistant": "助理",
+        "human": "你",
+        "system": "系統"
+      },
+      "canvas_id": "畫布 ID",
+      "empty": "尚無歷史版本",
+      "load_failed": "載入版本記錄失敗",
+      "no_active_canvas": "請選擇畫布以查看版本記錄",
+      "reason": {
+        "none": "未提供原因"
+      },
+      "restore": "還原",
+      "restore_confirm": {
+        "content": "此操作將覆蓋目前畫布內容。",
+        "title": "還原此版本？"
+      },
+      "restore_failed": "還原失敗",
+      "restore_success": "已還原",
+      "size": "大小：壓縮 {{gzip}} B，原始 {{raw}} B",
+      "title": "版本記錄"
+    },
     "new_folder": "新增資料夾",
     "new_note": "新增畫布",
     "no_content_to_copy": "沒有內容可複製",

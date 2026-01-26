@@ -5,6 +5,7 @@ import type { RichEditorRef } from '@renderer/components/RichEditor/types'
 import { useActiveNode, useFileContent, useFileContentSync } from '@renderer/hooks/useNotesQuery'
 import { useNotesSettings } from '@renderer/hooks/useNotesSettings'
 import { useShowWorkspace } from '@renderer/hooks/useShowWorkspace'
+import CanvasHistoryService from '@renderer/services/CanvasHistoryService'
 import { EVENT_NAMES, EventEmitter } from '@renderer/services/EventService'
 import {
   addDir,
@@ -189,6 +190,28 @@ const NotesPage: FC = () => {
     [activeFilePath, currentContent, invalidateFileContent]
   )
 
+  // Commit a canvas version for human edits (idle session or safety flush on navigation).
+  const commitCanvasVersion = useCallback(
+    async (content: string, filePath?: string, options?: { force?: boolean }) => {
+      if (!notesPath) return
+      const targetPath = filePath || activeFilePath
+      if (!targetPath) return
+
+      try {
+        await CanvasHistoryService.commitVersion({
+          notesPath,
+          filePath: targetPath,
+          content,
+          actor: 'human',
+          force: options?.force
+        })
+      } catch (error) {
+        logger.error('Failed to commit canvas version:', error as Error)
+      }
+    },
+    [activeFilePath, notesPath]
+  )
+
   // 防抖保存函数，在停止输入后才保存，避免输入过程中的文件写入
   const debouncedSave = useMemo(
     () =>
@@ -198,8 +221,19 @@ const NotesPage: FC = () => {
     [saveCurrentNote]
   )
 
+  // Human edit session: snapshot version after 10s idle.
+  const debouncedHistoryCommit = useMemo(
+    () =>
+      debounce((content: string, filePath: string | undefined) => {
+        void commitCanvasVersion(content, filePath)
+      }, 10_000),
+    [commitCanvasVersion]
+  )
+
   const saveCurrentNoteRef = useRef(saveCurrentNote)
+  const commitCanvasVersionRef = useRef(commitCanvasVersion)
   const debouncedSaveRef = useRef(debouncedSave)
+  const debouncedHistoryCommitRef = useRef(debouncedHistoryCommit)
   const invalidateFileContentRef = useRef(invalidateFileContent)
   const refreshTreeRef = useRef(refreshTree)
 
@@ -210,8 +244,9 @@ const NotesPage: FC = () => {
       lastFilePathRef.current = activeFilePath
       // 捕获当前文件路径，避免在防抖执行时文件路径已改变的竞态条件
       debouncedSave(newMarkdown, activeFilePath)
+      debouncedHistoryCommit(newMarkdown, activeFilePath)
     },
-    [debouncedSave, activeFilePath]
+    [debouncedSave, debouncedHistoryCommit, activeFilePath]
   )
 
   useEffect(() => {
@@ -227,8 +262,16 @@ const NotesPage: FC = () => {
   }, [saveCurrentNote])
 
   useEffect(() => {
+    commitCanvasVersionRef.current = commitCanvasVersion
+  }, [commitCanvasVersion])
+
+  useEffect(() => {
     debouncedSaveRef.current = debouncedSave
   }, [debouncedSave])
+
+  useEffect(() => {
+    debouncedHistoryCommitRef.current = debouncedHistoryCommit
+  }, [debouncedHistoryCommit])
 
   useEffect(() => {
     invalidateFileContentRef.current = invalidateFileContent
@@ -399,10 +442,19 @@ const NotesPage: FC = () => {
             logger.error('Emergency save failed:', error as Error)
           })
         }
+
+        // Also flush a version snapshot so the edit session can be restored later.
+        const commitFn = commitCanvasVersionRef.current
+        if (commitFn) {
+          commitFn(lastContentRef.current, lastFilePathRef.current).catch((error) => {
+            logger.error('Emergency history commit failed:', error as Error)
+          })
+        }
       }
 
       // 清理防抖函数
       debouncedSaveRef.current?.cancel()
+      debouncedHistoryCommitRef.current?.cancel()
     }
   }, [dispatch, notesPath])
 
@@ -450,13 +502,25 @@ const NotesPage: FC = () => {
     return () => {
       // 保存之前文件的内容
       if (lastContentRef.current && lastFilePathRef.current) {
-        saveCurrentNote(lastContentRef.current, lastFilePathRef.current).catch((error) => {
-          logger.error('Emergency save before file switch failed:', error as Error)
-        })
+        const saveFn = saveCurrentNoteRef.current
+        if (saveFn) {
+          saveFn(lastContentRef.current, lastFilePathRef.current).catch((error) => {
+            logger.error('Emergency save before file switch failed:', error as Error)
+          })
+        }
+
+        // Flush a snapshot on file switch in case the user navigates quickly (before idle timer fires).
+        const commitFn = commitCanvasVersionRef.current
+        if (commitFn) {
+          commitFn(lastContentRef.current, lastFilePathRef.current).catch((error) => {
+            logger.error('Emergency history commit before file switch failed:', error as Error)
+          })
+        }
       }
 
       // 取消防抖保存并清理状态
       debouncedSave.cancel()
+      debouncedHistoryCommit.cancel()
       lastContentRef.current = ''
       lastFilePathRef.current = undefined
     }
@@ -643,6 +707,18 @@ const NotesPage: FC = () => {
         updateStarredPaths((prev) => replacePathEntries(prev, oldPath, renamed.path, node.type === 'folder'))
         updateExpandedPaths((prev) => replacePathEntries(prev, oldPath, renamed.path, node.type === 'folder'))
 
+        // Keep canvas version history mapped across renames/moves.
+        if (notesPath) {
+          CanvasHistoryService.rewriteMappingPath({
+            notesPath,
+            oldPath,
+            newPath: renamed.path,
+            deep: node.type === 'folder'
+          }).catch((error) => {
+            logger.error('Failed to update canvas mapping after rename:', error as Error)
+          })
+        }
+
         await refreshTree()
       } catch (error) {
         logger.error('Failed to rename node:', error as Error)
@@ -652,7 +728,7 @@ const NotesPage: FC = () => {
         }, 500)
       }
     },
-    [activeFilePath, dispatch, notesTree, refreshTree, updateStarredPaths, updateExpandedPaths]
+    [activeFilePath, dispatch, notesPath, notesTree, refreshTree, updateStarredPaths, updateExpandedPaths]
   )
 
   // 处理文件上传
@@ -771,6 +847,18 @@ const NotesPage: FC = () => {
           await window.api.file.move(sourceNode.externalPath, destinationPath)
         } else {
           await window.api.file.moveDir(sourceNode.externalPath, destinationPath)
+        }
+
+        // Keep canvas version history mapped across moves.
+        if (notesPath) {
+          CanvasHistoryService.rewriteMappingPath({
+            notesPath,
+            oldPath: sourceNode.externalPath,
+            newPath: destinationPath,
+            deep: sourceNode.type === 'folder'
+          }).catch((error) => {
+            logger.error('Failed to update canvas mapping after move:', error as Error)
+          })
         }
 
         updateStarredPaths((prev) =>
