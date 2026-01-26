@@ -45,6 +45,24 @@ const logger = loggerService.withContext('RendererKnowledgeService')
 // This is in-memory only; reloading the app will allow re-injection.
 const fullFilesInjected = new Set<string>()
 
+/**
+ * Assistants store a snapshot of selected knowledge bases under `assistant.knowledge_bases`.
+ * That snapshot can become stale as the knowledge slice updates (e.g. items gain `uniqueId` after processing,
+ * documentCount changes, items are added/removed).
+ *
+ * Full-files injection relies on up-to-date `base.items` (esp. `uniqueId`) and `documentCount`.
+ * Always resolve the latest KB objects from the knowledge store while preserving selection order.
+ */
+const resolveAssistantKnowledgeBases = (assistant: Assistant): KnowledgeBase[] => {
+  const selected = (assistant.knowledge_bases ?? []).filter(
+    (base): base is KnowledgeBase => !!base && typeof (base as KnowledgeBase).id === 'string'
+  )
+  if (selected.length === 0) return []
+
+  const byId = new Map(store.getState().knowledge.bases.map((base) => [base.id, base]))
+  return selected.map((base) => byId.get(base.id) ?? base)
+}
+
 const truncateText = (text: string, maxLength: number) => {
   if (!text) return ''
   return text.length > maxLength ? text.slice(0, maxLength) + '...' : text
@@ -654,13 +672,15 @@ export const injectUserMessageWithKnowledgeSearchPrompt = async ({
     return {}
   }
 
-  const fullFilesBases = assistant.knowledge_bases.filter(
+  const assistantKnowledgeBases = resolveAssistantKnowledgeBases(assistant)
+
+  const fullFilesBases = assistantKnowledgeBases.filter(
     (b) => (b.documentCount ?? DEFAULT_KNOWLEDGE_DOCUMENT_COUNT) === KNOWLEDGE_DOCUMENT_COUNT_FULL_FILES
   )
-  const fullFilesRawBases = assistant.knowledge_bases.filter(
+  const fullFilesRawBases = assistantKnowledgeBases.filter(
     (b) => (b.documentCount ?? DEFAULT_KNOWLEDGE_DOCUMENT_COUNT) === KNOWLEDGE_DOCUMENT_COUNT_FULL_FILES_RAW
   )
-  const chunkBases = assistant.knowledge_bases.filter(
+  const chunkBases = assistantKnowledgeBases.filter(
     (b) =>
       (b.documentCount ?? DEFAULT_KNOWLEDGE_DOCUMENT_COUNT) !== KNOWLEDGE_DOCUMENT_COUNT_FULL_FILES &&
       (b.documentCount ?? DEFAULT_KNOWLEDGE_DOCUMENT_COUNT) !== KNOWLEDGE_DOCUMENT_COUNT_FULL_FILES_RAW
