@@ -1022,7 +1022,7 @@
           "label": "导出为 Markdown",
           "reason": "导出为 Markdown (包含思考)"
         },
-        "notes": "导出到笔记",
+        "notes": "导出到画布",
         "notion": "导出到 Notion",
         "obsidian": "导出到 Obsidian",
         "obsidian_atributes": "配置笔记属性",
@@ -2240,29 +2240,29 @@
   },
   "notes": {
     "auto_rename": {
-      "empty_note": "笔记为空，无法生成名称",
-      "failed": "生成笔记名称失败",
-      "label": "生成笔记名称",
-      "success": "笔记名称生成成功"
+      "empty_note": "画布为空，无法生成名称",
+      "failed": "生成画布名称失败",
+      "label": "生成画布名称",
+      "success": "画布名称生成成功"
     },
     "characters": "字符",
     "collapse": "收起",
-    "content_placeholder": "请输入笔记内容...",
+    "content_placeholder": "请输入画布内容...",
     "copyContent": "复制内容",
-    "crossPlatformRestoreWarning": "检测到从其他设备恢复配置，但笔记目录为空。请将笔记文件复制到: {{path}}",
+    "crossPlatformRestoreWarning": "检测到从其他设备恢复配置，但画布目录为空。请将画布文件复制到: {{path}}",
     "delete": "删除",
     "delete_confirm": "确定要删除这个{{type}}吗？",
     "delete_folder_confirm": "确定要删除文件夹 \"{{name}}\" 及其所有内容吗？",
-    "delete_note_confirm": "确定要删除笔记 \"{{name}}\" 吗？",
+    "delete_note_confirm": "确定要删除画布 \"{{name}}\" 吗？",
     "drop_markdown_hint": "拖拽 .md 文件或目录到此处导入",
-    "empty": "暂无笔记",
+    "empty": "暂无画布",
     "expand": "展开",
     "export_failed": "导出到知识库失败",
-    "export_knowledge": "导出笔记到知识库",
+    "export_knowledge": "导出画布到知识库",
     "export_success": "成功导出到知识库",
     "folder": "文件夹",
     "new_folder": "新建文件夹",
-    "new_note": "新建笔记",
+    "new_note": "新建画布",
     "no_content_to_copy": "没有内容可复制",
     "no_file_selected": "请选择要上传的文件",
     "no_valid_files": "没有上传有效的文件",
@@ -2270,7 +2270,7 @@
     "open_outside": "从外部打开",
     "rename": "重命名",
     "rename_changed": "由于安全策略，文件名已从 {{original}} 更改为 {{final}}",
-    "save": "保存到笔记",
+    "save": "保存到画布",
     "search": {
       "both": "名称+内容",
       "content": "内容",
@@ -2292,8 +2292,8 @@
         "select": "选择",
         "select_directory_failed": "选择目录失败",
         "title": "数据设置",
-        "work_directory_description": "工作目录是存储所有笔记文件的位置。更改工作目录不会移动现有文件，请手动迁移文件。",
-        "work_directory_placeholder": "选择笔记工作目录"
+        "work_directory_description": "工作目录是存储所有画布文件的位置。更改工作目录不会移动现有文件，请手动迁移文件。",
+        "work_directory_placeholder": "选择画布工作目录"
       },
       "display": {
         "compress_content": "缩减栏宽",
@@ -2312,23 +2312,23 @@
       },
       "editor": {
         "edit_mode": {
-          "description": "在编辑视图下，新笔记默认采用的编辑模式",
+          "description": "在编辑视图下，新画布默认采用的编辑模式",
           "preview_mode": "实时预览",
           "source_mode": "源码模式",
           "title": "默认编辑视图"
         },
         "title": "编辑器设置",
         "view_mode": {
-          "description": "新笔记默认的视图模式",
+          "description": "新画布默认的视图模式",
           "edit_mode": "编辑模式",
           "read_mode": "阅读模式",
           "title": "默认视图"
         },
         "view_mode_description": "设置新标签页的默认视图模式。"
       },
-      "title": "笔记"
+      "title": "画布"
     },
-    "show_starred": "显示收藏的笔记",
+    "show_starred": "显示收藏的画布",
     "sort_a2z": "文件名（A-Z）",
     "sort_created_asc": "创建时间（从旧到新）",
     "sort_created_desc": "创建时间（从新到旧）",
@@ -2337,17 +2337,17 @@
     "sort_z2a": "文件名（Z-A）",
     "spell_check": "拼写检查",
     "spell_check_tooltip": "启用/禁用拼写检查",
-    "star": "收藏笔记",
-    "starred_notes": "收藏的笔记",
-    "title": "笔记",
+    "star": "收藏画布",
+    "starred_notes": "收藏的画布",
+    "title": "画布",
     "unsaved_changes": "你有未保存的内容，确定要离开吗？",
     "unstar": "取消收藏",
     "untitled_folder": "新文件夹",
-    "untitled_note": "无标题笔记",
-    "upload_failed": "笔记上传失败",
+    "untitled_note": "无标题画布",
+    "upload_failed": "画布上传失败",
     "upload_files": "上传文件",
     "upload_folder": "上传文件夹",
-    "upload_success": "笔记上传成功",
+    "upload_success": "画布上传成功",
     "uploading_files": "正在上传 {{count}} 个文件..."
   },
   "notification": {
@@ -3283,7 +3283,7 @@
         "joplin": "导出到 Joplin",
         "markdown": "导出为 Markdown",
         "markdown_reason": "导出为 Markdown（包含思考）",
-        "notes": "导出到笔记",
+        "notes": "导出到画布",
         "notion": "导出到 Notion",
         "obsidian": "导出到 Obsidian",
         "plain_text": "复制为纯文本",
@@ -5009,7 +5009,7 @@
     "launchpad": "启动台",
     "mcp-servers": "MCP 服务器",
     "memories": "记忆",
-    "notes": "笔记",
+    "notes": "画布",
     "paintings": "绘画",
     "settings": "设置",
     "store": "助手库",

@@ -1022,7 +1022,7 @@
           "label": "Export as markdown",
           "reason": "Export as Markdown (with reasoning)"
         },
-        "notes": "Export to Notes",
+        "notes": "Export to Canvases",
         "notion": "Export to Notion",
         "obsidian": "Export to Obsidian",
         "obsidian_atributes": "Configure Note Attributes",
@@ -2240,29 +2240,29 @@
   },
   "notes": {
     "auto_rename": {
-      "empty_note": "Note is empty, cannot generate name",
-      "failed": "Failed to generate note name",
-      "label": "Generate Note Name",
-      "success": "Note name generated successfully"
+      "empty_note": "Canvas is empty, cannot generate a name",
+      "failed": "Failed to generate canvas name",
+      "label": "Generate Canvas Name",
+      "success": "Canvas name generated successfully"
     },
     "characters": "Characters",
     "collapse": "Collapse",
-    "content_placeholder": "Please enter the note content...",
+    "content_placeholder": "Please enter the canvas content...",
     "copyContent": "Copy Content",
-    "crossPlatformRestoreWarning": "Cross-platform configuration restored, but notes directory is empty. Please copy your note files to: {{path}}",
+    "crossPlatformRestoreWarning": "Cross-platform configuration restored, but canvases directory is empty. Please copy your canvas files to: {{path}}",
     "delete": "delete",
     "delete_confirm": "Are you sure you want to delete this {{type}}?",
     "delete_folder_confirm": "Are you sure you want to delete the folder \"{{name}}\" and all of its contents?",
-    "delete_note_confirm": "Are you sure you want to delete the note \"{{name}}\"?",
+    "delete_note_confirm": "Are you sure you want to delete the canvas \"{{name}}\"?",
     "drop_markdown_hint": "Drop .md files or folders here to import",
-    "empty": "No notes available yet",
+    "empty": "No canvases available yet",
     "expand": "unfold",
     "export_failed": "Failed to export to knowledge base",
-    "export_knowledge": "Export notes to knowledge base",
+    "export_knowledge": "Export canvases to knowledge base",
     "export_success": "Successfully exported to the knowledge base",
     "folder": "folder",
     "new_folder": "New Folder",
-    "new_note": "Create a new note",
+    "new_note": "Create a new canvas",
     "no_content_to_copy": "No content to copy",
     "no_file_selected": "Please select the file to upload",
     "no_valid_files": "No valid file was uploaded",
@@ -2270,7 +2270,7 @@
     "open_outside": "Open from external",
     "rename": "Rename",
     "rename_changed": "Due to security policies, the filename has been changed from {{original}} to {{final}}",
-    "save": "Save to Notes",
+    "save": "Save to Canvases",
     "search": {
       "both": "Name+Content",
       "content": "Content",
@@ -2292,8 +2292,8 @@
         "select": "Select",
         "select_directory_failed": "Failed to select directory",
         "title": "Data Settings",
-        "work_directory_description": "Work directory is where all note files are stored. Changing the work directory won't move existing files, please migrate files manually.",
-        "work_directory_placeholder": "Select notes work directory"
+        "work_directory_description": "Work directory is where all canvas files are stored. Changing the work directory won't move existing files, please migrate files manually.",
+        "work_directory_placeholder": "Select canvases work directory"
       },
       "display": {
         "compress_content": "Content Compression",
@@ -2312,23 +2312,23 @@
       },
       "editor": {
         "edit_mode": {
-          "description": "In Edit View, the default editing mode for new notes",
+          "description": "In Edit View, the default editing mode for new canvases",
           "preview_mode": "Live preview",
           "source_mode": "Source code mode",
           "title": "Default edit view"
         },
         "title": "Editor Settings",
         "view_mode": {
-          "description": "New Notes Default View Mode",
+          "description": "New Canvases Default View Mode",
           "edit_mode": "Editing mode",
           "read_mode": "Reading mode",
           "title": "Default view"
         },
         "view_mode_description": "Sets the default view mode for the new tab page."
       },
-      "title": "Notes"
+      "title": "Canvases"
     },
-    "show_starred": "Show favorite notes",
+    "show_starred": "Show favorite canvases",
     "sort_a2z": "File name (A-Z)",
     "sort_created_asc": "Creation time (oldest first)",
     "sort_created_desc": "Creation time (newest first)",
@@ -2337,17 +2337,17 @@
     "sort_z2a": "File name (Z-A)",
     "spell_check": "Spell Check",
     "spell_check_tooltip": "Enable/Disable spell check",
-    "star": "Favorite note",
-    "starred_notes": "Collected notes",
-    "title": "Notes",
+    "star": "Favorite canvas",
+    "starred_notes": "Collected canvases",
+    "title": "Canvases",
     "unsaved_changes": "You have unsaved content, are you sure you want to leave?",
     "unstar": "Unfavorite",
     "untitled_folder": "New Folder",
-    "untitled_note": "Untitled Note",
-    "upload_failed": "Note upload failed",
+    "untitled_note": "Untitled Canvas",
+    "upload_failed": "Canvas upload failed",
     "upload_files": "Upload Files",
     "upload_folder": "Upload Folder",
-    "upload_success": "Note uploaded success",
+    "upload_success": "Canvas uploaded successfully",
     "uploading_files": "Uploading {{count}} files..."
   },
   "notification": {
@@ -3283,7 +3283,7 @@
         "joplin": "Export to Joplin",
         "markdown": "Export as Markdown",
         "markdown_reason": "Export as Markdown (with reasoning)",
-        "notes": "Export to Notes",
+        "notes": "Export to Canvases",
         "notion": "Export to Notion",
         "obsidian": "Export to Obsidian",
         "plain_text": "Copy as Plain Text",
@@ -5009,7 +5009,7 @@
     "launchpad": "Launchpad",
     "mcp-servers": "MCP Servers",
     "memories": "Memories",
-    "notes": "Notes",
+    "notes": "Canvases",
     "paintings": "Paintings",
     "settings": "Settings",
     "store": "Assistant Library",
