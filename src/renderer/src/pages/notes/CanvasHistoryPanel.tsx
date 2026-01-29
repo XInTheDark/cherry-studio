@@ -1,6 +1,6 @@
 import { loggerService } from '@logger'
 import CanvasHistoryService, { type CanvasVersionEntryV1 } from '@renderer/services/CanvasHistoryService'
-import { Button, Checkbox, Empty, List, Modal, Space, Tag, Typography } from 'antd'
+import { Button, Checkbox, Empty, Input, List, Modal, Space, Tag, Typography } from 'antd'
 import dayjs from 'dayjs'
 import { createTwoFilesPatch } from 'diff'
 import type { FC } from 'react'
@@ -22,6 +22,10 @@ const CanvasHistoryPanel: FC<Props> = ({ notesPath, filePath }) => {
   const [selectedVersionIds, setSelectedVersionIds] = useState<string[]>([])
   const [diffText, setDiffText] = useState<string>('')
   const [diffLoading, setDiffLoading] = useState(false)
+  const [editingVersionId, setEditingVersionId] = useState<string | null>(null)
+  const [editingNameValue, setEditingNameValue] = useState<string>('')
+
+  const isCompareOpen = selectedVersionIds.length > 0
 
   const loadVersions = useCallback(async () => {
     if (!notesPath || !filePath) return
@@ -71,6 +75,27 @@ const CanvasHistoryPanel: FC<Props> = ({ notesPath, filePath }) => {
     [t]
   )
 
+  const getVersionTimestamp = useCallback((v: CanvasVersionEntryV1): string => {
+    return dayjs(v.createdAt).format('YYYY-MM-DD HH:mm:ss')
+  }, [])
+
+  const getVersionTitle = useCallback(
+    (v: CanvasVersionEntryV1): string => {
+      const name = v.name?.trim()
+      return name || getVersionTimestamp(v)
+    },
+    [getVersionTimestamp]
+  )
+
+  const getDiffLabel = useCallback(
+    (v: CanvasVersionEntryV1): string => {
+      const ts = getVersionTimestamp(v)
+      const name = v.name?.trim()
+      return name ? `${name} (${ts})` : ts
+    },
+    [getVersionTimestamp]
+  )
+
   const toggleSelectedVersionId = useCallback((versionId: string) => {
     setSelectedVersionIds((prev) => {
       if (prev.includes(versionId)) {
@@ -88,6 +113,34 @@ const CanvasHistoryPanel: FC<Props> = ({ notesPath, filePath }) => {
     setSelectedVersionIds([])
   }, [])
 
+  const cancelEditing = useCallback(() => {
+    setEditingVersionId(null)
+    setEditingNameValue('')
+  }, [])
+
+  const startEditing = useCallback(
+    (v: CanvasVersionEntryV1) => {
+      setEditingVersionId(v.id)
+      setEditingNameValue(getVersionTitle(v))
+    },
+    [getVersionTitle]
+  )
+
+  const commitEditing = useCallback(
+    async (versionId: string, nextName: string) => {
+      try {
+        await CanvasHistoryService.renameVersion({ notesPath, filePath, versionId, name: nextName })
+        const trimmed = nextName.trim()
+        setVersions((prev) => prev.map((v) => (v.id === versionId ? { ...v, name: trimmed ? trimmed : undefined } : v)))
+        cancelEditing()
+      } catch (error) {
+        logger.error('Failed to rename canvas history version:', error as Error)
+        window.toast?.error?.(t('notes.history.rename_failed'))
+      }
+    },
+    [cancelEditing, filePath, notesPath, t]
+  )
+
   useEffect(() => {
     let cancelled = false
 
@@ -101,8 +154,8 @@ const CanvasHistoryPanel: FC<Props> = ({ notesPath, filePath }) => {
     const leftMeta = versionsById.get(leftId)
     const rightMeta = versionsById.get(rightId)
 
-    const leftLabel = leftMeta ? dayjs(leftMeta.createdAt).format('YYYY-MM-DD HH:mm:ss') : leftId
-    const rightLabel = rightMeta ? dayjs(rightMeta.createdAt).format('YYYY-MM-DD HH:mm:ss') : rightId
+    const leftLabel = leftMeta ? getDiffLabel(leftMeta) : leftId
+    const rightLabel = rightMeta ? getDiffLabel(rightMeta) : rightId
 
     setDiffLoading(true)
     setDiffText('')
@@ -128,7 +181,7 @@ const CanvasHistoryPanel: FC<Props> = ({ notesPath, filePath }) => {
     return () => {
       cancelled = true
     }
-  }, [filePath, notesPath, selectedVersionIds, t, versionsById])
+  }, [filePath, getDiffLabel, notesPath, selectedVersionIds, t, versionsById])
 
   const handleRestore = useCallback(
     async (versionId: string) => {
@@ -190,7 +243,7 @@ const CanvasHistoryPanel: FC<Props> = ({ notesPath, filePath }) => {
           borderRadius: 8,
           padding: 10,
           background: 'var(--color-background-mute)',
-          maxHeight: 260,
+          maxHeight: 420,
           overflow: 'auto'
         }}>
         <pre style={{ margin: 0, whiteSpace: 'pre', fontFamily: 'var(--font-mono)' }}>
@@ -225,65 +278,106 @@ const CanvasHistoryPanel: FC<Props> = ({ notesPath, filePath }) => {
         <Typography.Text type="secondary">
           {t('notes.history.canvas_id')}: {canvasId || '-'}
         </Typography.Text>
-        <Space direction="vertical" style={{ width: '100%' }} size={6}>
-          <Space align="center" style={{ width: '100%', justifyContent: 'space-between' }}>
-            <Typography.Text strong>{t('notes.history.compare')}</Typography.Text>
-            {selectedVersionIds.length > 0 && (
-              <Button size="small" onClick={clearSelectedVersions}>
-                {t('notes.history.compare_clear')}
-              </Button>
-            )}
-          </Space>
-          {selectedVersions.length > 0 && (
-            <Space size={6} wrap>
-              {selectedVersions.map((v) => (
-                <Tag key={v.id} color="processing">
-                  {dayjs(v.createdAt).format('YYYY-MM-DD HH:mm:ss')}
-                </Tag>
-              ))}
-            </Space>
-          )}
-          {renderDiff()}
-        </Space>
-        <List
-          loading={loading}
-          dataSource={sorted}
-          renderItem={(v) => (
-            <List.Item
-              actions={[
-                <Button key="restore" danger size="small" onClick={() => void handleRestore(v.id)}>
-                  {t('notes.history.restore')}
-                </Button>
-              ]}>
-              <List.Item.Meta
-                title={
-                  <Space size={8} wrap>
-                    <Checkbox
-                      checked={selectedVersionIds.includes(v.id)}
-                      onChange={() => toggleSelectedVersionId(v.id)}
+        <div style={{ display: 'flex', gap: 12, minWidth: 0 }}>
+          <div
+            style={{
+              flex: isCompareOpen ? '0 0 330px' : '1 1 auto',
+              minWidth: 0,
+              transition: 'flex-basis 0.15s ease-in-out'
+            }}>
+            <List
+              loading={loading}
+              dataSource={sorted}
+              renderItem={(v) => {
+                const hasCustomName = Boolean(v.name?.trim())
+                return (
+                  <List.Item
+                    actions={[
+                      <Button key="restore" danger size="small" onClick={() => void handleRestore(v.id)}>
+                        {t('notes.history.restore')}
+                      </Button>
+                    ]}>
+                    <List.Item.Meta
+                      title={
+                        <Space size={8} wrap>
+                          <Checkbox
+                            checked={selectedVersionIds.includes(v.id)}
+                            onChange={() => toggleSelectedVersionId(v.id)}
+                          />
+                          {editingVersionId === v.id ? (
+                            <Input
+                              size="small"
+                              value={editingNameValue}
+                              onChange={(e) => setEditingNameValue(e.target.value)}
+                              onBlur={() => void commitEditing(v.id, editingNameValue)}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') {
+                                  e.preventDefault()
+                                  void commitEditing(v.id, editingNameValue)
+                                } else if (e.key === 'Escape') {
+                                  e.preventDefault()
+                                  cancelEditing()
+                                }
+                              }}
+                              autoFocus
+                              style={{ maxWidth: 220 }}
+                            />
+                          ) : (
+                            <Typography.Text
+                              onDoubleClick={() => startEditing(v)}
+                              style={{ cursor: 'text', userSelect: 'text' }}>
+                              {getVersionTitle(v)}
+                            </Typography.Text>
+                          )}
+                          {getActorTag(v.actor)}
+                        </Space>
+                      }
+                      description={
+                        <Space direction="vertical" size={2} style={{ width: '100%' }}>
+                          {hasCustomName && (
+                            <Typography.Text type="secondary">{getVersionTimestamp(v)}</Typography.Text>
+                          )}
+                          {v.reason ? (
+                            <Typography.Text>{v.reason}</Typography.Text>
+                          ) : (
+                            <Typography.Text type="secondary">{t('notes.history.reason.none')}</Typography.Text>
+                          )}
+                          {typeof v.gzipByteSize === 'number' && typeof v.byteSize === 'number' && (
+                            <Typography.Text type="secondary">
+                              {t('notes.history.size', { gzip: v.gzipByteSize, raw: v.byteSize })}
+                            </Typography.Text>
+                          )}
+                        </Space>
+                      }
                     />
-                    <Typography.Text>{dayjs(v.createdAt).format('YYYY-MM-DD HH:mm:ss')}</Typography.Text>
-                    {getActorTag(v.actor)}
+                  </List.Item>
+                )
+              }}
+            />
+          </div>
+          {isCompareOpen && (
+            <div style={{ flex: '1 1 auto', minWidth: 0 }}>
+              <Space direction="vertical" style={{ width: '100%' }} size={6}>
+                <Space align="center" style={{ width: '100%', justifyContent: 'space-between' }}>
+                  <Typography.Text strong>{t('notes.history.compare')}</Typography.Text>
+                  <Button size="small" onClick={clearSelectedVersions}>
+                    {t('notes.history.compare_clear')}
+                  </Button>
+                </Space>
+                {selectedVersions.length > 0 && (
+                  <Space size={6} wrap>
+                    {selectedVersions.map((v) => (
+                      <Tag key={v.id} color="processing">
+                        {getVersionTitle(v)}
+                      </Tag>
+                    ))}
                   </Space>
-                }
-                description={
-                  <Space direction="vertical" size={2} style={{ width: '100%' }}>
-                    {v.reason ? (
-                      <Typography.Text>{v.reason}</Typography.Text>
-                    ) : (
-                      <Typography.Text type="secondary">{t('notes.history.reason.none')}</Typography.Text>
-                    )}
-                    {typeof v.gzipByteSize === 'number' && typeof v.byteSize === 'number' && (
-                      <Typography.Text type="secondary">
-                        {t('notes.history.size', { gzip: v.gzipByteSize, raw: v.byteSize })}
-                      </Typography.Text>
-                    )}
-                  </Space>
-                }
-              />
-            </List.Item>
+                )}
+                {renderDiff()}
+              </Space>
+            </div>
           )}
-        />
+        </div>
       </Space>
     </div>
   )

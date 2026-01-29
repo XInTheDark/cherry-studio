@@ -1,6 +1,7 @@
 import { loggerService } from '@logger'
 import { uuid } from '@renderer/utils'
 
+import CanvasChatService from './CanvasChatService'
 import {
   basenameFsPath,
   dirnameFsPath,
@@ -36,6 +37,11 @@ export type CanvasVersionEntryV1 = {
   id: string
   createdAt: string
   actor: CanvasActor
+  /**
+   * User-editable label for the version entry (stored in history index.json).
+   * When omitted, UI falls back to createdAt.
+   */
+  name?: string
   reason?: string
   baseSha256?: string
   nextSha256?: string
@@ -302,6 +308,21 @@ export const CanvasHistoryService = {
   },
 
   /**
+   * Get the stable canvasId for a canvas file (creating the mapping entry if needed).
+   * Useful for associating non-portable metadata (like chats) with a canvas.
+   */
+  getCanvasId: async ({
+    notesPath,
+    filePath
+  }: {
+    notesPath: string
+    filePath: string
+  }): Promise<{ canvasId: string }> => {
+    const { canvasId } = await getOrCreateCanvasId(notesPath, filePath)
+    return { canvasId }
+  },
+
+  /**
    * Restore a version snapshot into the markdown file.
    * This overwrites the file on disk and (optionally) creates a new version entry to represent the restore action.
    */
@@ -360,6 +381,42 @@ export const CanvasHistoryService = {
   },
 
   /**
+   * Rename a version entry (metadata only; does not change snapshot content).
+   */
+  renameVersion: async ({
+    notesPath,
+    filePath,
+    versionId,
+    name
+  }: {
+    notesPath: string
+    filePath: string
+    versionId: string
+    name: string
+  }): Promise<{ canvasId: string; updated: boolean }> => {
+    const { canvasId } = await getOrCreateCanvasId(notesPath, filePath)
+    const canvasLockKey = `canvas-history:${canvasId}`
+
+    return withLock(canvasLockKey, async () => {
+      const historyIndex = await loadOrCreateHistoryIndex(notesPath, canvasId)
+      const target = historyIndex.versions.find((v) => v.id === versionId)
+      if (!target) {
+        throw new Error(`Version not found: ${versionId}`)
+      }
+
+      const trimmed = name.trim()
+      if (trimmed) {
+        target.name = trimmed
+      } else {
+        delete target.name
+      }
+
+      await saveHistoryIndex(notesPath, canvasId, historyIndex)
+      return { canvasId, updated: true }
+    })
+  },
+
+  /**
    * Deep-duplicate a canvas file, including on-disk version history (portable).
    *
    * Today we copy:
@@ -413,6 +470,13 @@ export const CanvasHistoryService = {
       ...sourceHistoryIndex,
       canvasId: newCanvasId
     })
+
+    // Duplicate non-portable canvas chat sidebar data (Dexie topics + appData metadata).
+    try {
+      await CanvasChatService.duplicateChats({ sourceCanvasId, newCanvasId })
+    } catch (error) {
+      logger.warn('Failed to duplicate canvas chats (non-fatal):', error as Error)
+    }
 
     return { sourceCanvasId, newCanvasId, newFilePath }
   },

@@ -48,6 +48,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import styled from 'styled-components'
 
+import CanvasChatSidebar from './CanvasChatSidebar'
 import HeaderNavbar from './HeaderNavbar'
 import NotesEditor from './NotesEditor'
 import NotesSidebar from './NotesSidebar'
@@ -83,6 +84,8 @@ const NotesPage: FC = () => {
   const isRenamingRef = useRef(false)
   const isCreatingNoteRef = useRef(false)
   const pendingScrollRef = useRef<{ lineNumber: number; lineContent?: string } | null>(null)
+  const [isCanvasChatOpen, setIsCanvasChatOpen] = useState(false)
+  const closedForFileRef = useRef<string | null>(null)
 
   const activeFilePathRef = useRef<string | undefined>(activeFilePath)
   const currentContentRef = useRef(currentContent)
@@ -165,6 +168,23 @@ const NotesPage: FC = () => {
   useEffect(() => {
     refreshTree()
   }, [refreshTree])
+
+  // Canvas chat sidebar default behavior:
+  // - auto-open when a canvas file is selected
+  // - if user closes it, keep it closed for the current file until selection changes
+  useEffect(() => {
+    if (!activeNode || activeNode.type !== 'file' || !activeFilePath) {
+      setIsCanvasChatOpen(false)
+      closedForFileRef.current = null
+      return
+    }
+
+    if (closedForFileRef.current && closedForFileRef.current === activeFilePath) {
+      return
+    }
+
+    setIsCanvasChatOpen(true)
+  }, [activeFilePath, activeNode])
 
   // Re-merge tree state when starred or expanded paths change
   useEffect(() => {
@@ -1034,6 +1054,18 @@ const NotesPage: FC = () => {
             onToggleStar={handleToggleStar}
             onExpandPath={handleExpandPath}
             onRenameNode={handleRenameNode}
+            isCanvasChatOpen={isCanvasChatOpen}
+            onToggleCanvasChat={() => {
+              setIsCanvasChatOpen((prev) => {
+                const next = !prev
+                if (!next && activeFilePath) {
+                  closedForFileRef.current = activeFilePath
+                } else {
+                  closedForFileRef.current = null
+                }
+                return next
+              })
+            }}
           />
           <NotesEditor
             activeNodeId={activeNode?.id}
@@ -1044,6 +1076,18 @@ const NotesPage: FC = () => {
             codeEditorRef={codeEditorRef}
           />
         </EditorWrapper>
+        {notesPath && activeNode?.type === 'file' && activeFilePath && (
+          <CanvasChatSidebar
+            open={isCanvasChatOpen}
+            notesPath={notesPath}
+            filePath={activeFilePath}
+            width={380}
+            onClose={() => {
+              setIsCanvasChatOpen(false)
+              closedForFileRef.current = activeFilePath
+            }}
+          />
+        )}
       </ContentContainer>
     </Container>
   )

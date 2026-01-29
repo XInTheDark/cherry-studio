@@ -2246,6 +2246,17 @@
       "success": "La génération du nom de note a réussi"
     },
     "characters": "caractère",
+    "chat": {
+      "empty": "[to be translated]:No chats yet",
+      "empty_hint": "[to be translated]:Start chatting about this canvas…",
+      "load_failed": "[to be translated]:Failed to load canvas chat",
+      "new_chat": "[to be translated]:New chat",
+      "no_active_canvas": "[to be translated]:Select a canvas to open chat",
+      "no_active_chat": "[to be translated]:Select a chat",
+      "select_assistant": "[to be translated]:Select assistant",
+      "title": "[to be translated]:Canvas Chat",
+      "topic_name": "[to be translated]:Canvas Chat"
+    },
     "collapse": "réduire",
     "content_placeholder": "Veuillez saisir le contenu de la note...",
     "copyContent": "contenu copié",
@@ -2281,6 +2292,7 @@
       "reason": {
         "none": "[to be translated]:No reason provided"
       },
+      "rename_failed": "[to be translated]:Failed to rename version",
       "restore": "[to be translated]:Restore",
       "restore_confirm": {
         "content": "[to be translated]:This will overwrite the current canvas content.",

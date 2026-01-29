@@ -2246,6 +2246,17 @@
       "success": "Canvas name generated successfully"
     },
     "characters": "Characters",
+    "chat": {
+      "empty": "No chats yet",
+      "empty_hint": "Start chatting about this canvas…",
+      "load_failed": "Failed to load canvas chat",
+      "new_chat": "New chat",
+      "no_active_canvas": "Select a canvas to open chat",
+      "no_active_chat": "Select a chat",
+      "select_assistant": "Select assistant",
+      "title": "Canvas Chat",
+      "topic_name": "Canvas Chat"
+    },
     "collapse": "Collapse",
     "content_placeholder": "Please enter the canvas content...",
     "copyContent": "Copy Content",
@@ -2281,6 +2292,7 @@
       "reason": {
         "none": "No reason provided"
       },
+      "rename_failed": "Failed to rename version",
       "restore": "Restore",
       "restore_confirm": {
         "content": "This will overwrite the current canvas content.",

@@ -10,7 +10,7 @@ import { findNode } from '@renderer/services/NotesTreeService'
 import { setActiveFilePath } from '@renderer/store/note'
 import { Breadcrumb, Dropdown, Input, Tooltip } from 'antd'
 import { t } from 'i18next'
-import { History, MoreHorizontal, PanelLeftClose, PanelRightClose, Star } from 'lucide-react'
+import { History, MessageSquare, MoreHorizontal, PanelLeftClose, PanelRightClose, Star } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useDispatch } from 'react-redux'
 import styled from 'styled-components'
@@ -21,7 +21,15 @@ import NotesSettings from './NotesSettings'
 
 const logger = loggerService.withContext('HeaderNavbar')
 
-const HeaderNavbar = ({ notesTree, getCurrentNoteContent, onToggleStar, onExpandPath, onRenameNode }) => {
+const HeaderNavbar = ({
+  notesTree,
+  getCurrentNoteContent,
+  onToggleStar,
+  onExpandPath,
+  onRenameNode,
+  isCanvasChatOpen,
+  onToggleCanvasChat
+}) => {
   const dispatch = useDispatch()
   const { showWorkspace, toggleShowWorkspace } = useShowWorkspace()
   const { activeNode } = useActiveNode(notesTree)
@@ -33,6 +41,7 @@ const HeaderNavbar = ({ notesTree, getCurrentNoteContent, onToggleStar, onExpand
   const { settings, notesPath, updateSettings } = useNotesSettings()
   const canShowStarButton = activeNode?.type === 'file' && onToggleStar
   const canShowHistoryButton = activeNode?.type === 'file' && Boolean(notesPath)
+  const canShowChatButton = activeNode?.type === 'file' && Boolean(notesPath) && Boolean(onToggleCanvasChat)
 
   const handleToggleShowWorkspace = useCallback(() => {
     toggleShowWorkspace()
@@ -317,6 +326,13 @@ const HeaderNavbar = ({ notesTree, getCurrentNoteContent, onToggleStar, onExpand
           <Tooltip title={t('notes.history.title')} mouseEnterDelay={0.8}>
             <NavbarIcon onClick={handleShowHistory}>
               <History size={18} />
+            </NavbarIcon>
+          </Tooltip>
+        )}
+        {canShowChatButton && (
+          <Tooltip title={t('notes.chat.title')} mouseEnterDelay={0.8}>
+            <NavbarIcon onClick={onToggleCanvasChat}>
+              <MessageSquare size={18} color={isCanvasChatOpen ? 'var(--color-primary)' : undefined} />
             </NavbarIcon>
           </Tooltip>
         )}
