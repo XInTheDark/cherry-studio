@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest'
 
-import { joinFsPath, rewritePathPrefix, toNotesRelativePath } from '../canvasHistory/pathUtils'
+import {
+  basenameFsPath,
+  dirnameFsPath,
+  joinFsPath,
+  rewritePathPrefix,
+  splitFileExt,
+  toNotesRelativePath
+} from '../canvasHistory/pathUtils'
 
 describe('CanvasHistoryService helpers', () => {
   it('should compute notes-relative paths', () => {
@@ -23,5 +30,16 @@ describe('CanvasHistoryService helpers', () => {
     expect(joinFsPath('C:/Users/Alice/Notes/', '.cherry-canvas', 'index.json')).toBe(
       'C:/Users/Alice/Notes/.cherry-canvas/index.json'
     )
+  })
+
+  it('should split filesystem paths into dirname/basename', () => {
+    expect(dirnameFsPath('/root/notes/a.md')).toBe('/root/notes')
+    expect(basenameFsPath('/root/notes/a.md')).toBe('a.md')
+  })
+
+  it('should split file extensions', () => {
+    expect(splitFileExt('a.md')).toEqual({ name: 'a', ext: '.md' })
+    expect(splitFileExt('a')).toEqual({ name: 'a', ext: '' })
+    expect(splitFileExt('.gitignore')).toEqual({ name: '.gitignore', ext: '' })
   })
 })

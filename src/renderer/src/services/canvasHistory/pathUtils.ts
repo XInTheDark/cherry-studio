@@ -20,6 +20,27 @@ export function joinFsPath(...parts: string[]): string {
   return cleaned.join('/')
 }
 
+export function dirnameFsPath(value: string): string {
+  const normalized = normalizeFsPath(value)
+  const idx = normalized.lastIndexOf('/')
+  if (idx === -1) return ''
+  if (idx === 0) return '/'
+  return normalized.slice(0, idx)
+}
+
+export function basenameFsPath(value: string): string {
+  const normalized = normalizeFsPath(value)
+  const idx = normalized.lastIndexOf('/')
+  return idx === -1 ? normalized : normalized.slice(idx + 1)
+}
+
+export function splitFileExt(fileName: string): { name: string; ext: string } {
+  const idx = fileName.lastIndexOf('.')
+  // Treat ".gitignore" style as having no extension.
+  if (idx <= 0) return { name: fileName, ext: '' }
+  return { name: fileName.slice(0, idx), ext: fileName.slice(idx) }
+}
+
 export function toNotesRelativePath(notesPath: string, fileOrDirPath: string): string | null {
   const root = normalizeFsPath(notesPath)
   const full = normalizeFsPath(fileOrDirPath)

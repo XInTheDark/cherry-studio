@@ -1,5 +1,5 @@
 import type { NotesSettings } from '@renderer/store/note'
-import { Copy, History, MonitorSpeaker, Settings, Type } from 'lucide-react'
+import { Copy, CopyPlus, MonitorSpeaker, Settings, Type } from 'lucide-react'
 import type { ReactNode } from 'react'
 
 export interface MenuItem {
@@ -13,6 +13,7 @@ export interface MenuItem {
   component?: (settings: NotesSettings, updateSettings: (newSettings: Partial<NotesSettings>) => void) => ReactNode
   copyAction?: boolean
   openHistoryPopup?: boolean
+  duplicateCanvasAction?: boolean
   showSettingsPopup?: boolean
 }
 
@@ -24,10 +25,10 @@ export const menuItems: MenuItem[] = [
     copyAction: true
   },
   {
-    key: 'history',
-    labelKey: 'notes.history.title',
-    icon: History,
-    openHistoryPopup: true
+    key: 'duplicate-canvas',
+    labelKey: 'notes.duplicate',
+    icon: CopyPlus,
+    duplicateCanvasAction: true
   },
   {
     key: 'divider0',

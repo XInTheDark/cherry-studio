@@ -5,11 +5,14 @@ import GeneralPopup from '@renderer/components/Popups/GeneralPopup'
 import { useActiveNode } from '@renderer/hooks/useNotesQuery'
 import { useNotesSettings } from '@renderer/hooks/useNotesSettings'
 import { useShowWorkspace } from '@renderer/hooks/useShowWorkspace'
+import CanvasHistoryService from '@renderer/services/CanvasHistoryService'
 import { findNode } from '@renderer/services/NotesTreeService'
+import { setActiveFilePath } from '@renderer/store/note'
 import { Breadcrumb, Dropdown, Input, Tooltip } from 'antd'
 import { t } from 'i18next'
-import { MoreHorizontal, PanelLeftClose, PanelRightClose, Star } from 'lucide-react'
+import { History, MoreHorizontal, PanelLeftClose, PanelRightClose, Star } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { useDispatch } from 'react-redux'
 import styled from 'styled-components'
 
 import CanvasHistoryPanel from './CanvasHistoryPanel'
@@ -19,6 +22,7 @@ import NotesSettings from './NotesSettings'
 const logger = loggerService.withContext('HeaderNavbar')
 
 const HeaderNavbar = ({ notesTree, getCurrentNoteContent, onToggleStar, onExpandPath, onRenameNode }) => {
+  const dispatch = useDispatch()
   const { showWorkspace, toggleShowWorkspace } = useShowWorkspace()
   const { activeNode } = useActiveNode(notesTree)
   const [breadcrumbItems, setBreadcrumbItems] = useState<
@@ -28,6 +32,7 @@ const HeaderNavbar = ({ notesTree, getCurrentNoteContent, onToggleStar, onExpand
   const titleInputRef = useRef<any>(null)
   const { settings, notesPath, updateSettings } = useNotesSettings()
   const canShowStarButton = activeNode?.type === 'file' && onToggleStar
+  const canShowHistoryButton = activeNode?.type === 'file' && Boolean(notesPath)
 
   const handleToggleShowWorkspace = useCallback(() => {
     toggleShowWorkspace()
@@ -82,6 +87,37 @@ const HeaderNavbar = ({ notesTree, getCurrentNoteContent, onToggleStar, onExpand
       styles: { body: { padding: 0 } }
     })
   }, [activeNode, notesPath])
+
+  const handleDuplicateCanvas = useCallback(async () => {
+    if (!notesPath) {
+      window.toast?.warning?.(t('notes.duplicate_no_active_canvas'))
+      return
+    }
+    if (!activeNode || activeNode.type !== 'file') {
+      window.toast?.warning?.(t('notes.duplicate_no_active_canvas'))
+      return
+    }
+
+    const filePath = activeNode.externalPath
+    const content = getCurrentNoteContent?.()
+
+    const promise = CanvasHistoryService.duplicateCanvas({
+      notesPath,
+      filePath,
+      content: typeof content === 'string' ? content : undefined
+    })
+    window.toast?.loading?.({ title: t('notes.duplicate'), promise })
+
+    try {
+      const result = await promise
+      if (result?.newFilePath) {
+        dispatch(setActiveFilePath(result.newFilePath))
+      }
+    } catch (error) {
+      logger.error('Failed to duplicate canvas:', error as Error)
+      // Error toast is handled by window.toast.loading already.
+    }
+  }, [activeNode, dispatch, getCurrentNoteContent, notesPath])
 
   const handleBreadcrumbClick = useCallback(
     (item: { treePath: string; isFolder: boolean }) => {
@@ -162,8 +198,8 @@ const HeaderNavbar = ({ notesTree, getCurrentNoteContent, onToggleStar, onExpand
       onClick: () => {
         if (item.copyAction) {
           handleCopyContent()
-        } else if (item.openHistoryPopup) {
-          handleShowHistory()
+        } else if (item.duplicateCanvasAction) {
+          void handleDuplicateCanvas()
         } else if (item.showSettingsPopup) {
           handleShowSettings()
         } else if (item.action) {
@@ -275,6 +311,13 @@ const HeaderNavbar = ({ notesTree, getCurrentNoteContent, onToggleStar, onExpand
                 <Star size={18} />
               )}
             </StarButton>
+          </Tooltip>
+        )}
+        {canShowHistoryButton && (
+          <Tooltip title={t('notes.history.title')} mouseEnterDelay={0.8}>
+            <NavbarIcon onClick={handleShowHistory}>
+              <History size={18} />
+            </NavbarIcon>
           </Tooltip>
         )}
         <Tooltip title={t('notes.settings.title')} mouseEnterDelay={0.8}>

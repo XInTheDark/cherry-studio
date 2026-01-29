@@ -1,7 +1,15 @@
 import { loggerService } from '@logger'
 import { uuid } from '@renderer/utils'
 
-import { joinFsPath, normalizeFsPath, rewritePathPrefix, toNotesRelativePath } from './canvasHistory/pathUtils'
+import {
+  basenameFsPath,
+  dirnameFsPath,
+  joinFsPath,
+  normalizeFsPath,
+  rewritePathPrefix,
+  splitFileExt,
+  toNotesRelativePath
+} from './canvasHistory/pathUtils'
 
 const logger = loggerService.withContext('CanvasHistoryService')
 
@@ -136,6 +144,30 @@ function getCanvasVersionsDir(notesPath: string, canvasId: string): string {
 
 function getCanvasVersionBlobPath(notesPath: string, canvasId: string, versionId: string): string {
   return joinFsPath(getCanvasVersionsDir(notesPath, canvasId), `${versionId}.gz`)
+}
+
+async function getAvailableCopyPath({
+  filePath,
+  maxAttempts = 100
+}: {
+  filePath: string
+  maxAttempts?: number
+}): Promise<string> {
+  const dir = dirnameFsPath(filePath)
+  const base = basenameFsPath(filePath)
+  const { name, ext } = splitFileExt(base)
+  const finalExt = ext || '.md'
+
+  for (let i = 1; i <= maxAttempts; i += 1) {
+    const candidateName = i === 1 ? `${name} (copy)` : `${name} (copy ${i})`
+    const candidatePath = joinFsPath(dir, `${candidateName}${finalExt}`)
+    const exists = await window.api.file.get(candidatePath)
+    if (!exists) {
+      return candidatePath
+    }
+  }
+
+  throw new Error(`Failed to find an available duplicate name for: ${filePath}`)
 }
 
 async function loadOrCreateMappingIndex(notesPath: string): Promise<CanvasMappingIndexV1> {
@@ -305,6 +337,84 @@ export const CanvasHistoryService = {
     }
 
     return { canvasId, restored: true }
+  },
+
+  /**
+   * Read a version snapshot's plain text content (decompressing the gzip blob).
+   */
+  readVersionContent: async ({
+    notesPath,
+    filePath,
+    versionId
+  }: {
+    notesPath: string
+    filePath: string
+    versionId: string
+  }): Promise<{ canvasId: string; content: string }> => {
+    const { canvasId } = await getOrCreateCanvasId(notesPath, filePath)
+    const blobPath = getCanvasVersionBlobPath(notesPath, canvasId, versionId)
+
+    const gzip = await window.api.fs.read(blobPath)
+    const content = await window.api.zip.decompress(gzip as unknown as Buffer)
+    return { canvasId, content }
+  },
+
+  /**
+   * Deep-duplicate a canvas file, including on-disk version history (portable).
+   *
+   * Today we copy:
+   * - markdown file contents
+   * - `.cherry-canvas/index.json` mapping entry (new canvasId)
+   * - `.cherry-canvas/history/<canvasId>` history directory (new canvasId, same versions)
+   *
+   * Future: extend to copy per-canvas chat/topic stores.
+   */
+  duplicateCanvas: async ({
+    notesPath,
+    filePath,
+    content
+  }: {
+    notesPath: string
+    filePath: string
+    content?: string
+  }): Promise<{ sourceCanvasId: string; newCanvasId: string; newFilePath: string }> => {
+    const nextContent = content ?? (await window.api.fs.readText(filePath))
+
+    // Create a "safety" snapshot right before we duplicate so fast edits aren't lost in history.
+    const commit = await CanvasHistoryService.commitVersion({
+      notesPath,
+      filePath,
+      content: nextContent,
+      actor: 'system',
+      reason: 'duplicate canvas (pre-copy snapshot)'
+    })
+
+    const sourceCanvasId = commit.canvasId
+    const newFilePath = await getAvailableCopyPath({ filePath })
+
+    // Copy the file content.
+    await window.api.file.write(newFilePath, nextContent)
+
+    // Create a new canvasId mapping entry for the duplicate.
+    const { canvasId: newCanvasId } = await getOrCreateCanvasId(notesPath, newFilePath)
+
+    // Copy history folder and rewrite canvasId in its index.json.
+    const sourceHistoryDir = getCanvasHistoryDir(notesPath, sourceCanvasId)
+    const newHistoryDir = getCanvasHistoryDir(notesPath, newCanvasId)
+
+    const copyResult = await window.api.copy(sourceHistoryDir, newHistoryDir, [])
+    if (!copyResult?.success) {
+      throw new Error(copyResult?.error || 'Failed to copy canvas history')
+    }
+
+    // Rewrite the copied index.json to the new canvasId so the loader recognizes it.
+    const sourceHistoryIndex = await loadOrCreateHistoryIndex(notesPath, sourceCanvasId)
+    await saveHistoryIndex(notesPath, newCanvasId, {
+      ...sourceHistoryIndex,
+      canvasId: newCanvasId
+    })
+
+    return { sourceCanvasId, newCanvasId, newFilePath }
   },
 
   /**
