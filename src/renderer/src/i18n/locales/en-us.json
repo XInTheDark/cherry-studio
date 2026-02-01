@@ -707,6 +707,9 @@
         "title": "Activity Directory"
       },
       "auto_resize": "Auto resize height",
+      "canvas": {
+        "label": "Canvas"
+      },
       "clear": {
         "content": "Do you want to clear all messages of the current topic?",
         "label": "Clear {{Command}}",
@@ -2247,13 +2250,16 @@
     },
     "characters": "Characters",
     "chat": {
+      "create_failed": "Failed to create a new chat",
       "empty": "No chats yet",
       "empty_hint": "Start chatting about this canvas…",
+      "hide_list": "Hide chat list",
       "load_failed": "Failed to load canvas chat",
       "new_chat": "New chat",
       "no_active_canvas": "Select a canvas to open chat",
       "no_active_chat": "Select a chat",
       "select_assistant": "Select assistant",
+      "show_list": "Show chat list",
       "title": "Canvas Chat",
       "topic_name": "Canvas Chat"
     },

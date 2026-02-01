@@ -707,6 +707,9 @@
         "title": "活动目录"
       },
       "auto_resize": "自动调整高度",
+      "canvas": {
+        "label": "[to be translated]:Canvas"
+      },
       "clear": {
         "content": "确定要清除当前会话所有消息吗？",
         "label": "清空消息 {{Command}}",
@@ -2247,13 +2250,16 @@
     },
     "characters": "字符",
     "chat": {
+      "create_failed": "[to be translated]:Failed to create a new chat",
       "empty": "[to be translated]:No chats yet",
       "empty_hint": "[to be translated]:Start chatting about this canvas…",
+      "hide_list": "[to be translated]:Hide chat list",
       "load_failed": "[to be translated]:Failed to load canvas chat",
       "new_chat": "[to be translated]:New chat",
       "no_active_canvas": "[to be translated]:Select a canvas to open chat",
       "no_active_chat": "[to be translated]:Select a chat",
       "select_assistant": "[to be translated]:Select assistant",
+      "show_list": "[to be translated]:Show chat list",
       "title": "[to be translated]:Canvas Chat",
       "topic_name": "[to be translated]:Canvas Chat"
     },

@@ -30,6 +30,7 @@ export const DEFAULT_TOOL_ORDER: ToolOrder = {
     'new_topic',
     'attachment',
     'thinking',
+    'canvas',
     'web_search',
     'url_context',
     'knowledge_base',

@@ -43,6 +43,8 @@ export type Assistant = {
   messages?: AssistantMessage[]
   /** enableWebSearch 代表使用模型内置网络搜索功能 */
   enableWebSearch?: boolean
+  /** enableCanvas enables Canvas edit tools in normal chats (Canvas chat sidebar always enables tools). */
+  enableCanvas?: boolean
   webSearchProviderId?: WebSearchProvider['id']
   // enableUrlContext 是 Gemini/Anthropic 的特有功能
   enableUrlContext?: boolean

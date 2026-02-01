@@ -1112,9 +1112,7 @@ const EditorWrapper = styled.div`
   position: relative;
   flex-direction: column;
   justify-content: space-between;
-  width: 100%;
-  flex: 1;
-  max-width: 100%;
+  flex: 1 1 auto;
   overflow: hidden;
   min-height: 0;
   min-width: 0;

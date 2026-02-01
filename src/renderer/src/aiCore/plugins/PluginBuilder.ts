@@ -1,10 +1,12 @@
 import type { AiPlugin } from '@cherrystudio/ai-core'
 import { createPromptToolUsePlugin, webSearchPlugin } from '@cherrystudio/ai-core/built-in/plugins'
 import { loggerService } from '@logger'
+import { isFunctionCallingModel } from '@renderer/config/models'
 import { getEnableDeveloperMode } from '@renderer/hooks/useSettings'
 import type { Assistant } from '@renderer/types'
 
 import type { AiSdkMiddlewareConfig } from '../middleware/AiSdkMiddlewareBuilder'
+import { canvasOrchestrationPlugin } from './canvasOrchestrationPlugin'
 import { searchOrchestrationPlugin } from './searchOrchestrationPlugin'
 import { createTelemetryPlugin } from './telemetryPlugin'
 
@@ -35,6 +37,20 @@ export function buildPlugins(
   // 2. 支持工具调用时添加搜索插件
   if (middlewareConfig.isSupportedToolUse || middlewareConfig.isPromptToolUse) {
     plugins.push(searchOrchestrationPlugin(middlewareConfig.assistant, middlewareConfig.topicId || ''))
+  }
+
+  // 2b. Canvas tools (Canvas chat always enables; normal chat requires toggle).
+  // Allow function-calling models to use tools even if the assistant isn't in tool-use mode.
+  const hasCanvasContext =
+    Boolean(middlewareConfig.topicId) &&
+    (middlewareConfig.topicId?.startsWith('canvas__') || middlewareConfig.assistant.enableCanvas === true)
+  const canInvokeCanvasTools =
+    hasCanvasContext &&
+    (middlewareConfig.isPromptToolUse ||
+      middlewareConfig.isSupportedToolUse ||
+      (middlewareConfig.model ? isFunctionCallingModel(middlewareConfig.model) : false))
+  if (canInvokeCanvasTools) {
+    plugins.push(canvasOrchestrationPlugin(middlewareConfig.assistant, middlewareConfig.topicId || ''))
   }
 
   // 3. 推理模型时添加推理插件

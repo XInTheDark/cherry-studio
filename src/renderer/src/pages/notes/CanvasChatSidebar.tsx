@@ -8,9 +8,9 @@ import CanvasHistoryService from '@renderer/services/CanvasHistoryService'
 import { useAppDispatch, useAppSelector } from '@renderer/store'
 import { loadTopicMessagesThunk } from '@renderer/store/thunk/messageThunk'
 import type { Topic } from '@renderer/types'
-import { Button, Divider, Empty, Select, Space, Tooltip, Typography } from 'antd'
+import { Button, Divider, Empty, Select, Tooltip, Typography } from 'antd'
 import dayjs from 'dayjs'
-import { Plus, X } from 'lucide-react'
+import { PanelLeftClose, PanelLeftOpen, Plus, X } from 'lucide-react'
 import type { FC } from 'react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -37,11 +37,14 @@ const CanvasChatSidebar: FC<Props> = ({ open, notesPath, filePath, width = 380, 
 
   const [panelWidth, setPanelWidth] = useState(width)
   const resizingRef = useRef<{ startX: number; startWidth: number; pointerId: number } | null>(null)
+  const isNarrowLayout = panelWidth < 520
 
   const [loading, setLoading] = useState(false)
+  const [creatingChat, setCreatingChat] = useState(false)
   const [canvasId, setCanvasId] = useState<string>('')
   const [index, setIndex] = useState<CanvasChatsIndexV1 | null>(null)
   const [activeChatId, setActiveChatId] = useState<string | null>(null)
+  const [isChatListVisible, setIsChatListVisible] = useState(true)
 
   const activeChat: CanvasChatEntryV1 | null = useMemo(() => {
     if (!index) return null
@@ -109,18 +112,28 @@ const CanvasChatSidebar: FC<Props> = ({ open, notesPath, filePath, width = 380, 
   const handleNewChat = useCallback(
     async (assistantId: string) => {
       if (!canvasId) return
-      const created = await CanvasChatService.createChat({ canvasId, assistantId })
-      await refreshIndex()
-      setActiveChatId(created.id)
+      if (!assistantId) return
+
+      setCreatingChat(true)
+      try {
+        const created = await CanvasChatService.createChat({ canvasId, assistantId })
+        await refreshIndex()
+        setActiveChatId(created.id)
+      } catch (error) {
+        logger.error('Failed to create canvas chat:', error as Error)
+        window.toast?.error?.(t('notes.chat.create_failed'))
+      } finally {
+        setCreatingChat(false)
+      }
     },
-    [canvasId, refreshIndex]
+    [canvasId, refreshIndex, t]
   )
 
   if (!open) return null
 
   if (!notesPath || !filePath) {
     return (
-      <Container style={{ width: panelWidth }}>
+      <Container style={{ width: panelWidth, flex: '0 0 auto' }}>
         <HeaderRow>
           <Title>{t('notes.chat.title')}</Title>
           <Button size="small" type="text" icon={<X size={16} />} onClick={onClose} />
@@ -132,7 +145,7 @@ const CanvasChatSidebar: FC<Props> = ({ open, notesPath, filePath, width = 380, 
   }
 
   return (
-    <Container style={{ width: panelWidth }}>
+    <Container style={{ width: panelWidth, flex: '0 0 auto' }}>
       <ResizeHandle
         onPointerDown={(e) => {
           resizingRef.current = { startX: e.clientX, startWidth: panelWidth, pointerId: e.pointerId }
@@ -170,14 +183,15 @@ const CanvasChatSidebar: FC<Props> = ({ open, notesPath, filePath, width = 380, 
 
       <Divider style={{ margin: '8px 0' }} />
 
-      <Space direction="vertical" style={{ width: '100%' }} size={8}>
-        <Space align="center" style={{ width: '100%', justifyContent: 'space-between' }}>
+      <Body>
+        <ToolbarRow>
           <Select
-            style={{ flex: 1 }}
+            style={{ flex: 1, minWidth: 0 }}
             size="small"
             value={activeChat?.assistantId}
             placeholder={t('notes.chat.select_assistant')}
             options={assistantOptions}
+            disabled={creatingChat || loading || !canvasId}
             onChange={(assistantId) => {
               // Requirement: switching assistant starts a NEW chat thread.
               void handleNewChat(assistantId)
@@ -187,6 +201,8 @@ const CanvasChatSidebar: FC<Props> = ({ open, notesPath, filePath, width = 380, 
             <Button
               size="small"
               icon={<Plus size={16} />}
+              loading={creatingChat}
+              disabled={creatingChat || loading || !canvasId}
               onClick={() => {
                 const assistantId = activeChat?.assistantId || defaultAssistantId || assistants[0]?.id
                 if (!assistantId) return
@@ -194,41 +210,51 @@ const CanvasChatSidebar: FC<Props> = ({ open, notesPath, filePath, width = 380, 
               }}
             />
           </Tooltip>
-        </Space>
+          <Tooltip title={isChatListVisible ? t('notes.chat.hide_list') : t('notes.chat.show_list')}>
+            <Button
+              size="small"
+              type="text"
+              icon={isChatListVisible ? <PanelLeftClose size={16} /> : <PanelLeftOpen size={16} />}
+              onClick={() => setIsChatListVisible((prev) => !prev)}
+            />
+          </Tooltip>
+        </ToolbarRow>
 
-        <ChatLayout>
-          <ChatList>
-            {!index?.chats?.length ? (
-              <Empty description={t('notes.chat.empty')} image={Empty.PRESENTED_IMAGE_SIMPLE} />
-            ) : (
-              index.chats.map((c) => {
-                const isActive = c.id === activeChat?.id
-                const title = c.name?.trim() || CanvasChatService.getAssistantName(c.assistantId)
-                const time = dayjs(c.updatedAt ?? c.createdAt).format('MM/DD HH:mm')
-                return (
-                  <ChatListItem
-                    key={c.id}
-                    role="button"
-                    tabIndex={0}
-                    $active={isActive}
-                    onClick={() => setActiveChatId(c.id)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' || e.key === ' ') {
-                        e.preventDefault()
-                        setActiveChatId(c.id)
-                      }
-                    }}>
-                    <Typography.Text style={{ display: 'block' }} ellipsis={{ tooltip: title }}>
-                      {title}
-                    </Typography.Text>
-                    <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-                      {time}
-                    </Typography.Text>
-                  </ChatListItem>
-                )
-              })
-            )}
-          </ChatList>
+        <ChatLayout $direction={isNarrowLayout ? 'column' : 'row'}>
+          {isChatListVisible && (
+            <ChatList $variant={isNarrowLayout ? 'top' : 'side'}>
+              {!index?.chats?.length ? (
+                <Empty description={t('notes.chat.empty')} image={Empty.PRESENTED_IMAGE_SIMPLE} />
+              ) : (
+                index.chats.map((c) => {
+                  const isActive = c.id === activeChat?.id
+                  const title = c.name?.trim() || CanvasChatService.getAssistantName(c.assistantId)
+                  const time = dayjs(c.updatedAt ?? c.createdAt).format('MM/DD HH:mm')
+                  return (
+                    <ChatListItem
+                      key={c.id}
+                      role="button"
+                      tabIndex={0}
+                      $active={isActive}
+                      onClick={() => setActiveChatId(c.id)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault()
+                          setActiveChatId(c.id)
+                        }
+                      }}>
+                      <Typography.Text style={{ display: 'block' }} ellipsis={{ tooltip: title }}>
+                        {title}
+                      </Typography.Text>
+                      <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                        {time}
+                      </Typography.Text>
+                    </ChatListItem>
+                  )
+                })
+              )}
+            </ChatList>
+          )}
 
           <ChatView>
             {activeChat ? (
@@ -244,7 +270,7 @@ const CanvasChatSidebar: FC<Props> = ({ open, notesPath, filePath, width = 380, 
             )}
           </ChatView>
         </ChatLayout>
-      </Space>
+      </Body>
     </Container>
   )
 }
@@ -308,6 +334,9 @@ const Container = styled.div`
   background: var(--color-background);
   padding: 10px;
   position: relative;
+  box-sizing: border-box;
+  min-height: 0;
+  overflow: hidden;
 `
 
 const ResizeHandle = styled.div`
@@ -333,22 +362,43 @@ const Title = styled.div`
   color: var(--color-text);
 `
 
-const ChatLayout = styled.div`
+const Body = styled.div`
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  flex: 1;
+  min-width: 0;
+  gap: 8px;
+`
+
+const ToolbarRow = styled.div`
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+`
+
+const ChatLayout = styled.div<{ $direction: 'row' | 'column' }>`
   display: flex;
   gap: 10px;
   min-height: 0;
   flex: 1;
   min-width: 0;
+  flex-direction: ${({ $direction }) => $direction};
 `
 
-const ChatList = styled.div`
-  flex: 0 0 160px;
+const ChatList = styled.div<{ $variant: 'side' | 'top' }>`
+  flex: ${({ $variant }) => ($variant === 'side' ? '0 0 160px' : '0 0 auto')};
   min-width: 0;
   display: flex;
   flex-direction: column;
   gap: 8px;
-  overflow: auto;
-  padding-right: 4px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding-right: ${({ $variant }) => ($variant === 'side' ? '4px' : '0')};
+  padding-bottom: ${({ $variant }) => ($variant === 'top' ? '4px' : '0')};
+  max-height: ${({ $variant }) => ($variant === 'top' ? '150px' : 'none')};
 `
 
 const ChatListItem = styled.div<{ $active: boolean }>`

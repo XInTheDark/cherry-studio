@@ -3,6 +3,7 @@ import type { ToolMessageBlock } from '@renderer/types/newMessage'
 
 import { MessageAgentTools } from './MessageAgentTools'
 import { AgentToolsType } from './MessageAgentTools/types'
+import { MessageCanvasTool } from './MessageCanvasTool'
 import { MessageKnowledgeSearchToolTitle } from './MessageKnowledgeSearch'
 import { MessageMemorySearchToolTitle } from './MessageMemorySearch'
 import { MessageWebSearchToolTitle } from './MessageWebSearch'
@@ -27,6 +28,12 @@ const ChooseTool = (toolResponse: NormalToolResponse): React.ReactNode | null =>
   if (toolName.startsWith(builtinToolsPrefix)) {
     toolName = toolName.slice(builtinToolsPrefix.length)
     switch (toolName) {
+      case 'canvas_read':
+      case 'canvas_list':
+      case 'canvas_create':
+      case 'canvas_replace':
+      case 'canvas_append':
+        return <MessageCanvasTool toolResponse={toolResponse} />
       case 'web_search':
       case 'web_search_preview':
         return toolType === 'provider' ? null : <MessageWebSearchToolTitle toolResponse={toolResponse} />

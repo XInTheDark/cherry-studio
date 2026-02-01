@@ -245,6 +245,22 @@ async function touchMappingUpdatedAt(notesPath: string, relPath: string): Promis
   })
 }
 
+async function resolveRelPathForCanvasId(
+  notesPath: string,
+  canvasId: string
+): Promise<{ relPath: string; entry: CanvasMappingEntryV1 } | null> {
+  const mappingLockKey = `canvas-mapping:${normalizeFsPath(notesPath)}`
+  return withLock(mappingLockKey, async () => {
+    const index = await loadOrCreateMappingIndex(notesPath)
+    for (const [relPath, entry] of Object.entries(index.items)) {
+      if (entry?.canvasId === canvasId) {
+        return { relPath, entry }
+      }
+    }
+    return null
+  })
+}
+
 export const CanvasHistoryService = {
   /**
    * Create a version snapshot for the given canvas file.
@@ -320,6 +336,57 @@ export const CanvasHistoryService = {
   }): Promise<{ canvasId: string }> => {
     const { canvasId } = await getOrCreateCanvasId(notesPath, filePath)
     return { canvasId }
+  },
+
+  /**
+   * Resolve a canvasId back to the file path inside the notes directory.
+   * Returns null if the canvasId isn't present in the portable mapping index.
+   */
+  resolveFilePathForCanvasId: async ({
+    notesPath,
+    canvasId
+  }: {
+    notesPath: string
+    canvasId: string
+  }): Promise<{ filePath: string; relPath: string } | null> => {
+    const found = await resolveRelPathForCanvasId(notesPath, canvasId)
+    if (!found) return null
+    return { filePath: joinFsPath(normalizeFsPath(notesPath), found.relPath), relPath: found.relPath }
+  },
+
+  /**
+   * List canvases known to the portable mapping index.
+   * Helpful for disambiguation when a normal chat wants to edit "a canvas".
+   */
+  listCanvases: async ({
+    notesPath,
+    query,
+    limit = 50
+  }: {
+    notesPath: string
+    query?: string
+    limit?: number
+  }): Promise<Array<{ canvasId: string; relPath: string; createdAt: string; updatedAt: string }>> => {
+    const mappingLockKey = `canvas-mapping:${normalizeFsPath(notesPath)}`
+    return withLock(mappingLockKey, async () => {
+      const index = await loadOrCreateMappingIndex(notesPath)
+      const q = query?.trim().toLowerCase()
+
+      const items = Object.entries(index.items)
+        .map(([relPath, entry]) => ({
+          canvasId: entry.canvasId,
+          relPath,
+          createdAt: entry.createdAt,
+          updatedAt: entry.updatedAt
+        }))
+        .filter((item) => {
+          if (!q) return true
+          return item.relPath.toLowerCase().includes(q) || item.canvasId.toLowerCase().includes(q)
+        })
+        .sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : a.updatedAt > b.updatedAt ? -1 : 0))
+
+      return items.slice(0, Math.max(1, limit))
+    })
   },
 
   /**
