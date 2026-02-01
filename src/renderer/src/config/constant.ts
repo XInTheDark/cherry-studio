@@ -1,5 +1,9 @@
 export const DEFAULT_TEMPERATURE = 1.0
-export const DEFAULT_CONTEXTCOUNT = 5
+// Context messages kept for each assistant by default.
+// Use MAX_CONTEXT_COUNT ("Max" in UI), which will be treated as unlimited when preparing requests.
+export const MAX_CONTEXT_COUNT = 100
+export const UNLIMITED_CONTEXT_COUNT = 100000
+export const DEFAULT_CONTEXTCOUNT = MAX_CONTEXT_COUNT
 export const DEFAULT_MAX_TOKENS = 4096
 export const SYSTEM_PROMPT_THRESHOLD = 128
 export const DEFAULT_KNOWLEDGE_DOCUMENT_COUNT = 6
@@ -43,8 +47,5 @@ export const THEME_COLOR_PRESETS = [
   '#0EA5E9', // Sky Blue
   '#0284C7' // Light Blue
 ]
-
-export const MAX_CONTEXT_COUNT = 100
-export const UNLIMITED_CONTEXT_COUNT = 100000
 
 export const MAX_COLLAPSED_CODE_HEIGHT = 350

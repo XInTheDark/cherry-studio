@@ -14,18 +14,18 @@ interface Props {
 
 const WebSearchButton: FC<Props> = ({ quickPanelController, assistantId }) => {
   const { t } = useTranslation()
-  const { enableWebSearch, toggleQuickPanel, updateWebSearchProvider, selectedProviderId } =
-    useWebSearchPanelController(assistantId, quickPanelController)
+  const { enableWebSearch, toggleQuickPanel, selectedProviderId } = useWebSearchPanelController(
+    assistantId,
+    quickPanelController
+  )
 
   const onClick = useCallback(() => {
-    if (enableWebSearch) {
-      updateWebSearchProvider(undefined)
-    } else {
-      toggleQuickPanel()
-    }
-  }, [enableWebSearch, toggleQuickPanel, updateWebSearchProvider])
+    // When enabled, open the list so users can see (and change) the current selection,
+    // instead of acting like a "close" toggle.
+    toggleQuickPanel()
+  }, [toggleQuickPanel])
 
-  const ariaLabel = enableWebSearch ? t('common.close') : t('chat.input.web_search.label')
+  const ariaLabel = t('chat.input.web_search.label')
 
   return (
     <Tooltip placement="top" title={ariaLabel} mouseLeaveDelay={0} arrow>

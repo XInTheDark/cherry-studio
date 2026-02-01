@@ -128,13 +128,6 @@ const ThinkingButton: FC<Props> = ({ quickPanel, model, assistantId }): ReactEle
     onThinkingChange
   ])
 
-  const isThinkingEnabled =
-    currentReasoningEffort !== undefined && currentReasoningEffort !== 'none' && currentReasoningEffort !== 'default'
-
-  const disableThinking = useCallback(() => {
-    onThinkingChange('none')
-  }, [onThinkingChange])
-
   const openQuickPanel = useCallback(() => {
     quickPanelHook.open({
       title: t('assistants.settings.reasoning_effort.label'),
@@ -151,12 +144,8 @@ const ThinkingButton: FC<Props> = ({ quickPanel, model, assistantId }): ReactEle
       return
     }
 
-    if (isThinkingEnabled && supportedOptions.includes('none')) {
-      disableThinking()
-      return
-    }
     openQuickPanel()
-  }, [openQuickPanel, quickPanelHook, isThinkingEnabled, supportedOptions, disableThinking, isFixedReasoning])
+  }, [openQuickPanel, quickPanelHook, isFixedReasoning])
 
   useEffect(() => {
     if (isFixedReasoning) return
@@ -179,11 +168,7 @@ const ThinkingButton: FC<Props> = ({ quickPanel, model, assistantId }): ReactEle
     }
   }, [currentReasoningEffort, openQuickPanel, quickPanel, t, isFixedReasoning])
 
-  const ariaLabel = isFixedReasoning
-    ? t('chat.input.thinking.label')
-    : isThinkingEnabled && supportedOptions.includes('none')
-      ? t('common.close')
-      : t('assistants.settings.reasoning_effort.label')
+  const ariaLabel = isFixedReasoning ? t('chat.input.thinking.label') : t('assistants.settings.reasoning_effort.label')
 
   return (
     <Tooltip placement="top" title={ariaLabel} mouseLeaveDelay={0} arrow>
