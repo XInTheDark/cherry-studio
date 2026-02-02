@@ -30,6 +30,12 @@ interface BaseCallbacksDependencies {
   saveUpdatesToDB: any
   assistant: Assistant
   getCurrentThinkingInfo?: () => { blockId: string | null; millsec: number }
+  /**
+   * When continuing an existing assistant message, we avoid creating the initial
+   * placeholder block. Otherwise, continuing would introduce a new block boundary
+   * that renders like a new paragraph before the continued text.
+   */
+  isContinueMode?: boolean
 }
 
 export const createBaseCallbacks = (deps: BaseCallbacksDependencies) => {
@@ -41,7 +47,8 @@ export const createBaseCallbacks = (deps: BaseCallbacksDependencies) => {
     assistantMsgId,
     saveUpdatesToDB,
     assistant,
-    getCurrentThinkingInfo
+    getCurrentThinkingInfo,
+    isContinueMode
   } = deps
 
   const startTime = Date.now()
@@ -71,6 +78,10 @@ export const createBaseCallbacks = (deps: BaseCallbacksDependencies) => {
 
   return {
     onLLMResponseCreated: async () => {
+      // Continue-mode should not create a placeholder block; we want to keep appending
+      // into the existing message (and ideally the existing MAIN_TEXT block) inline.
+      if (isContinueMode) return
+
       const baseBlock = createBaseMessageBlock(assistantMsgId, MessageBlockType.UNKNOWN, {
         status: MessageBlockStatus.PROCESSING
       })

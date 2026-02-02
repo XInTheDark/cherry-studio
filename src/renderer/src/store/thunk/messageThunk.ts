@@ -576,7 +576,8 @@ const fetchAndProcessAgentResponseImpl = async (
       topicId,
       assistantMsgId: assistantMessage.id,
       saveUpdatesToDB,
-      assistant
+      assistant,
+      isContinueMode: false
     })
 
     const streamProcessorCallbacks = createStreamProcessor(callbacks)
@@ -921,7 +922,8 @@ const fetchAndProcessAssistantResponseImpl = async (
       topicId,
       assistantMsgId,
       saveUpdatesToDB,
-      assistant
+      assistant,
+      isContinueMode
     })
     const streamProcessorCallbacks = createStreamProcessor(callbacks)
 

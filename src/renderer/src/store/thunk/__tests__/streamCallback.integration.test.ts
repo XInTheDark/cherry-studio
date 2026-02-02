@@ -19,7 +19,8 @@ const createMockCallbacks = (
   mockTopicId: string,
   mockAssistant: Assistant,
   dispatch: AppDispatch,
-  getState: () => ReturnType<typeof reducer> & RootState
+  getState: () => ReturnType<typeof reducer> & RootState,
+  options?: { isContinueMode?: boolean }
 ) =>
   createCallbacks({
     blockManager: new BlockManager({
@@ -37,7 +38,8 @@ const createMockCallbacks = (
     topicId: mockTopicId,
     assistantMsgId: mockAssistantMsgId,
     saveUpdatesToDB: vi.fn(),
-    assistant: mockAssistant
+    assistant: mockAssistant,
+    isContinueMode: options?.isContinueMode
   })
 
 // Mock external dependencies
@@ -795,6 +797,53 @@ describe('streamCallback Integration Tests', () => {
     // 验证消息状态更新为成功（因为是暂停，不是真正的错误）
     const message = state.messages.entities[mockAssistantMsgId]
     expect(message?.status).toBe(AssistantMessageStatus.SUCCESS)
+  })
+
+  it('should append continued text inline (reuse existing MAIN_TEXT block)', async () => {
+    const existingTextBlockId = 'existing-text-block-id'
+
+    // Seed an existing MAIN_TEXT block (what the user already sees).
+    store.dispatch(
+      messageBlocksSlice.actions.upsertOneBlock({
+        id: existingTextBlockId,
+        messageId: mockAssistantMsgId,
+        type: MessageBlockType.MAIN_TEXT,
+        content: 'Hello',
+        status: MessageBlockStatus.SUCCESS,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      } as any)
+    )
+    store.dispatch(
+      messagesSlice.actions.updateMessage({
+        topicId: mockTopicId,
+        messageId: mockAssistantMsgId,
+        updates: { blocks: [existingTextBlockId] }
+      })
+    )
+
+    const callbacks = createMockCallbacks(mockAssistantMsgId, mockTopicId, mockAssistant, dispatch, getState, {
+      isContinueMode: true
+    })
+
+    const chunks: Chunk[] = [
+      { type: ChunkType.LLM_RESPONSE_CREATED },
+      { type: ChunkType.TEXT_START },
+      { type: ChunkType.TEXT_DELTA, text: ' world!' },
+      { type: ChunkType.TEXT_COMPLETE, text: ' world!' },
+      { type: ChunkType.BLOCK_COMPLETE }
+    ]
+
+    await processChunks(chunks, callbacks)
+
+    const state = getState()
+    const blocks = Object.values(state.messageBlocks.entities)
+    const mainTextBlocks = blocks.filter((block) => block?.type === MessageBlockType.MAIN_TEXT)
+
+    // Continue should not create a new MAIN_TEXT block; it should append inline.
+    expect(mainTextBlocks).toHaveLength(1)
+    expect(mainTextBlocks[0]?.id).toBe(existingTextBlockId)
+    expect((mainTextBlocks[0] as any)?.content).toBe('Hello world!')
   })
 
   it('should maintain block reference integrity during streaming', async () => {

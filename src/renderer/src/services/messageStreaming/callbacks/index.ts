@@ -22,6 +22,11 @@ interface CallbacksDependencies {
   assistantMsgId: string
   saveUpdatesToDB: any
   assistant: Assistant
+  /**
+   * When true, the stream is continuing an existing assistant message. This enables
+   * appending streamed text inline into the existing MAIN_TEXT block (when possible).
+   */
+  isContinueMode?: boolean
 }
 
 export const createCallbacks = (deps: CallbacksDependencies) => {
@@ -42,7 +47,8 @@ export const createCallbacks = (deps: CallbacksDependencies) => {
     assistantMsgId,
     saveUpdatesToDB,
     assistant,
-    getCurrentThinkingInfo: thinkingCallbacks.getCurrentThinkingInfo
+    getCurrentThinkingInfo: thinkingCallbacks.getCurrentThinkingInfo,
+    isContinueMode: deps.isContinueMode
   })
 
   const toolCallbacks = createToolCallbacks({
@@ -114,7 +120,8 @@ export const createCallbacks = (deps: CallbacksDependencies) => {
     assistantMsgId,
     getCitationBlockId: citationCallbacks.getCitationBlockId,
     getCitationBlockIdFromTool: toolCallbacks.getCitationBlockId,
-    handleCompactTextComplete: compactCallbacks.handleTextComplete
+    handleCompactTextComplete: compactCallbacks.handleTextComplete,
+    isContinueMode: deps.isContinueMode
   })
 
   // 组合所有回调
