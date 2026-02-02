@@ -865,7 +865,7 @@ const fetchAndProcessAssistantResponseImpl = async (
     const allMessagesForTopic = selectMessagesForTopic(getState(), topicId)
 
     let messagesForContext: Message[] = []
-    const userMessageId = assistantMessage.askId
+    const triggeringUserMessageId = assistantMessage.askId
     const isContinueMode = Boolean(options?.contextEndMessageId)
 
     if (options?.contextEndMessageId) {
@@ -881,11 +881,11 @@ const fetchAndProcessAssistantResponseImpl = async (
         messagesForContext = filterInProgressMessagesExcept(contextSlice, options.contextEndMessageId)
       }
     } else {
-      const userMessageIndex = allMessagesForTopic.findIndex((m) => m?.id === userMessageId)
+      const userMessageIndex = allMessagesForTopic.findIndex((m) => m?.id === triggeringUserMessageId)
 
       if (userMessageIndex === -1) {
         logger.error(
-          `[fetchAndProcessAssistantResponseImpl] Triggering user message ${userMessageId} (askId of ${assistantMsgId}) not found. Falling back.`
+          `[fetchAndProcessAssistantResponseImpl] Triggering user message ${triggeringUserMessageId} (askId of ${assistantMsgId}) not found. Falling back.`
         )
         const assistantMessageIndexFallback = allMessagesForTopic.findIndex((m) => m?.id === assistantMsgId)
         messagesForContext = (
@@ -900,13 +900,16 @@ const fetchAndProcessAssistantResponseImpl = async (
     }
 
     // Ensure at least the triggering user message is present to avoid empty payloads
-    if ((!messagesForContext || messagesForContext.length === 0) && userMessageId) {
+    if ((!messagesForContext || messagesForContext.length === 0) && triggeringUserMessageId) {
       const stateAfter = getState()
-      const maybeUserMessage = stateAfter.messages.entities[userMessageId]
+      const maybeUserMessage = stateAfter.messages.entities[triggeringUserMessageId]
       if (maybeUserMessage) {
         messagesForContext = [maybeUserMessage]
       }
     }
+
+    const requestUserMessageId =
+      triggeringUserMessageId ?? messagesForContext.toReversed().find((m) => m.role === 'user')?.id
 
     const stateBeforeStream = getState()
     const baselineBlockIds = new Set((stateBeforeStream.messages.entities[assistantMsgId]?.blocks ?? []).map(String))
@@ -923,7 +926,14 @@ const fetchAndProcessAssistantResponseImpl = async (
     const streamProcessorCallbacks = createStreamProcessor(callbacks)
 
     const abortController = new AbortController()
-    addAbortController(userMessageId!, () => abortController.abort())
+    if (requestUserMessageId) {
+      addAbortController(requestUserMessageId, () => abortController.abort())
+    } else {
+      logger.warn('[fetchAndProcessAssistantResponseImpl] Missing user message id for abort controller binding.', {
+        topicId,
+        assistantMsgId
+      })
+    }
 
     const requestTimeoutMinutes =
       getState().settings.apiServer?.requestTimeoutMinutes ?? API_SERVER_DEFAULTS.REQUEST_TIMEOUT_MINUTES

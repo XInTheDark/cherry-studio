@@ -53,6 +53,45 @@ import type { StreamProcessorCallbacks } from './StreamProcessingService'
 
 const logger = loggerService.withContext('ApiService')
 
+const trimTrailingWhitespaceFromFinalAssistantMessage = (messages: ModelMessage[]): ModelMessage[] => {
+  // Some OpenAI-compatible providers reject payloads where the most recent assistant message ends with whitespace.
+  // This can be triggered by \"continue\" flows, since the context ends with assistant output.
+  const lastAssistantIndex = (() => {
+    for (let i = messages.length - 1; i >= 0; i--) {
+      if (messages[i]?.role === 'assistant') return i
+    }
+    return -1
+  })()
+
+  if (lastAssistantIndex === -1) return messages
+
+  const lastAssistant = messages[lastAssistantIndex]
+  const content = (lastAssistant as any)?.content as unknown
+
+  if (typeof content === 'string') {
+    const trimmed = content.replace(/\s+$/u, '')
+    if (trimmed === content) return messages
+    const updated = { ...(lastAssistant as any), content: trimmed } as ModelMessage
+    return [...messages.slice(0, lastAssistantIndex), updated, ...messages.slice(lastAssistantIndex + 1)]
+  }
+
+  if (Array.isArray(content)) {
+    const parts = [...content]
+    for (let i = parts.length - 1; i >= 0; i--) {
+      const part = parts[i] as any
+      if (part?.type === 'text' && typeof part.text === 'string') {
+        const trimmed = part.text.replace(/\s+$/u, '')
+        if (trimmed === part.text) return messages
+        parts[i] = { ...part, text: trimmed }
+        const updated = { ...(lastAssistant as any), content: parts } as ModelMessage
+        return [...messages.slice(0, lastAssistantIndex), updated, ...messages.slice(lastAssistantIndex + 1)]
+      }
+    }
+  }
+
+  return messages
+}
+
 export async function fetchMcpTools(assistant: Assistant) {
   // Get MCP tools (Fix duplicate declaration)
   let mcpTools: MCPTool[] = [] // Initialize as empty array
@@ -135,13 +174,14 @@ export async function transformMessagesAndFetch(
       request.extraModelMessages && request.extraModelMessages.length > 0
         ? [...modelMessages, ...request.extraModelMessages]
         : modelMessages
+    const sanitizedModelMessages = trimTrailingWhitespaceFromFinalAssistantMessage(finalModelMessages)
 
     // replace prompt variables
     assistant.prompt = await replacePromptVariables(assistant.prompt, assistant.model?.name)
 
     // inject knowledge search prompt into model messages
     const knowledgeInjection = await injectUserMessageWithKnowledgeSearchPrompt({
-      modelMessages: finalModelMessages,
+      modelMessages: sanitizedModelMessages,
       assistant,
       assistantMsgId: request.assistantMsgId,
       topicId: request.topicId,
@@ -156,7 +196,7 @@ export async function transformMessagesAndFetch(
     }
 
     await fetchChatCompletion({
-      messages: finalModelMessages,
+      messages: sanitizedModelMessages,
       assistant: assistant,
       topicId: request.topicId,
       requestOptions: request.options,
