@@ -3,9 +3,9 @@ import { useTrash } from '@renderer/hooks/useTrash'
 import type { RootState } from '@renderer/store'
 import { useAppSelector } from '@renderer/store'
 import type { TrashedTopic } from '@renderer/types'
-import { Button, Drawer, Empty, Flex, Popconfirm } from 'antd'
+import { Button, Drawer, Empty, Flex, Popconfirm, Tooltip } from 'antd'
 import dayjs from 'dayjs'
-import { Trash2 } from 'lucide-react'
+import { Trash2, Undo2 } from 'lucide-react'
 import type { FC } from 'react'
 import { useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -65,10 +65,11 @@ const TrashDrawer: FC<Props> = ({ open, onClose, placement = 'left' }) => {
       open={open}
       onClose={onClose}
       placement={placement}
-      width="var(--assistants-width)"
+      // The topics sidebar is quite narrow; Trash needs extra width to be usable.
+      width={520}
       closeIcon={null}
       extra={extra}
-      styles={{ body: { padding: 12, overflow: 'auto' } }}>
+      styles={{ body: { padding: 16, overflow: 'auto' } }}>
       {trashedTopics.length === 0 ? (
         <Empty description={t('chat.trash.empty.state')} />
       ) : (
@@ -86,18 +87,25 @@ const TrashDrawer: FC<Props> = ({ open, onClose, placement = 'left' }) => {
                   </TrashItemMeta>
                 </TrashItemMain>
                 <TrashItemActions>
-                  <Button size="small" type="primary" onClick={() => void restoreFromTrash(item.id)}>
-                    {t('chat.trash.restore.action')}
-                  </Button>
-                  <Popconfirm
-                    title={t('chat.trash.delete.confirm.title')}
-                    description={t('chat.trash.delete.confirm.content')}
-                    okButtonProps={{ danger: true }}
-                    onConfirm={() => deletePermanently(item.id)}>
-                    <Button size="small" danger type="text">
-                      {t('chat.trash.delete.action')}
-                    </Button>
-                  </Popconfirm>
+                  <Tooltip title={t('chat.trash.restore.action')} mouseEnterDelay={0.5}>
+                    <Button
+                      size="small"
+                      shape="circle"
+                      type="text"
+                      icon={<Undo2 size={16} />}
+                      onClick={() => void restoreFromTrash(item.id)}
+                    />
+                  </Tooltip>
+
+                  <Tooltip title={t('chat.trash.delete.action')} mouseEnterDelay={0.5}>
+                    <Popconfirm
+                      title={t('chat.trash.delete.confirm.title')}
+                      description={t('chat.trash.delete.confirm.content')}
+                      okButtonProps={{ danger: true }}
+                      onConfirm={() => deletePermanently(item.id)}>
+                      <Button size="small" shape="circle" danger type="text" icon={<Trash2 size={16} />} />
+                    </Popconfirm>
+                  </Tooltip>
                 </TrashItemActions>
               </TrashItem>
             )
@@ -133,25 +141,28 @@ const TrashItem = styled.div`
   align-items: center;
   justify-content: space-between;
   gap: 10px;
-  padding: 10px;
+  padding: 12px;
   border-radius: 10px;
   background: var(--color-background-soft);
 `
 
 const TrashItemMain = styled.div`
   min-width: 0;
+  flex: 1;
   display: flex;
   flex-direction: column;
   gap: 2px;
 `
 
 const TrashItemTitle = styled.div`
-  font-size: 13px;
+  font-size: 14px;
+  font-weight: 500;
   color: var(--color-text-1);
+  line-height: 1.2;
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  max-width: 240px;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
 `
 
 const TrashItemMeta = styled.div`
@@ -160,13 +171,12 @@ const TrashItemMeta = styled.div`
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  max-width: 240px;
 `
 
 const TrashItemActions = styled.div`
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 4px;
   flex-shrink: 0;
 `
 
