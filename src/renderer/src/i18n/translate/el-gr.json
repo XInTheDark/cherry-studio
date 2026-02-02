@@ -936,6 +936,10 @@
       }
     },
     "settings": {
+      "auto_continue": {
+        "label": "[to be translated]:Auto continue",
+        "tip": "[to be translated]:When enabled, Cherry Studio will automatically retry up to 5 times if a generation produces only tools/thoughts (no visible output)."
+      },
       "code": {
         "title": "Ρυθμίσεις μπλοκ κώδικα"
       },
@@ -1218,6 +1222,7 @@
     "collapse": "Σύμπτυξη",
     "completed": "Ολοκληρώθηκε",
     "confirm": "Επιβεβαίωση",
+    "continue": "[to be translated]:Continue",
     "copied": "Αντιγράφηκε",
     "copy": "Αντιγραφή",
     "copy_failed": "Αποτυχία αντιγραφής",

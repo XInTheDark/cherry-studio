@@ -17,6 +17,7 @@ import { getDefaultModel } from '@renderer/services/AssistantService'
 import { useAppDispatch } from '@renderer/store'
 import type { SendMessageShortcut } from '@renderer/store/settings'
 import {
+  setAutoContinueEnabled,
   setAutoTranslateWithSpace,
   setCodeCollapsible,
   setCodeEditor,
@@ -108,6 +109,7 @@ const SettingsTab: FC<Props> = (props) => {
     multiModelMessageStyle,
     thoughtAutoCollapse,
     workSequenceAutoCollapse,
+    autoContinueEnabled,
     messageNavigation,
     enableQuickPanelTriggers,
     showTranslateConfirm,
@@ -210,6 +212,18 @@ const SettingsTab: FC<Props> = (props) => {
               size="small"
               checked={workSequenceAutoCollapse}
               onChange={(checked) => dispatch(setWorkSequenceAutoCollapse(checked))}
+            />
+          </SettingRow>
+          <SettingDivider />
+          <SettingRow>
+            <SettingRowTitleSmall>
+              {t('chat.settings.auto_continue.label')}
+              <HelpTooltip title={t('chat.settings.auto_continue.tip')} />
+            </SettingRowTitleSmall>
+            <Switch
+              size="small"
+              checked={autoContinueEnabled}
+              onChange={(checked) => dispatch(setAutoContinueEnabled(checked))}
             />
           </SettingRow>
           <SettingDivider />

@@ -50,7 +50,7 @@ import { getTopicQueue, waitForTopicQueue } from '@renderer/utils/queue'
 import { API_SERVER_DEFAULTS } from '@shared/config/constant'
 import { IpcChannel } from '@shared/IpcChannel'
 import { defaultAppHeaders } from '@shared/utils'
-import type { TextStreamPart } from 'ai'
+import type { ModelMessage, TextStreamPart } from 'ai'
 import { t } from 'i18next'
 import { isEmpty, throttle } from 'lodash'
 import { LRUCache } from 'lru-cache'
@@ -73,6 +73,9 @@ import { newMessagesActions, selectMessagesForTopic } from '../newMessage'
 // } from './messageThunk.v2'
 
 const logger = loggerService.withContext('MessageThunk')
+
+const AUTO_CONTINUE_MAX_ATTEMPTS = 5
+const CONTINUE_SYSTEM_MESSAGE: ModelMessage = { role: 'system', content: 'Continue' }
 
 const finishTopicLoading = async (topicId: string) => {
   await waitForTopicQueue(topicId)
@@ -756,12 +759,87 @@ const dispatchMultiModelResponses = async (
 
 // --- End Helper Function ---
 // 发送和处理助手响应的实现函数，话题提示词在此拼接
+const hasVisibleOutputForAutoContinue = (state: RootState, newBlockIds: string[]): boolean => {
+  for (const blockId of newBlockIds) {
+    const block = state.messageBlocks.entities[blockId]
+    if (!block) continue
+
+    switch (block.type) {
+      case MessageBlockType.MAIN_TEXT: {
+        const content = (block as any).content as string | undefined
+        if (content && content.trim().length > 0) return true
+        break
+      }
+      case MessageBlockType.CODE: {
+        const content = (block as any).content as string | undefined
+        if (content && content.trim().length > 0) return true
+        break
+      }
+      case MessageBlockType.TRANSLATION: {
+        const content = (block as any).content as string | undefined
+        if (content && content.trim().length > 0) return true
+        break
+      }
+      case MessageBlockType.COMPACT: {
+        const content = (block as any).content as string | undefined
+        if (content && content.trim().length > 0) return true
+        break
+      }
+      case MessageBlockType.IMAGE: {
+        const hasImage = Boolean((block as any).url) || Boolean((block as any).file)
+        if (hasImage) return true
+        break
+      }
+      case MessageBlockType.VIDEO: {
+        const hasVideo = Boolean((block as any).url) || Boolean((block as any).filePath)
+        if (hasVideo) return true
+        break
+      }
+      case MessageBlockType.FILE: {
+        const hasFile = Boolean((block as any).file)
+        if (hasFile) return true
+        break
+      }
+      case MessageBlockType.CITATION: {
+        // Citations are user-visible output (sources/KB refs). Treat as visible to avoid infinite continue loops.
+        const hasAny =
+          Boolean((block as any).response) ||
+          ((block as any).knowledge && (block as any).knowledge.length > 0) ||
+          ((block as any).memories && (block as any).memories.length > 0)
+        if (hasAny) return true
+        break
+      }
+      default: {
+        // Intentionally ignore TOOL/THINKING/UNKNOWN/ERROR for auto-continue.
+        break
+      }
+    }
+  }
+
+  return false
+}
+
+const filterInProgressMessagesExcept = (messages: Message[], keepMessageId: string) => {
+  // Existing code uses a heuristic: drop messages whose status string includes 'ing' (processing/pending/searching).
+  // For continue calls, we must include the target assistant message even if we set it to pending/processing.
+  return messages.filter((m) => m && (!m.status?.includes('ing') || m.id === keepMessageId))
+}
+
 const fetchAndProcessAssistantResponseImpl = async (
   dispatch: AppDispatch,
   getState: () => RootState,
   topicId: string,
   origAssistant: Assistant,
-  assistantMessage: Message // Pass the prepared assistant message (new or reset)
+  assistantMessage: Message, // Pass the prepared assistant message (new or reset)
+  options?: {
+    /**
+     * When provided, run in \"continue\" mode: build context by slicing the topic up to this message (inclusive),
+     * keep trailing assistant messages in the prompt pipeline, and inject a system \"Continue\" message.
+     */
+    contextEndMessageId?: string
+    /** 0-based continue attempt counter for auto-continue recursion. */
+    continueAttempt?: number
+  }
 ) => {
   const topic = origAssistant.topics.find((t) => t.id === topicId)
   const assistant = topic?.prompt
@@ -788,21 +866,37 @@ const fetchAndProcessAssistantResponseImpl = async (
 
     let messagesForContext: Message[] = []
     const userMessageId = assistantMessage.askId
-    const userMessageIndex = allMessagesForTopic.findIndex((m) => m?.id === userMessageId)
+    const isContinueMode = Boolean(options?.contextEndMessageId)
 
-    if (userMessageIndex === -1) {
-      logger.error(
-        `[fetchAndProcessAssistantResponseImpl] Triggering user message ${userMessageId} (askId of ${assistantMsgId}) not found. Falling back.`
-      )
-      const assistantMessageIndexFallback = allMessagesForTopic.findIndex((m) => m?.id === assistantMsgId)
-      messagesForContext = (
-        assistantMessageIndexFallback !== -1
-          ? allMessagesForTopic.slice(0, assistantMessageIndexFallback)
-          : allMessagesForTopic
-      ).filter((m) => m && !m.status?.includes('ing'))
+    if (options?.contextEndMessageId) {
+      const endIndex = allMessagesForTopic.findIndex((m) => m?.id === options.contextEndMessageId)
+
+      if (endIndex === -1) {
+        logger.error(
+          `[fetchAndProcessAssistantResponseImpl] Continue target message ${options.contextEndMessageId} not found. Falling back.`
+        )
+        messagesForContext = allMessagesForTopic.filter((m) => m && !m.status?.includes('ing'))
+      } else {
+        const contextSlice = allMessagesForTopic.slice(0, endIndex + 1)
+        messagesForContext = filterInProgressMessagesExcept(contextSlice, options.contextEndMessageId)
+      }
     } else {
-      const contextSlice = allMessagesForTopic.slice(0, userMessageIndex + 1)
-      messagesForContext = contextSlice.filter((m) => m && !m.status?.includes('ing'))
+      const userMessageIndex = allMessagesForTopic.findIndex((m) => m?.id === userMessageId)
+
+      if (userMessageIndex === -1) {
+        logger.error(
+          `[fetchAndProcessAssistantResponseImpl] Triggering user message ${userMessageId} (askId of ${assistantMsgId}) not found. Falling back.`
+        )
+        const assistantMessageIndexFallback = allMessagesForTopic.findIndex((m) => m?.id === assistantMsgId)
+        messagesForContext = (
+          assistantMessageIndexFallback !== -1
+            ? allMessagesForTopic.slice(0, assistantMessageIndexFallback)
+            : allMessagesForTopic
+        ).filter((m) => m && !m.status?.includes('ing'))
+      } else {
+        const contextSlice = allMessagesForTopic.slice(0, userMessageIndex + 1)
+        messagesForContext = contextSlice.filter((m) => m && !m.status?.includes('ing'))
+      }
     }
 
     // Ensure at least the triggering user message is present to avoid empty payloads
@@ -813,6 +907,9 @@ const fetchAndProcessAssistantResponseImpl = async (
         messagesForContext = [maybeUserMessage]
       }
     }
+
+    const stateBeforeStream = getState()
+    const baselineBlockIds = new Set((stateBeforeStream.messages.entities[assistantMsgId]?.blocks ?? []).map(String))
 
     callbacks = createCallbacks({
       blockManager,
@@ -840,6 +937,8 @@ const fetchAndProcessAssistantResponseImpl = async (
         blockManager,
         assistantMsgId,
         callbacks,
+        allowTrailingAssistant: isContinueMode,
+        extraModelMessages: isContinueMode ? [CONTINUE_SYSTEM_MESSAGE] : undefined,
         options: {
           signal: abortController.signal,
           timeout: requestTimeoutMs,
@@ -848,6 +947,64 @@ const fetchAndProcessAssistantResponseImpl = async (
       },
       streamProcessorCallbacks
     )
+
+    // Auto-continue: if this run produced no visible output (tools/thoughts don't count), enqueue a continue call.
+    // Note: this should be based on what this run added, not the whole message (continue might target older messages).
+    const stateAfterStream = getState()
+    const autoContinueEnabled = Boolean(stateAfterStream.settings.autoContinueEnabled)
+    if (autoContinueEnabled) {
+      const updatedAssistantMessage = stateAfterStream.messages.entities[assistantMsgId]
+      const updatedBlockIds = (updatedAssistantMessage?.blocks ?? []).map(String)
+      const newBlockIds = updatedBlockIds.filter((id) => !baselineBlockIds.has(id))
+
+      const hasErrorBlock = newBlockIds.some(
+        (id) => stateAfterStream.messageBlocks.entities[id]?.type === MessageBlockType.ERROR
+      )
+      const hasVisibleOutput = hasVisibleOutputForAutoContinue(stateAfterStream, newBlockIds)
+
+      const currentContinueAttempt = typeof options?.continueAttempt === 'number' ? options.continueAttempt : undefined
+      const nextAttempt = typeof currentContinueAttempt === 'number' ? currentContinueAttempt + 1 : 0
+
+      if (
+        updatedAssistantMessage?.status === AssistantMessageStatus.SUCCESS &&
+        !hasErrorBlock &&
+        !hasVisibleOutput &&
+        nextAttempt < AUTO_CONTINUE_MAX_ATTEMPTS
+      ) {
+        logger.info('[auto-continue] No visible output produced; scheduling continue.', {
+          topicId,
+          assistantMsgId,
+          nextAttempt,
+          newBlockIdsCount: newBlockIds.length
+        })
+
+        // Mark the message as pending so the UI shows it's being worked on again.
+        dispatch(
+          newMessagesActions.updateMessage({
+            topicId,
+            messageId: assistantMsgId,
+            updates: { status: AssistantMessageStatus.PENDING }
+          })
+        )
+        await saveUpdatesToDB(assistantMsgId, topicId, { status: AssistantMessageStatus.PENDING }, [])
+
+        const queue = getTopicQueue(topicId)
+        queue.add(async () => {
+          const latest = getState().messages.entities[assistantMsgId]
+          if (!latest) {
+            logger.warn('[auto-continue] Assistant message disappeared before continue could start.', {
+              topicId,
+              assistantMsgId
+            })
+            return
+          }
+          await fetchAndProcessAssistantResponseImpl(dispatch, getState, topicId, origAssistant, latest, {
+            contextEndMessageId: assistantMsgId,
+            continueAttempt: nextAttempt
+          })
+        })
+      }
+    }
   } catch (error: any) {
     logger.error('Error in fetchAndProcessAssistantResponseImpl:', error)
     endSpan({
@@ -1421,6 +1578,58 @@ export const updateTranslationBlockThunk =
       // Logger.log(`[updateTranslationBlockThunk] Successfully updated translation block ${blockId}.`)
     } catch (error) {
       logger.error(`[updateTranslationBlockThunk] Failed to update translation block ${blockId}:`, error as Error)
+    }
+  }
+
+/**
+ * Continues an existing assistant message by appending additional blocks to it.
+ * - No new user/system messages are persisted.
+ * - The model receives a per-request system instruction: \"Continue\".
+ */
+export const continueAssistantMessageThunk =
+  (topicId: Topic['id'], assistantMessageId: string, assistant: Assistant) =>
+  async (dispatch: AppDispatch, getState: () => RootState) => {
+    try {
+      const state = getState()
+      const existing = state.messages.entities[assistantMessageId]
+
+      if (!existing) {
+        logger.error(`[continueAssistantMessageThunk] Assistant message ${assistantMessageId} not found.`)
+        return
+      }
+      if (existing.role !== 'assistant') {
+        logger.error(`[continueAssistantMessageThunk] Message ${assistantMessageId} is not an assistant message.`)
+        return
+      }
+
+      // Mark as pending so the UI indicates we are continuing this message.
+      const messageUpdates: Partial<Message> & Pick<Message, 'id'> = {
+        id: assistantMessageId,
+        status: AssistantMessageStatus.PENDING,
+        updatedAt: new Date().toISOString()
+      }
+      await dispatch(updateMessageAndBlocksThunk(topicId, messageUpdates, []))
+
+      // Continue should use the model that generated this assistant message (important for multi-model runs).
+      const assistantConfigForThisCall = existing.model ? { ...assistant, model: existing.model } : assistant
+
+      const queue = getTopicQueue(topicId)
+      queue.add(async () => {
+        const latest = getState().messages.entities[assistantMessageId]
+        if (!latest) {
+          logger.warn(`[continueAssistantMessageThunk] Assistant message ${assistantMessageId} disappeared before run.`)
+          return
+        }
+
+        await fetchAndProcessAssistantResponseImpl(dispatch, getState, topicId, assistantConfigForThisCall, latest, {
+          contextEndMessageId: assistantMessageId,
+          continueAttempt: 0
+        })
+      })
+    } catch (error) {
+      logger.error(`[continueAssistantMessageThunk] Error continuing assistant message:`, error as Error)
+    } finally {
+      finishTopicLoading(topicId)
     }
   }
 

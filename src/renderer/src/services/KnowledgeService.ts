@@ -662,8 +662,10 @@ export const injectUserMessageWithKnowledgeSearchPrompt = async ({
     return {}
   }
 
-  const lastUserMessage = modelMessages[modelMessages.length - 1]
-  if (lastUserMessage.role !== 'user') {
+  // Don't assume the final message is user: continue-mode may append a system instruction,
+  // and other providers can insert tool messages. We want the last user question to drive retrieval.
+  const lastUserMessage = [...modelMessages].reverse().find((m) => m.role === 'user')
+  if (!lastUserMessage) {
     return {}
   }
 

@@ -21,12 +21,23 @@ export class ConversationService {
    * Applies the filtering pipeline that prepares UI messages for model consumption.
    * This keeps the logic testable and prevents future regressions when the pipeline changes.
    */
-  static filterMessagesPipeline(messages: Message[], contextCount: number): Message[] {
+  static filterMessagesPipeline(
+    messages: Message[],
+    contextCount: number,
+    options?: {
+      /**
+       * When true, keep trailing assistant messages (used by \"continue\" where the context may end with assistant output).
+       */
+      allowTrailingAssistant?: boolean
+    }
+  ): Message[] {
     const messagesAfterContextClear = filterAfterContextClearMessages(messages)
     const usefulMessages = filterUsefulMessages(messagesAfterContextClear)
     // Run the error-only filter before trimming trailing assistant responses so the pair is removed together.
     const withoutErrorOnlyPairs = filterErrorOnlyMessagesWithRelated(usefulMessages)
-    const withoutTrailingAssistant = filterLastAssistantMessage(withoutErrorOnlyPairs)
+    const withoutTrailingAssistant = options?.allowTrailingAssistant
+      ? withoutErrorOnlyPairs
+      : filterLastAssistantMessage(withoutErrorOnlyPairs)
     const withoutAdjacentUsers = filterAdjacentUserMessaegs(withoutTrailingAssistant)
     const limitedByContext = takeRight(withoutAdjacentUsers, contextCount + 2)
     const contextClearFiltered = filterAfterContextClearMessages(limitedByContext)
@@ -37,7 +48,13 @@ export class ConversationService {
 
   static async prepareMessagesForModel(
     messages: Message[],
-    assistant: Assistant
+    assistant: Assistant,
+    options?: {
+      /**
+       * When true, keep trailing assistant messages in the preparation pipeline.
+       */
+      allowTrailingAssistant?: boolean
+    }
   ): Promise<{ modelMessages: ModelMessage[]; uiMessages: Message[] }> {
     const { contextCount } = getAssistantSettings(assistant)
     // This logic is extracted from the original ApiService.fetchChatCompletion
@@ -50,7 +67,7 @@ export class ConversationService {
       }
     }
 
-    const uiMessagesFromPipeline = ConversationService.filterMessagesPipeline(messages, contextCount)
+    const uiMessagesFromPipeline = ConversationService.filterMessagesPipeline(messages, contextCount, options)
     logger.debug('uiMessagesFromPipeline', uiMessagesFromPipeline)
 
     // Fallback: ensure at least the last user message is present to avoid empty payloads

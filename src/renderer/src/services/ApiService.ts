@@ -23,6 +23,7 @@ import { isPromptToolUse, isSupportedToolUse } from '@renderer/utils/mcp-tools'
 import { findFileBlocks, getMainTextContent } from '@renderer/utils/messageUtils/find'
 import { containsSupportedVariables, replacePromptVariables } from '@renderer/utils/prompt'
 import { NOT_SUPPORT_API_KEY_PROVIDER_TYPES, NOT_SUPPORT_API_KEY_PROVIDERS } from '@renderer/utils/provider'
+import type { ModelMessage } from 'ai'
 import { isEmpty, takeRight } from 'lodash'
 
 import type { ModernAiProviderConfig } from '../aiCore/index_new'
@@ -98,6 +99,16 @@ export async function transformMessagesAndFetch(
     assistantMsgId: string
     callbacks: StreamProcessorCallbacks
     topicId?: string // 添加 topicId 用于 trace
+    /**
+     * When true, keep trailing assistant messages in the prompt preparation pipeline.
+     * Used for \"continue\" where the context may end with an assistant message.
+     */
+    allowTrailingAssistant?: boolean
+    /**
+     * Extra SDK messages appended after converting UI messages.
+     * Used for per-request injections (e.g. system \"Continue\"), without persisting a UI message.
+     */
+    extraModelMessages?: ModelMessage[]
     options: {
       signal?: AbortSignal
       timeout?: number
@@ -117,14 +128,20 @@ export async function transformMessagesAndFetch(
 
   let originalPrompt: string | undefined = undefined
   try {
-    const { modelMessages, uiMessages } = await ConversationService.prepareMessagesForModel(messages, assistant)
+    const { modelMessages, uiMessages } = await ConversationService.prepareMessagesForModel(messages, assistant, {
+      allowTrailingAssistant: request.allowTrailingAssistant
+    })
+    const finalModelMessages =
+      request.extraModelMessages && request.extraModelMessages.length > 0
+        ? [...modelMessages, ...request.extraModelMessages]
+        : modelMessages
 
     // replace prompt variables
     assistant.prompt = await replacePromptVariables(assistant.prompt, assistant.model?.name)
 
     // inject knowledge search prompt into model messages
     const knowledgeInjection = await injectUserMessageWithKnowledgeSearchPrompt({
-      modelMessages,
+      modelMessages: finalModelMessages,
       assistant,
       assistantMsgId: request.assistantMsgId,
       topicId: request.topicId,
@@ -139,7 +156,7 @@ export async function transformMessagesAndFetch(
     }
 
     await fetchChatCompletion({
-      messages: modelMessages,
+      messages: finalModelMessages,
       assistant: assistant,
       topicId: request.topicId,
       requestOptions: request.options,

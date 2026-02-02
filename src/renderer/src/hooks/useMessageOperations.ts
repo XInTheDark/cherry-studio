@@ -10,6 +10,7 @@ import {
   appendAssistantResponseThunk,
   clearTopicMessagesThunk,
   cloneMessagesToNewTopicThunk,
+  continueAssistantMessageThunk,
   deleteMessageGroupThunk,
   deleteSingleMessageThunk,
   initiateTranslationThunk,
@@ -170,6 +171,26 @@ export function useMessageOperations(topic: Topic) {
         return
       }
       await dispatch(regenerateAssistantResponseThunk(topic.id, message, assistant))
+    },
+    [dispatch, topic.id]
+  )
+
+  /**
+   * Continues a specific assistant message by appending new blocks to it.
+   */
+  const continueAssistantMessage = useCallback(
+    async (message: Message, assistant: Assistant) => {
+      if (message.role !== 'assistant') {
+        logger.warn('continueAssistantMessage should only be called for assistant messages.')
+        return
+      }
+
+      const modelForTrace = message.model ?? assistant.model
+      if (modelForTrace) {
+        await appendMessageTrace(message, modelForTrace)
+      }
+
+      await dispatch(continueAssistantMessageThunk(topic.id, message.id, assistant))
     },
     [dispatch, topic.id]
   )
@@ -452,6 +473,7 @@ export function useMessageOperations(topic: Topic) {
     editMessage,
     resendMessage,
     regenerateAssistantMessage,
+    continueAssistantMessage,
     resendUserMessageWithEdit,
     appendAssistantResponse,
     createNewContext,

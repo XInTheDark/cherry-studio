@@ -43,6 +43,7 @@ import {
   findTranslationBlocksById,
   getMainTextContent
 } from '@renderer/utils/messageUtils/find'
+import { isMessageProcessing } from '@renderer/utils/messageUtils/is'
 import type { MenuProps } from 'antd'
 import { Dropdown, Popconfirm, Tooltip } from 'antd'
 import dayjs from 'dayjs'
@@ -50,6 +51,7 @@ import type { TFunction } from 'i18next'
 import {
   AtSign,
   Check,
+  ChevronsRight,
   FilePenLine,
   Languages,
   ListChecks,
@@ -111,6 +113,7 @@ type MessageMenubarButtonContext = {
   onEdit: () => void | Promise<void>
   onMentionModel: (e: React.MouseEvent) => void | Promise<void>
   onOpenThread: (e: React.MouseEvent) => void
+  onContinue: (e?: React.MouseEvent) => void | Promise<void>
   onRegenerate: (e?: React.MouseEvent) => void | Promise<void>
   onUseful: (e: React.MouseEvent) => void
   removeMessageBlock: MessageOperationsHandlers['removeMessageBlock']
@@ -149,6 +152,7 @@ const MessageMenubar: FC<Props> = (props) => {
     deleteMessage,
     resendMessage,
     regenerateAssistantMessage,
+    continueAssistantMessage,
     getTranslationUpdater,
     appendAssistantResponse,
     removeMessageBlock
@@ -479,6 +483,16 @@ const MessageMenubar: FC<Props> = (props) => {
     regenerateAssistantMessage(message, assistant)
   }
 
+  const onContinue = useCallback(
+    (e?: React.MouseEvent) => {
+      e?.stopPropagation?.()
+      if (message.role !== 'assistant') return
+      if (isMessageProcessing(message)) return
+      continueAssistantMessage(message, assistant)
+    },
+    [assistant, continueAssistantMessage, message]
+  )
+
   // 按条件筛选能够提及的模型，该函数仅在isAssistantMessage时会用到
   const mentionModelFilter = useMemo(() => {
     const defaultFilter = (model: Model) => !isEmbeddingModel(model) && !isRerankModel(model)
@@ -564,6 +578,7 @@ const MessageMenubar: FC<Props> = (props) => {
     onEdit,
     onMentionModel,
     onOpenThread,
+    onContinue,
     onRegenerate,
     onUseful,
     removeMessageBlock,
@@ -744,6 +759,24 @@ const buttonRenderers: Record<MessageMenubarButtonId, MessageMenubarButtonRender
       <Tooltip title={t('common.regenerate')} mouseEnterDelay={0.8}>
         <ActionButton className="message-action-button" onClick={onRegenerate} $softHoverBg={softHoverBg}>
           <RefreshIcon size={15} />
+        </ActionButton>
+      </Tooltip>
+    )
+  },
+  'assistant-continue': ({ isAssistantMessage, message, onContinue, softHoverBg, t }) => {
+    if (!isAssistantMessage) {
+      return null
+    }
+
+    // Avoid stacking multiple continue calls while this message is already being generated.
+    if (isMessageProcessing(message)) {
+      return null
+    }
+
+    return (
+      <Tooltip title={t('common.continue')} mouseEnterDelay={0.8}>
+        <ActionButton className="message-action-button" onClick={onContinue} $softHoverBg={softHoverBg}>
+          <ChevronsRight size={15} />
         </ActionButton>
       </Tooltip>
     )

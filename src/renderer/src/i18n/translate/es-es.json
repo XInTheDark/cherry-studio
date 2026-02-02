@@ -936,6 +936,10 @@
       }
     },
     "settings": {
+      "auto_continue": {
+        "label": "[to be translated]:Auto continue",
+        "tip": "[to be translated]:When enabled, Cherry Studio will automatically retry up to 5 times if a generation produces only tools/thoughts (no visible output)."
+      },
       "code": {
         "title": "Configuración de bloques de código"
       },
@@ -1218,6 +1222,7 @@
     "collapse": "Colapsar",
     "completed": "Completado",
     "confirm": "Confirmar",
+    "continue": "[to be translated]:Continue",
     "copied": "Copiado",
     "copy": "Copiar",
     "copy_failed": "Error al copiar",

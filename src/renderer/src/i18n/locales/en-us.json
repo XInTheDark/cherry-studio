@@ -936,6 +936,10 @@
       }
     },
     "settings": {
+      "auto_continue": {
+        "label": "Auto continue",
+        "tip": "When enabled, Cherry Studio will automatically retry up to 5 times if a generation produces only tools/thoughts (no visible output)."
+      },
       "code": {
         "title": "Code Block Settings"
       },
@@ -1218,6 +1222,7 @@
     "collapse": "Collapse",
     "completed": "Completed",
     "confirm": "Confirm",
+    "continue": "Continue",
     "copied": "Copied",
     "copy": "Copy",
     "copy_failed": "Copy failed",

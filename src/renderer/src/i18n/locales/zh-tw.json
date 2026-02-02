@@ -936,6 +936,10 @@
       }
     },
     "settings": {
+      "auto_continue": {
+        "label": "[to be translated]:Auto continue",
+        "tip": "[to be translated]:When enabled, Cherry Studio will automatically retry up to 5 times if a generation produces only tools/thoughts (no visible output)."
+      },
       "code": {
         "title": "程式碼區塊"
       },
@@ -1218,6 +1222,7 @@
     "collapse": "收合",
     "completed": "已完成",
     "confirm": "確認",
+    "continue": "繼續",
     "copied": "已複製",
     "copy": "複製",
     "copy_failed": "複製失敗",

@@ -252,6 +252,11 @@ export interface SettingsState {
    * (Persisted as a setting, but it does not change stored message content.)
    */
   workSequenceAutoCollapse: boolean
+  /**
+   * When enabled, if a generation completes without producing visible output (tools/thinking don't count),
+   * the app will automatically issue up to a fixed number of "Continue" attempts to the model.
+   */
+  autoContinueEnabled: boolean
   notionExportReasoning: boolean
   excludeCitationsInExport: boolean
   standardizeCitationsInExport: boolean
@@ -442,6 +447,7 @@ export const initialState: SettingsState = {
   showModelProviderInMarkdown: false,
   thoughtAutoCollapse: true,
   workSequenceAutoCollapse: true,
+  autoContinueEnabled: false,
   notionExportReasoning: false,
   excludeCitationsInExport: false,
   standardizeCitationsInExport: false,
@@ -839,6 +845,9 @@ const settingsSlice = createSlice({
     setWorkSequenceAutoCollapse: (state, action: PayloadAction<boolean>) => {
       state.workSequenceAutoCollapse = action.payload
     },
+    setAutoContinueEnabled: (state, action: PayloadAction<boolean>) => {
+      state.autoContinueEnabled = action.payload
+    },
     setNotionExportReasoning: (state, action: PayloadAction<boolean>) => {
       state.notionExportReasoning = action.payload
     },
@@ -1085,6 +1094,7 @@ export const {
   setUseTopicNamingForMessageTitle,
   setThoughtAutoCollapse,
   setWorkSequenceAutoCollapse,
+  setAutoContinueEnabled,
   setNotionExportReasoning,
   setExcludeCitationsInExport,
   setStandardizeCitationsInExport,

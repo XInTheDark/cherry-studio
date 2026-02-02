@@ -170,6 +170,16 @@ describe('messageConverter', () => {
   })
 
   describe('convertMessageToSdkParam', () => {
+    it('converts system messages to system role messages', async () => {
+      const model = createModel()
+      const message = createMessage('system')
+      message.__mockContent = 'Continue'
+
+      const result = await convertMessageToSdkParam(message, false, model)
+
+      expect(result).toEqual({ role: 'system', content: 'Continue' })
+    })
+
     it('replays Responses API encrypted reasoning content when present on assistant message', async () => {
       const model = createModel()
       const message = createMessage('assistant')

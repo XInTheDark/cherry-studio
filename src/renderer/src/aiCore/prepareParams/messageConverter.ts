@@ -44,11 +44,20 @@ export async function convertMessageToSdkParam(
   const fileBlocks = findFileBlocks(message)
   const imageBlocks = findImageBlocks(message)
   const reasoningBlocks = findThinkingBlocks(message)
-  if (message.role === 'user' || message.role === 'system') {
-    return convertMessageToUserModelMessage(content, fileBlocks, imageBlocks, isVisionModel, model)
-  } else {
-    return convertMessageToAssistantModelMessage(message, content, fileBlocks, reasoningBlocks, model)
+  if (message.role === 'system') {
+    // System messages are text-only instructions. We intentionally ignore files/images here.
+    const systemMessage: SystemModelMessage = {
+      role: 'system',
+      content: content ?? ''
+    }
+    return systemMessage
   }
+
+  if (message.role === 'user') {
+    return convertMessageToUserModelMessage(content, fileBlocks, imageBlocks, isVisionModel, model)
+  }
+
+  return convertMessageToAssistantModelMessage(message, content, fileBlocks, reasoningBlocks, model)
 }
 
 function stringifyToolOutput(value: unknown): string {

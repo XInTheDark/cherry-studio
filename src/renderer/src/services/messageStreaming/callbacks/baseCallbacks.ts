@@ -80,6 +80,32 @@ export const createBaseCallbacks = (deps: BaseCallbacksDependencies) => {
     onError: async (error: AISDKError) => {
       logger.debug('onError', error)
       if (NoOutputGeneratedError.isInstance(error)) {
+        // Some providers (or middleware) can finish a run without emitting any visible output chunks.
+        // Treat this as a successful completion so the UI doesn't get stuck in PENDING/PROCESSING,
+        // and let higher-level logic (auto-continue) decide whether to retry.
+        logger.info('[onError] NoOutputGeneratedError - marking message as success', { assistantMsgId, topicId })
+
+        const possibleBlockId = findBlockIdForCompletion()
+        if (possibleBlockId && blockManager.lastBlockType) {
+          blockManager.smartBlockUpdate(
+            possibleBlockId,
+            { status: MessageBlockStatus.SUCCESS },
+            blockManager.lastBlockType,
+            true
+          )
+        }
+
+        const messageUpdates = { status: AssistantMessageStatus.SUCCESS }
+        dispatch(
+          newMessagesActions.updateMessage({
+            topicId,
+            messageId: assistantMsgId,
+            updates: messageUpdates
+          })
+        )
+        await saveUpdatesToDB(assistantMsgId, topicId, messageUpdates, [])
+
+        EventEmitter.emit(EVENT_NAMES.MESSAGE_COMPLETE, { id: assistantMsgId, topicId, status: 'success' })
         return
       }
       const isErrorTypeAbort = isAbortError(error)
