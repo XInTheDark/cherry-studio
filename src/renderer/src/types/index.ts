@@ -26,6 +26,7 @@ export * from './notification'
 export * from './ocr'
 export * from './plugin'
 export * from './provider'
+export * from './trash'
 
 export type Assistant = {
   id: string

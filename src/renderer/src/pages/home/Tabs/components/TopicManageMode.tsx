@@ -1,6 +1,5 @@
 import AssistantAvatar from '@renderer/components/Avatar/AssistantAvatar'
 import { modelGenerating } from '@renderer/hooks/useRuntime'
-import { TopicManager } from '@renderer/hooks/useTopic'
 import type { Assistant, Topic } from '@renderer/types'
 import { cn } from '@renderer/utils'
 import { Dropdown, Tooltip } from 'antd'
@@ -146,7 +145,6 @@ export const TopicManagePanel: React.FC<TopicManagePanelProps> = ({
     for (const id of selectedIds) {
       const topic = assistant.topics.find((t) => t.id === id)
       if (topic) {
-        await TopicManager.removeTopic(id)
         removeTopic(topic)
       }
     }

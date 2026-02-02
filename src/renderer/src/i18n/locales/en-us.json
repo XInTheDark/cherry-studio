@@ -1075,7 +1075,7 @@
         "clear_selection": "Clear Selection",
         "delete": {
           "confirm": {
-            "content": "Are you sure you want to delete {{count}} selected topic(s)? This action cannot be undone.",
+            "content": "Are you sure you want to delete {{count}} selected topic(s)? They will be moved to Trash and can be restored.",
             "title": "Delete Topics"
           },
           "success": "Deleted {{count}} topic(s)"
@@ -1112,6 +1112,38 @@
       "unpin": "Unpin Topic"
     },
     "translate": "Translate",
+    "trash": {
+      "auto_purge": "Trash full — permanently deleted {{count}} oldest chat(s)",
+      "delete": {
+        "action": "Delete permanently",
+        "confirm": {
+          "content": "This will permanently delete this chat from disk. This action cannot be undone.",
+          "title": "Delete permanently"
+        },
+        "error": "Failed to delete permanently",
+        "success": "Deleted permanently"
+      },
+      "empty": {
+        "action": "Empty Trash",
+        "confirm": {
+          "content": "This will permanently delete {{count}} chat(s) from Trash. This action cannot be undone.",
+          "title": "Empty Trash"
+        },
+        "error": "Failed to empty Trash",
+        "state": "Trash is empty",
+        "success": "Emptied Trash ({{count}} chat(s) deleted permanently)"
+      },
+      "restore": {
+        "action": "Restore",
+        "error_generic": "Failed to restore chat",
+        "error_missing_data": "This chat is no longer available (it may have been permanently deleted)",
+        "error_no_assistant": "No assistant available to restore this chat",
+        "success": "Chat restored",
+        "warning_fallback_assistant": "Original assistant not found — restored into your default assistant"
+      },
+      "title": "Trash",
+      "unknown_assistant": "Unknown assistant"
+    },
     "web_search": {
       "warning": {
         "openai": "The GPT-5 model's minimal reasoning effort does not support web search."

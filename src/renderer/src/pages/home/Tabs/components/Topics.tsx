@@ -50,6 +50,7 @@ import {
   Save,
   Sparkles,
   Square,
+  Trash2,
   UploadIcon,
   XIcon
 } from 'lucide-react'
@@ -60,6 +61,7 @@ import styled from 'styled-components'
 
 import AddButton from './AddButton'
 import { TopicManagePanel, useTopicManageMode } from './TopicManageMode'
+import TrashDrawer from './TrashDrawer'
 
 interface Props {
   assistant: Assistant
@@ -85,6 +87,7 @@ export const Topics: React.FC<Props> = ({ assistant: _assistant, activeTopic, se
   const [deletingTopicId, setDeletingTopicId] = useState<string | null>(null)
   const deleteTimerRef = useRef<NodeJS.Timeout>(null)
   const [editingTopicId, setEditingTopicId] = useState<string | null>(null)
+  const [trashOpen, setTrashOpen] = useState(false)
 
   // 管理模式状态
   const manageState = useTopicManageMode()
@@ -546,6 +549,11 @@ export const Topics: React.FC<Props> = ({ assistant: _assistant, activeTopic, se
                 <ListChecks size={14} />
               </HeaderIconButton>
             </Tooltip>
+            <Tooltip title={t('chat.trash.title')} mouseEnterDelay={0.5}>
+              <HeaderIconButton onClick={() => setTrashOpen(true)}>
+                <Trash2 size={14} />
+              </HeaderIconButton>
+            </Tooltip>
           </HeaderRow>
         }
         disabled={isManageMode}>
@@ -682,6 +690,8 @@ export const Topics: React.FC<Props> = ({ assistant: _assistant, activeTopic, se
         manageState={manageState}
         filteredTopics={filteredTopics}
       />
+
+      <TrashDrawer open={trashOpen} onClose={() => setTrashOpen(false)} placement={position} />
     </>
   )
 }

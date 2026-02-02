@@ -1075,7 +1075,7 @@
         "clear_selection": "取消選擇",
         "delete": {
           "confirm": {
-            "content": "確定要刪除選中的 {{count}} 個話題嗎？此操作不可撤銷。",
+            "content": "確定要刪除選中的 {{count}} 個話題嗎？它們將移動到回收站，並可從回收站還原。",
             "title": "刪除話題"
           },
           "success": "已刪除 {{count}} 個話題"
@@ -1112,6 +1112,38 @@
       "unpin": "取消固定"
     },
     "translate": "翻譯",
+    "trash": {
+      "auto_purge": "回收站已滿 — 已永久刪除最早的 {{count}} 個對話",
+      "delete": {
+        "action": "永久刪除",
+        "confirm": {
+          "content": "這將從磁碟永久刪除此對話，且無法復原。",
+          "title": "永久刪除"
+        },
+        "error": "永久刪除失敗",
+        "success": "已永久刪除"
+      },
+      "empty": {
+        "action": "清空回收站",
+        "confirm": {
+          "content": "這將永久刪除回收站中的 {{count}} 個對話，且無法復原。",
+          "title": "清空回收站"
+        },
+        "error": "清空回收站失敗",
+        "state": "回收站為空",
+        "success": "已清空回收站（已永久刪除 {{count}} 個對話）"
+      },
+      "restore": {
+        "action": "還原",
+        "error_generic": "還原失敗",
+        "error_missing_data": "此對話已不可用（可能已被永久刪除）",
+        "error_no_assistant": "沒有可用的助手可還原此對話",
+        "success": "已還原對話",
+        "warning_fallback_assistant": "找不到原本的助手 — 已還原到預設助手"
+      },
+      "title": "回收站",
+      "unknown_assistant": "未知助手"
+    },
     "web_search": {
       "warning": {
         "openai": "GPT-5 模型的最小推理力度不支援網路搜尋。"

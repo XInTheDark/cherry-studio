@@ -20,7 +20,7 @@ import { createSelector, createSlice } from '@reduxjs/toolkit'
 import { DEFAULT_CONTEXTCOUNT, DEFAULT_TEMPERATURE } from '@renderer/config/constant'
 import { TopicManager } from '@renderer/hooks/useTopic'
 import { DEFAULT_ASSISTANT_SETTINGS, getDefaultAssistant, getDefaultTopic } from '@renderer/services/AssistantService'
-import type { Assistant, AssistantPreset, AssistantSettings, Model, Topic } from '@renderer/types'
+import type { Assistant, AssistantPreset, AssistantSettings, Model, Topic, TrashedTopic } from '@renderer/types'
 import { isEmpty, uniqBy } from 'lodash'
 
 import type { RootState } from '.'
@@ -32,6 +32,7 @@ export interface AssistantsState {
   collapsedTags: Record<string, boolean>
   presets: AssistantPreset[]
   unifiedListOrder: Array<{ type: 'agent' | 'assistant'; id: string }>
+  trashedTopics: TrashedTopic[]
 }
 
 const initialState: AssistantsState = {
@@ -40,7 +41,8 @@ const initialState: AssistantsState = {
   tagsOrder: [],
   collapsedTags: {},
   presets: [],
-  unifiedListOrder: []
+  unifiedListOrder: [],
+  trashedTopics: []
 }
 
 const assistantsSlice = createSlice({
@@ -141,6 +143,65 @@ const assistantsSlice = createSlice({
             }
           : assistant
       )
+    },
+
+    /**
+     * Soft-delete: remove topic from assistant list and add it to global Trash.
+     *
+     * Note: this reducer only stores metadata. Messages remain in Dexie until permanently deleted.
+     */
+    trashTopic: (state, action: PayloadAction<{ assistantId: string; topic: Topic; trashedAt?: string }>) => {
+      const { assistantId, topic } = action.payload
+      const trashedAt = action.payload.trashedAt || new Date().toISOString()
+
+      state.assistants = state.assistants.map((assistant) =>
+        assistant.id === assistantId
+          ? {
+              ...assistant,
+              topics: assistant.topics.filter(({ id }) => id !== topic.id)
+            }
+          : assistant
+      )
+
+      const entry: TrashedTopic = {
+        id: topic.id,
+        assistantId,
+        topic: { ...topic, assistantId, messages: [] },
+        trashedAt
+      }
+
+      const existingIndex = (state.trashedTopics || []).findIndex((t) => t.id === topic.id)
+      if (existingIndex !== -1) {
+        state.trashedTopics[existingIndex] = entry
+      } else {
+        state.trashedTopics = [entry, ...(state.trashedTopics || [])]
+      }
+    },
+
+    /** Remove a topic from Trash (used after restore or permanent deletion). */
+    removeTrashedTopic: (state, action: PayloadAction<{ id: string }>) => {
+      state.trashedTopics = (state.trashedTopics || []).filter((t) => t.id !== action.payload.id)
+    },
+
+    /** Restore a trashed topic back into an assistant's topic list. */
+    restoreTrashedTopic: (state, action: PayloadAction<{ assistantId: string; topic: Topic }>) => {
+      const { assistantId, topic } = action.payload
+
+      state.trashedTopics = (state.trashedTopics || []).filter((t) => t.id !== topic.id)
+
+      state.assistants = state.assistants.map((assistant) =>
+        assistant.id === assistantId
+          ? {
+              ...assistant,
+              topics: uniqBy([{ ...topic, assistantId, messages: [] }, ...assistant.topics], 'id')
+            }
+          : assistant
+      )
+    },
+
+    /** Empty Trash metadata list (caller is responsible for permanent deletion if desired). */
+    clearTrash: (state) => {
+      state.trashedTopics = []
     },
     updateTopic: (state, action: PayloadAction<{ assistantId: string; topic: Topic }>) => {
       const newTopic = action.payload.topic
@@ -251,6 +312,10 @@ export const {
   updateAssistant,
   addTopic,
   removeTopic,
+  trashTopic,
+  removeTrashedTopic,
+  restoreTrashedTopic,
+  clearTrash,
   updateTopic,
   updateTopics,
   removeAllTopics,

@@ -1112,6 +1112,38 @@
       "unpin": "Открепленные темы"
     },
     "translate": "Перевести",
+    "trash": {
+      "auto_purge": "[to be translated]:Trash full — permanently deleted {{count}} oldest chat(s)",
+      "delete": {
+        "action": "[to be translated]:Delete permanently",
+        "confirm": {
+          "content": "[to be translated]:This will permanently delete this chat from disk. This action cannot be undone.",
+          "title": "[to be translated]:Delete permanently"
+        },
+        "error": "[to be translated]:Failed to delete permanently",
+        "success": "[to be translated]:Deleted permanently"
+      },
+      "empty": {
+        "action": "[to be translated]:Empty Trash",
+        "confirm": {
+          "content": "[to be translated]:This will permanently delete {{count}} chat(s) from Trash. This action cannot be undone.",
+          "title": "[to be translated]:Empty Trash"
+        },
+        "error": "[to be translated]:Failed to empty Trash",
+        "state": "[to be translated]:Trash is empty",
+        "success": "[to be translated]:Emptied Trash ({{count}} chat(s) deleted permanently)"
+      },
+      "restore": {
+        "action": "[to be translated]:Restore",
+        "error_generic": "[to be translated]:Failed to restore chat",
+        "error_missing_data": "[to be translated]:This chat is no longer available (it may have been permanently deleted)",
+        "error_no_assistant": "[to be translated]:No assistant available to restore this chat",
+        "success": "[to be translated]:Chat restored",
+        "warning_fallback_assistant": "[to be translated]:Original assistant not found — restored into your default assistant"
+      },
+      "title": "[to be translated]:Trash",
+      "unknown_assistant": "[to be translated]:Unknown assistant"
+    },
     "web_search": {
       "warning": {
         "openai": "Модель GPT5 с минимальной интенсивностью мышления не поддерживает поиск в интернете"

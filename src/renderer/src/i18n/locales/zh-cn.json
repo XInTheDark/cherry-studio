@@ -1075,7 +1075,7 @@
         "clear_selection": "取消选择",
         "delete": {
           "confirm": {
-            "content": "确定要删除选中的 {{count}} 个话题吗？此操作不可撤销。",
+            "content": "确定要删除选中的 {{count}} 个话题吗？它们将被移动到回收站，并可从回收站恢复。",
             "title": "删除话题"
           },
           "success": "已删除 {{count}} 个话题"
@@ -1112,6 +1112,38 @@
       "unpin": "取消固定"
     },
     "translate": "翻译",
+    "trash": {
+      "auto_purge": "回收站已满 — 已永久删除最早的 {{count}} 个对话",
+      "delete": {
+        "action": "永久删除",
+        "confirm": {
+          "content": "这将从磁盘永久删除此对话，且无法恢复。",
+          "title": "永久删除"
+        },
+        "error": "永久删除失败",
+        "success": "已永久删除"
+      },
+      "empty": {
+        "action": "清空回收站",
+        "confirm": {
+          "content": "这将永久删除回收站中的 {{count}} 个对话，且无法恢复。",
+          "title": "清空回收站"
+        },
+        "error": "清空回收站失败",
+        "state": "回收站为空",
+        "success": "已清空回收站（已永久删除 {{count}} 个对话）"
+      },
+      "restore": {
+        "action": "还原",
+        "error_generic": "还原失败",
+        "error_missing_data": "此对话已不可用（可能已被永久删除）",
+        "error_no_assistant": "没有可用的助手来还原此对话",
+        "success": "已还原对话",
+        "warning_fallback_assistant": "未找到原助手 — 已还原到默认助手"
+      },
+      "title": "回收站",
+      "unknown_assistant": "未知助手"
+    },
     "web_search": {
       "warning": {
         "openai": "GPT5 模型 minimal 思考强度不支持网络搜索"
