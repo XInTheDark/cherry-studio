@@ -47,12 +47,14 @@ import {
 } from '@renderer/utils/messageUtils/create'
 import { getMainTextContent } from '@renderer/utils/messageUtils/find'
 import { getTopicQueue, waitForTopicQueue } from '@renderer/utils/queue'
+import { type AdaptiveScheduler, createAdaptiveScheduler } from '@renderer/utils/throttling/adaptiveScheduler'
+import { getStreamingUpdateDelayMs } from '@renderer/utils/throttling/streamingUpdateDelay'
 import { API_SERVER_DEFAULTS } from '@shared/config/constant'
 import { IpcChannel } from '@shared/IpcChannel'
 import { defaultAppHeaders } from '@shared/utils'
 import type { ModelMessage, TextStreamPart } from 'ai'
 import { t } from 'i18next'
-import { isEmpty, throttle } from 'lodash'
+import { isEmpty } from 'lodash'
 import { LRUCache } from 'lru-cache'
 import { mutate } from 'swr'
 
@@ -404,10 +406,16 @@ const updateExistingMessageAndBlocksInDB = async (
  * 消息块节流器。
  * 每个消息块有独立节流器，并发更新时不会互相影响
  */
-const blockUpdateThrottlers = new LRUCache<string, ReturnType<typeof throttle>>({
+type BlockUpdateThrottler = AdaptiveScheduler<any>
+
+const blockUpdateThrottlers = new LRUCache<string, BlockUpdateThrottler>({
   max: 100,
   ttl: 1000 * 60 * 5,
-  updateAgeOnGet: true
+  updateAgeOnGet: true,
+  dispose: (throttler) => {
+    // Ensure timers are cleared if the entry is evicted.
+    throttler.cancel()
+  }
 })
 
 /**
@@ -417,7 +425,13 @@ const blockUpdateThrottlers = new LRUCache<string, ReturnType<typeof throttle>>(
 const blockUpdateRafs = new LRUCache<string, number>({
   max: 100,
   ttl: 1000 * 60 * 5,
-  updateAgeOnGet: true
+  updateAgeOnGet: true,
+  dispose: (rafId) => {
+    // When evicted, cancel any pending RAF to avoid leaking callbacks.
+    if (typeof cancelAnimationFrame === 'function') {
+      cancelAnimationFrame(rafId)
+    }
+  }
 })
 
 /**
@@ -425,22 +439,47 @@ const blockUpdateRafs = new LRUCache<string, number>({
  */
 const getBlockThrottler = (id: string) => {
   if (!blockUpdateThrottlers.has(id)) {
-    const throttler = throttle(async (blockUpdate: any) => {
-      // Keep block timestamps meaningful for UI + persistence.
-      const blockUpdateWithUpdatedAt = { ...blockUpdate, updatedAt: new Date().toISOString() }
-      const existingRAF = blockUpdateRafs.get(id)
-      if (existingRAF) {
-        cancelAnimationFrame(existingRAF)
+    const throttler = createAdaptiveScheduler<any>(
+      async (blockUpdate: any) => {
+        // Keep block timestamps meaningful for UI + persistence.
+        // For throttled updates, `updatedAt` reflects the flush moment (not the call moment).
+        const blockUpdateWithUpdatedAt = { ...blockUpdate, updatedAt: new Date().toISOString() }
+
+        const existingRAF = blockUpdateRafs.get(id)
+        if (existingRAF && typeof cancelAnimationFrame === 'function') {
+          cancelAnimationFrame(existingRAF)
+        }
+
+        const rafId =
+          typeof requestAnimationFrame === 'function'
+            ? requestAnimationFrame(() => {
+                store.dispatch(updateOneBlock({ id, changes: blockUpdateWithUpdatedAt }))
+                blockUpdateRafs.delete(id)
+              })
+            : // Extremely defensive: in non-window contexts, fall back to immediate dispatch.
+              ((store.dispatch(updateOneBlock({ id, changes: blockUpdateWithUpdatedAt })) as unknown as number) ?? 0)
+
+        if (typeof rafId === 'number') {
+          blockUpdateRafs.set(id, rafId)
+        }
+
+        try {
+          await updateSingleBlock(id, blockUpdateWithUpdatedAt)
+        } catch (error) {
+          logger.error(`[throttledBlockUpdate] Failed to persist block ${id}:`, error as Error)
+        }
+      },
+      {
+        // Shallow-merge so early fields (eg toolName/metadata) aren't lost if a later delta arrives
+        // before the first flush runs.
+        coalesce: (prev: any | null, next: any) => ({ ...prev, ...next }),
+        getDelayMs: (pending: any) => {
+          const content = pending?.content
+          const len = typeof content === 'string' ? content.length : 0
+          return getStreamingUpdateDelayMs(len)
+        }
       }
-
-      const rafId = requestAnimationFrame(() => {
-        store.dispatch(updateOneBlock({ id, changes: blockUpdateWithUpdatedAt }))
-        blockUpdateRafs.delete(id)
-      })
-
-      blockUpdateRafs.set(id, rafId)
-      await updateSingleBlock(id, blockUpdateWithUpdatedAt)
-    }, 150)
+    )
 
     blockUpdateThrottlers.set(id, throttler)
   }
@@ -463,7 +502,9 @@ export const throttledBlockUpdate = (id: string, blockUpdate: any) => {
 export const cancelThrottledBlockUpdate = (id: string) => {
   const rafId = blockUpdateRafs.get(id)
   if (rafId) {
-    cancelAnimationFrame(rafId)
+    if (typeof cancelAnimationFrame === 'function') {
+      cancelAnimationFrame(rafId)
+    }
     blockUpdateRafs.delete(id)
   }
 
