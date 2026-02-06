@@ -110,6 +110,7 @@ const CustomNode: FC<{ data: any }> = ({ data }) => {
       const customEvent = new CustomEvent('flow-navigate-to-message', {
         detail: {
           messageId: data.messageId,
+          topicId: data.topicId,
           modelId: data.modelId,
           modelName: data.model,
           nodeType: nodeType
@@ -123,7 +124,10 @@ const CustomNode: FC<{ data: any }> = ({ data }) => {
       setTimeoutTimer(
         'handleNodeClick',
         () => {
-          EventEmitter.emit(EVENT_NAMES.LOCATE_MESSAGE + ':' + data.messageId)
+          EventEmitter.emit(EVENT_NAMES.LOCATE_MESSAGE, {
+            messageId: data.messageId,
+            topicId: data.topicId
+          })
         },
         250
       )
@@ -285,6 +289,7 @@ const ChatFlowHistory: FC<ChatFlowHistoryProps> = ({ conversationId }) => {
           content: getMainTextContent(message),
           type: 'user',
           messageId: message.id,
+          topicId: message.topicId,
           userAvatar: msgUserAvatar
         },
         position: { x: baseX, y: yPosition },
@@ -342,6 +347,7 @@ const ChatFlowHistory: FC<ChatFlowHistoryProps> = ({ conversationId }) => {
             content: getMainTextContent(aMsg),
             type: 'assistant',
             messageId: aMsg.id,
+            topicId: aMsg.topicId,
             modelId: modelId,
             modelInfo
           },
@@ -433,6 +439,7 @@ const ChatFlowHistory: FC<ChatFlowHistoryProps> = ({ conversationId }) => {
             content: getMainTextContent(aMsg),
             type: 'assistant',
             messageId: aMsg.id,
+            topicId: aMsg.topicId,
             modelId: modelId,
             modelInfo
           },

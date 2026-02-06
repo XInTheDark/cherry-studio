@@ -29,6 +29,7 @@ import {
   removeSpecialCharactersForFileName,
   runAsyncFunction
 } from '@renderer/utils'
+import { scrollIntoView } from '@renderer/utils/dom'
 import { updateCodeBlock } from '@renderer/utils/markdown'
 import { getMainTextContent } from '@renderer/utils/messageUtils/find'
 import { isTextLikeBlock } from '@renderer/utils/messageUtils/is'
@@ -67,6 +68,12 @@ interface MessagesProps {
   // When enabled (e.g. in-chat find), progressively render older messages so DOM-based search sees more matches.
   // Bounded by time + batch caps to avoid freezing on huge topics.
   autoExpandForSearch?: boolean
+}
+
+interface LocateMessagePayload {
+  messageId: string
+  topicId?: string
+  highlight?: boolean
 }
 
 const logger = loggerService.withContext('Messages')
@@ -211,6 +218,55 @@ const Messages: React.FC<MessagesProps> = ({
     [clearTopicMessages, topic.id]
   )
 
+  const locateMessage = useCallback(
+    (messageId: string, highlight: boolean = true) => {
+      const targetMessage = messagesRef.current.find((message) => message.id === messageId)
+      if (!targetMessage) return
+
+      if (targetMessage.role === 'assistant' && targetMessage.askId) {
+        const groupedMessages = messagesRef.current.filter((message) => message.askId === targetMessage.askId)
+
+        if (groupedMessages.length > 1) {
+          groupedMessages.forEach((message) => {
+            const isSelected = message.id === targetMessage.id
+            if (message.foldSelected === isSelected) return
+
+            dispatch(
+              newMessagesActions.updateMessage({
+                topicId: message.topicId,
+                messageId: message.id,
+                updates: { foldSelected: isSelected }
+              })
+            )
+          })
+        }
+      }
+
+      setTimeoutTimer(
+        `locateMessage:${messageId}`,
+        () => {
+          const messageElement = document.getElementById(`message-${messageId}`)
+          if (!messageElement) return
+
+          scrollIntoView(messageElement, { behavior: 'smooth', block: 'center', container: 'nearest' })
+
+          if (!highlight) return
+
+          messageElement.classList.add('animation-locate-highlight')
+
+          const handleAnimationEnd = () => {
+            messageElement.classList.remove('animation-locate-highlight')
+            messageElement.removeEventListener('animationend', handleAnimationEnd)
+          }
+
+          messageElement.addEventListener('animationend', handleAnimationEnd)
+        },
+        120
+      )
+    },
+    [dispatch, setTimeoutTimer]
+  )
+
   const revealAndLocateMessage = useCallback(
     (messageId: string, highlight: boolean = true) => {
       const currentMessages = messagesRef.current
@@ -230,15 +286,22 @@ const Messages: React.FC<MessagesProps> = ({
         setHasMore(desiredLength < reversedMessages.length)
       }
 
-      // Wait a tick for render to ensure the target DOM node exists, then use existing locate logic.
-      setTimeoutTimer(
-        `revealAndLocateMessage:${messageId}`,
-        () => EventEmitter.emit(EVENT_NAMES.LOCATE_MESSAGE + ':' + messageId, highlight),
-        100
-      )
+      // Wait a tick for render to ensure the target DOM node exists, then locate it.
+      setTimeoutTimer(`revealAndLocateMessage:${messageId}`, () => locateMessage(messageId, highlight), 100)
     },
-    [setTimeoutTimer]
+    [locateMessage, setTimeoutTimer]
   )
+
+  useEffect(() => {
+    const unsubscribe = EventEmitter.on(EVENT_NAMES.LOCATE_MESSAGE, (payload: LocateMessagePayload) => {
+      if (!payload?.messageId) return
+      if (payload.topicId && payload.topicId !== topic.id) return
+
+      revealAndLocateMessage(payload.messageId, payload.highlight ?? true)
+    })
+
+    return () => unsubscribe()
+  }, [revealAndLocateMessage, topic.id])
 
   useEffect(() => {
     if (!enableGlobalEvents) return

@@ -94,7 +94,10 @@ export async function locateToMessage(navigate: NavigateFunction, message: Messa
 
       setTimeout(() => EventEmitter.emit(EVENT_NAMES.SHOW_TOPIC_SIDEBAR), 0)
       setTimeout(() => {
-        EventEmitter.emit(EVENT_NAMES.LOCATE_MESSAGE + ':' + ref.parentMessageId)
+        EventEmitter.emit(EVENT_NAMES.LOCATE_MESSAGE, {
+          messageId: ref.parentMessageId,
+          topicId: ref.parentTopicId
+        })
         EventEmitter.emit(EVENT_NAMES.OPEN_THREAD_PANEL, {
           parentMessageId: ref.parentMessageId,
           threadTopicId: message.topicId
@@ -109,7 +112,10 @@ export async function locateToMessage(navigate: NavigateFunction, message: Messa
   navigate('/', { state: { assistant, topic } })
 
   setTimeout(() => EventEmitter.emit(EVENT_NAMES.SHOW_TOPIC_SIDEBAR), 0)
-  setTimeout(() => EventEmitter.emit(EVENT_NAMES.LOCATE_MESSAGE + ':' + message.id), 300)
+  setTimeout(
+    () => EventEmitter.emit(EVENT_NAMES.LOCATE_MESSAGE, { messageId: message.id, topicId: message.topicId }),
+    300
+  )
 }
 
 /**
