@@ -114,14 +114,13 @@ export const useWebSearchPanelController = (assistantId: string, quickPanelContr
       update.enableWebSearch = false
       window.toast.warning(t('chat.mcp.warning.gemini_web_search'))
     }
-    if (
-      isOpenAIWebSearchModel(model) &&
-      isGPT5SeriesReasoningModel(model) &&
-      update.enableWebSearch &&
-      assistant.settings?.reasoning_effort === 'minimal'
-    ) {
-      update.enableWebSearch = false
-      window.toast.warning(t('chat.web_search.warning.openai'))
+    if (isOpenAIWebSearchModel(model) && isGPT5SeriesReasoningModel(model) && update.enableWebSearch) {
+      const preferredEffort = assistant.settings?.reasoning_effort_cache ?? assistant.settings?.reasoning_effort
+      if (preferredEffort === 'minimal') {
+        // Minimal reasoning cannot be combined with built-in web search on GPT-5 series.
+        // We allow enabling web search and rely on reasoning effort coercion to keep requests valid.
+        window.toast.warning(t('chat.web_search.warning.openai'))
+      }
     }
     setTimeoutTimer('updateSelectedWebSearchBuiltin', () => updateAssistant(update), 200)
   }, [assistant, setTimeoutTimer, t, updateAssistant])

@@ -1,6 +1,8 @@
 import { loggerService } from '@logger'
 import {
+  coerceReasoningEffortOptionForModel,
   getThinkModelType,
+  isOpenAIModel,
   isSupportedReasoningEffortModel,
   isSupportedThinkingTokenModel,
   MODEL_SUPPORTED_OPTIONS,
@@ -106,6 +108,25 @@ export function useAssistant(id: string) {
     if (settings) {
       const currentReasoningEffort = settings.reasoning_effort
       if (isSupportedThinkingTokenModel(model) || isSupportedReasoningEffortModel(model)) {
+        // OpenAI: keep a stable set of UI options by storing the user preference in `reasoning_effort_cache`,
+        // while keeping `reasoning_effort` as the model-supported effective value.
+        if (isOpenAIModel(model)) {
+          const preferred = settings.reasoning_effort_cache ?? settings.reasoning_effort
+          const effective = coerceReasoningEffortOptionForModel(preferred, model, {
+            enableWebSearch: Boolean(assistant.enableWebSearch)
+          })
+
+          if (effective !== currentReasoningEffort) {
+            const isEnabled = effective !== undefined && effective !== 'none'
+            updateAssistantSettings({
+              reasoning_effort: effective,
+              // Keep cache/preference unchanged here.
+              qwenThinkMode: isEnabled ? true : undefined
+            })
+          }
+          return
+        }
+
         const modelType = getThinkModelType(model)
         const supportedOptions = MODEL_SUPPORTED_OPTIONS[modelType]
         if (supportedOptions.every((option) => option !== currentReasoningEffort)) {
@@ -136,12 +157,13 @@ export function useAssistant(id: string) {
         // 切换到非思考模型时保留cache
         updateAssistantSettings({
           reasoning_effort: undefined,
-          reasoning_effort_cache: currentReasoningEffort,
+          // Preserve existing cache (preference) when present, otherwise keep the last effective value.
+          reasoning_effort_cache: settings.reasoning_effort_cache ?? currentReasoningEffort,
           qwenThinkMode: undefined
         })
       }
     }
-  }, [model, updateAssistantSettings])
+  }, [assistant.enableWebSearch, model, updateAssistantSettings])
 
   return {
     assistant: assistantWithModel,

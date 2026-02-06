@@ -93,11 +93,16 @@ export const MODEL_SUPPORTED_OPTIONS: ThinkingOptionConfig = {
   deepseek_hybrid: ['default', 'none', ...MODEL_SUPPORTED_REASONING_EFFORT.deepseek_hybrid] as const
 } as const
 
-const withModelIdAndNameAsId = <T>(model: Model, fn: (model: Model) => T): { idResult: T; nameResult: T } => {
-  const modelWithNameAsId = { ...model, id: model.name }
+const withModelIdAndNameAsId = <T>(
+  model: Model,
+  fn: (model: Model) => T
+): { idResult: T; nameResult: T | undefined } => {
+  // Some callers may provide models without a `name` field (e.g. unit tests or
+  // partially-hydrated models). Don't overwrite a valid `id` with undefined.
+  const modelWithNameAsId = model.name ? { ...model, id: model.name } : undefined
   return {
     idResult: fn(model),
-    nameResult: fn(modelWithNameAsId)
+    nameResult: modelWithNameAsId ? fn(modelWithNameAsId) : undefined
   }
 }
 
@@ -180,7 +185,7 @@ export const getThinkModelType = (model: Model): ThinkingModelType => {
   if (idResult !== 'default') {
     return idResult
   } else {
-    return nameResult
+    return nameResult ?? 'default'
   }
 }
 
@@ -290,7 +295,7 @@ function _isSupportedThinkingTokenModel(model: Model): boolean {
 export function isSupportedThinkingTokenModel(model?: Model): boolean {
   if (!model) return false
   const { idResult, nameResult } = withModelIdAndNameAsId(model, _isSupportedThinkingTokenModel)
-  return idResult || nameResult
+  return idResult || Boolean(nameResult)
 }
 
 // TODO: it should be merged in isSupportedThinkingTokenModel
@@ -601,7 +606,7 @@ export const isDeepSeekHybridInferenceModel = (model: Model) => {
       modelId.includes('deepseek-chat')
     )
   })
-  return idResult || nameResult
+  return idResult || Boolean(nameResult)
 }
 
 export const isLingReasoningModel = (model?: Model): boolean => {

@@ -483,6 +483,67 @@ describe('reasoning utils', () => {
       })
     })
 
+    it('should coerce unsupported xhigh effort to a supported value', async () => {
+      const { isReasoningModel, isOpenAIModel, isSupportedReasoningEffortOpenAIModel, isOpenAIDeepResearchModel } =
+        await import('@renderer/config/models')
+
+      vi.mocked(isReasoningModel).mockReturnValue(true)
+      vi.mocked(isOpenAIModel).mockReturnValue(true)
+      vi.mocked(isOpenAIDeepResearchModel).mockReturnValue(false)
+      vi.mocked(isSupportedReasoningEffortOpenAIModel).mockReturnValue(true)
+
+      const model: Model = {
+        id: 'gpt-5',
+        name: 'GPT 5',
+        provider: SystemProviderIds.openai
+      } as Model
+
+      const assistant: Assistant = {
+        id: 'test',
+        name: 'Test',
+        settings: {
+          reasoning_effort: 'xhigh'
+        }
+      } as Assistant
+
+      const result = getOpenAIReasoningParams(assistant, model)
+      expect(result).toEqual({
+        reasoningEffort: 'high',
+        reasoningSummary: 'auto'
+      })
+    })
+
+    it('should coerce minimal to low when built-in web search is enabled on GPT-5 series', async () => {
+      const { isReasoningModel, isOpenAIModel, isSupportedReasoningEffortOpenAIModel, isOpenAIDeepResearchModel } =
+        await import('@renderer/config/models')
+
+      vi.mocked(isReasoningModel).mockReturnValue(true)
+      vi.mocked(isOpenAIModel).mockReturnValue(true)
+      vi.mocked(isOpenAIDeepResearchModel).mockReturnValue(false)
+      vi.mocked(isSupportedReasoningEffortOpenAIModel).mockReturnValue(true)
+
+      const model: Model = {
+        id: 'gpt-5',
+        name: 'GPT 5',
+        provider: SystemProviderIds.openai
+      } as Model
+
+      const assistant: Assistant = {
+        id: 'test',
+        name: 'Test',
+        enableWebSearch: true,
+        settings: {
+          reasoning_effort: 'minimal'
+        }
+      } as Assistant
+
+      const result = getOpenAIReasoningParams(assistant, model)
+      expect(result).toEqual({
+        reasoningEffort: 'low',
+        reasoningSummary: 'auto'
+      })
+    })
+
     it('should include reasoning summary when not o1-pro', async () => {
       const { isReasoningModel, isOpenAIModel, isSupportedReasoningEffortOpenAIModel } = await import(
         '@renderer/config/models'

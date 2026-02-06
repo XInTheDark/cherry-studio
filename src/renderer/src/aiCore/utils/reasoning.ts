@@ -6,6 +6,7 @@ import type { XaiProviderOptions } from '@ai-sdk/xai'
 import { loggerService } from '@logger'
 import { DEFAULT_MAX_TOKENS } from '@renderer/config/constant'
 import {
+  coerceReasoningEffortOptionForModel,
   findTokenLimit,
   GEMINI_FLASH_MODEL_REGEX,
   getModelSupportedReasoningEffortOptions,
@@ -444,6 +445,16 @@ export function getOpenAIReasoningParams(
 
   if (isOpenAIDeepResearchModel(model) || reasoningEffort === 'auto') {
     reasoningEffort = 'medium'
+  }
+
+  // Safety: coerce to a model-supported effort value (UI may allow selecting values
+  // that aren't supported by every OpenAI model).
+  reasoningEffort = coerceReasoningEffortOptionForModel(reasoningEffort, model, {
+    enableWebSearch: Boolean(assistant.enableWebSearch)
+  })
+
+  if (!reasoningEffort || reasoningEffort === 'default') {
+    return {}
   }
 
   // 非OpenAI模型，但是Provider类型是responses/azure openai的情况
