@@ -17,12 +17,17 @@ import {
 import { matchKeywordsInString, uuid } from '@renderer/utils'
 import HomeWindow from '@renderer/windows/mini/home/HomeWindow'
 import { Button, Input, Modal, Select, Space, Switch, Tooltip } from 'antd'
+import { Dices, OctagonX } from 'lucide-react'
+import { DynamicIcon, iconNames } from 'lucide-react/dynamic'
 import type { FC } from 'react'
 import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import styled from 'styled-components'
 
 import { SettingContainer, SettingDivider, SettingGroup, SettingRow, SettingRowTitle, SettingTitle } from '.'
+
+const isLucideIconName = (icon: string): icon is (typeof iconNames)[number] =>
+  iconNames.includes(icon as (typeof iconNames)[number])
 const QuickAssistantSettings: FC = () => {
   const { t } = useTranslation()
   const { theme } = useTheme()
@@ -40,6 +45,8 @@ const QuickAssistantSettings: FC = () => {
   const [editingCommand, setEditingCommand] = useState<QuickAssistantCommand | null>(null)
   const [commandTitle, setCommandTitle] = useState('')
   const [commandPrompt, setCommandPrompt] = useState('')
+  const [commandIcon, setCommandIcon] = useState('')
+  const [commandIconError, setCommandIconError] = useState('')
   const [commandHideSource, setCommandHideSource] = useState(true)
 
   // Use the selected default assistant (from settings) when present.
@@ -71,6 +78,8 @@ const QuickAssistantSettings: FC = () => {
     setEditingCommand(null)
     setCommandTitle('')
     setCommandPrompt('')
+    setCommandIcon('')
+    setCommandIconError('')
     setCommandHideSource(true)
     setCommandModalOpen(true)
   }
@@ -79,6 +88,8 @@ const QuickAssistantSettings: FC = () => {
     setEditingCommand(command)
     setCommandTitle(command.title || '')
     setCommandPrompt(command.prompt || '')
+    setCommandIcon(command.icon || '')
+    setCommandIconError('')
     setCommandHideSource(!!command.hideSourceMessage)
     setCommandModalOpen(true)
   }
@@ -86,7 +97,13 @@ const QuickAssistantSettings: FC = () => {
   const saveCommand = () => {
     const trimmedTitle = commandTitle.trim()
     const trimmedPrompt = commandPrompt.trim()
+    const trimmedIcon = commandIcon.trim()
+
     if (!trimmedTitle || !trimmedPrompt) return
+    if (trimmedIcon && !isLucideIconName(trimmedIcon)) {
+      setCommandIconError('Invalid icon name')
+      return
+    }
 
     if (editingCommand) {
       updateCommands(
@@ -96,6 +113,7 @@ const QuickAssistantSettings: FC = () => {
                 ...c,
                 title: trimmedTitle,
                 prompt: trimmedPrompt,
+                icon: trimmedIcon || undefined,
                 hideSourceMessage: commandHideSource
               }
             : c
@@ -107,6 +125,7 @@ const QuickAssistantSettings: FC = () => {
         type: 'prompt',
         title: trimmedTitle,
         prompt: trimmedPrompt,
+        icon: trimmedIcon || undefined,
         enabled: true,
         hideSourceMessage: commandHideSource,
         isBuiltIn: false
@@ -269,11 +288,17 @@ const QuickAssistantSettings: FC = () => {
           {quickAssistantCommands.map((command) => {
             const title = command.titleKey ? t(command.titleKey) : command.title || ''
             const isCustom = command.type === 'prompt' && !command.isBuiltIn
+            const iconName = command.icon?.trim() || ''
+            const hasCustomIcon = !!iconName && isLucideIconName(iconName)
+
             return (
               <div key={command.id}>
                 <SettingRow>
                   <SettingRowTitle style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                    <span>{title}</span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      {hasCustomIcon ? <DynamicIcon name={iconName as (typeof iconNames)[number]} size={16} /> : null}
+                      <span>{title}</span>
+                    </div>
                     <span style={{ fontSize: 12, color: 'var(--color-text-3)' }}>
                       {command.type === 'prompt' ? 'Prompt' : command.type}
                     </span>
@@ -285,16 +310,6 @@ const QuickAssistantSettings: FC = () => {
                         onChange={(enabled) =>
                           updateCommands(
                             quickAssistantCommands.map((c) => (c.id === command.id ? { ...c, enabled } : c))
-                          )
-                        }
-                      />
-                    </Tooltip>
-                    <Tooltip title="Hide source message">
-                      <Switch
-                        checked={command.hideSourceMessage}
-                        onChange={(hideSourceMessage) =>
-                          updateCommands(
-                            quickAssistantCommands.map((c) => (c.id === command.id ? { ...c, hideSourceMessage } : c))
                           )
                         }
                       />
@@ -332,12 +347,59 @@ const QuickAssistantSettings: FC = () => {
                 <Input value={commandTitle} onChange={(e) => setCommandTitle(e.target.value)} />
               </div>
               <div>
+                <div style={{ marginBottom: 6, display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span>Icon</span>
+                  <a
+                    href="https://lucide.dev/icons/"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={{ fontSize: '12px', color: 'var(--color-primary)' }}>
+                    View all
+                  </a>
+                  <Button
+                    size="small"
+                    type="text"
+                    onClick={() => {
+                      const randomIcon = iconNames[Math.floor(Math.random() * iconNames.length)]
+                      setCommandIcon(randomIcon)
+                      setCommandIconError('')
+                    }}
+                    icon={<Dices size={14} />}>
+                    Random
+                  </Button>
+                </div>
+                <Space>
+                  <Input
+                    value={commandIcon}
+                    placeholder="e.g. scan-text"
+                    onChange={(e) => {
+                      setCommandIcon(e.target.value)
+                      if (commandIconError) setCommandIconError('')
+                    }}
+                    status={commandIconError ? 'error' : ''}
+                  />
+                  <IconPreview>
+                    {commandIcon ? (
+                      isLucideIconName(commandIcon.trim()) ? (
+                        <DynamicIcon name={commandIcon.trim() as (typeof iconNames)[number]} size={18} />
+                      ) : (
+                        <OctagonX size={18} color="var(--color-error)" />
+                      )
+                    ) : null}
+                  </IconPreview>
+                </Space>
+                {commandIconError && <ErrorText>{commandIconError}</ErrorText>}
+              </div>
+              <div>
                 <div style={{ marginBottom: 6 }}>Prompt</div>
                 <Input.TextArea
                   value={commandPrompt}
                   onChange={(e) => setCommandPrompt(e.target.value)}
                   autoSize={{ minRows: 3, maxRows: 8 }}
                 />
+                <div style={{ marginTop: 6, color: 'var(--color-text-3)', fontSize: 12 }}>
+                  Placeholders: {'{selected}'}, {'{clipboard}'}, {'{selected|clipboard}'}
+                </div>
               </div>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                 <span>Hide source message</span>
@@ -379,6 +441,23 @@ const AssistantName = styled.span`
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+`
+
+const IconPreview = styled.div`
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  background: var(--color-bg-2);
+  border-radius: 4px;
+  border: 1px solid var(--color-border);
+`
+
+const ErrorText = styled.div`
+  margin-top: 4px;
+  color: var(--color-error);
+  font-size: 12px;
 `
 
 const Spacer = styled.div`

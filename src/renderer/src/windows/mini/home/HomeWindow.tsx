@@ -60,6 +60,7 @@ import styled from 'styled-components'
 import ChatWindow from '../chat/ChatWindow'
 import type { FeatureMenusRef } from './components/FeatureMenus'
 import FeatureMenus from './components/FeatureMenus'
+import { resolveCommandPromptPlaceholders } from './utils/commandPromptPlaceholders'
 
 const logger = loggerService.withContext('MiniHomeWindow')
 
@@ -253,30 +254,21 @@ const HomeWindowInner: FC<{ draggable: boolean; actionsRef: React.RefObject<Prov
   }, [])
 
   const send = useCallback(
-    async ({
-      prompt,
-      contentOverride,
-      hideSourceMessage
-    }: {
-      prompt?: string
-      contentOverride?: string
-      hideSourceMessage?: boolean
-    }) => {
+    async ({ prompt, hideSourceMessage }: { prompt?: string; hideSourceMessage?: boolean }) => {
       if (!topic) return
 
       const topicMessages = selectMessagesForTopic(store.getState(), topic.id)
       const isFirstMessage = topicMessages.length === 0
 
-      const rawInput = (contentOverride ?? text).trim()
+      const rawInput = text.trim()
+      const finalPrompt = prompt?.trim()
 
       // First message behavior (freeform send only): if clipboard text is present and user typed a question/instruction,
       // prepend the clipboard content so the model can work on it without forcing a paste.
       const mergedFirstMessageContent = (() => {
         if (!isFirstMessage) return rawInput
-        // Commands always use exactly what the user provided (typed input or explicit contentOverride).
-        if (prompt) return rawInput
-        // If the caller explicitly provided "context", don't also prepend clipboard text.
-        if (contentOverride) return rawInput
+        // Commands always use exactly what the user typed.
+        if (finalPrompt) return rawInput
         if (!rawInput) return rawInput
         const clip = clipboardText.trim()
         if (!clip) return rawInput
@@ -286,7 +278,7 @@ const HomeWindowInner: FC<{ draggable: boolean; actionsRef: React.RefObject<Prov
       })()
 
       const finalContent = mergedFirstMessageContent.trim()
-      if (!finalContent) {
+      if (!finalPrompt && !finalContent) {
         return
       }
 
@@ -316,7 +308,7 @@ const HomeWindowInner: FC<{ draggable: boolean; actionsRef: React.RefObject<Prov
         }
 
         const { message: userMessage, blocks } = getUserMessage({
-          content: [prompt, finalContent].filter(Boolean).join('\n\n'),
+          content: [finalPrompt, finalContent].filter(Boolean).join('\n\n'),
           assistant: currentAssistant,
           topic,
           files: uploadedFiles
@@ -516,7 +508,7 @@ const HomeWindowInner: FC<{ draggable: boolean; actionsRef: React.RefObject<Prov
   const handleUseCommand = useCallback(
     (command: QuickAssistantCommand) => {
       void (async () => {
-        const commandPrompt = (() => {
+        const commandPromptTemplate = (() => {
           if (command.promptKey) {
             if (command.promptKey === 'prompts.translate') {
               return t(command.promptKey, { target_language: targetLanguage })
@@ -529,42 +521,59 @@ const HomeWindowInner: FC<{ draggable: boolean; actionsRef: React.RefObject<Prov
           return command.prompt
         })()
 
-        const shouldUseContext = text.trim().length === 0
-        let contentOverride: string | undefined = undefined
+        let selectedTextCache: string | null = null
+        let clipboardTextCache: string | null = null
 
-        if (shouldUseContext) {
+        const selected = async (): Promise<string> => {
+          if (selectedTextCache !== null) return selectedTextCache
+
           try {
             // Prefer cached selection captured before the mini window was focused.
             const lastSelected = (await window.api.selection.getLastSelectedText(60_000))?.trim()
             const currentSelected = (await window.api.selection.getCurrentSelectedText())?.trim()
-            const selectedText = lastSelected || currentSelected
-            if (selectedText) {
-              contentOverride = selectedText
-            } else if (clipboardText.trim()) {
-              contentOverride = clipboardText.trim()
-            } else {
-              try {
-                const clip = (await navigator.clipboard.readText())?.trim()
-                if (clip) {
-                  lastClipboardTextRef.current = clip
-                  setClipboardText(clip)
-                  contentOverride = clip
-                }
-              } catch (error) {
-                logger.warn('Failed to read clipboard on demand:', error as Error)
-              }
-            }
+            selectedTextCache = lastSelected || currentSelected || ''
           } catch (error) {
-            logger.warn('Failed to resolve selected text context:', error as Error)
+            logger.warn('Failed to resolve selected text placeholder:', error as Error)
+            selectedTextCache = ''
           }
 
-          if (!contentOverride) {
-            window.toast.info(t('miniwindow.input.no_context'))
-            return
-          }
+          return selectedTextCache ?? ''
         }
 
-        void send({ prompt: commandPrompt, contentOverride, hideSourceMessage: command.hideSourceMessage })
+        const clipboard = async (): Promise<string> => {
+          if (clipboardTextCache !== null) return clipboardTextCache
+
+          if (clipboardText.trim()) {
+            clipboardTextCache = clipboardText.trim()
+            return clipboardTextCache
+          }
+
+          try {
+            const clip = (await navigator.clipboard.readText())?.trim()
+            if (clip) {
+              lastClipboardTextRef.current = clip
+              setClipboardText(clip)
+              clipboardTextCache = clip
+              return clipboardTextCache
+            }
+          } catch (error) {
+            logger.warn('Failed to resolve clipboard placeholder:', error as Error)
+          }
+
+          clipboardTextCache = ''
+          return clipboardTextCache ?? ''
+        }
+
+        const commandPrompt = commandPromptTemplate
+          ? await resolveCommandPromptPlaceholders(commandPromptTemplate, { selected, clipboard })
+          : undefined
+
+        const hasInput = text.trim().length > 0
+        if (!hasInput && !commandPrompt?.trim()) {
+          return
+        }
+
+        void send({ prompt: commandPrompt, hideSourceMessage: command.hideSourceMessage })
       })()
     },
     [clipboardText, send, t, targetLanguage, text]

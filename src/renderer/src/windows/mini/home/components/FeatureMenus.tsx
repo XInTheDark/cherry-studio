@@ -5,6 +5,7 @@ import type { QuickAssistantCommand } from '@renderer/store/settings'
 import { DEFAULT_QUICK_ASSISTANT_COMMANDS } from '@renderer/store/settings'
 import { Col } from 'antd'
 import { FileText, Languages, Lightbulb, MessageSquare } from 'lucide-react'
+import { DynamicIcon, iconNames } from 'lucide-react/dynamic'
 import { useCallback, useImperativeHandle, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import styled from 'styled-components'
@@ -40,8 +41,12 @@ const FeatureMenus = ({
   const features = useMemo(() => {
     const enabledCommands = (quickAssistantCommands || []).filter((c) => c.enabled)
 
-    const getIcon = (type: QuickAssistantCommand['type']) => {
-      switch (type) {
+    const getIcon = (command: QuickAssistantCommand) => {
+      if (command.icon && iconNames.includes(command.icon as (typeof iconNames)[number])) {
+        return <DynamicIcon name={command.icon as (typeof iconNames)[number]} size={16} color="var(--color-text)" />
+      }
+
+      switch (command.type) {
         case 'chat':
           return <MessageSquare size={16} color="var(--color-text)" />
         case 'translate':
@@ -57,7 +62,7 @@ const FeatureMenus = ({
 
     return enabledCommands.map((command) => ({
       command,
-      icon: getIcon(command.type),
+      icon: getIcon(command),
       title: command.titleKey ? t(command.titleKey) : command.title || '',
       onClick: () => {
         containerRef.current?.focus()

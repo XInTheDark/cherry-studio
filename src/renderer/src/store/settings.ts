@@ -78,6 +78,10 @@ export type QuickAssistantCommand = {
    */
   prompt?: string
   promptKey?: string
+  /**
+   * Optional lucide icon name used by custom commands.
+   */
+  icon?: string
   enabled: boolean
   /**
    * When enabled, the mini chat view hides the first user message (source prompt)
