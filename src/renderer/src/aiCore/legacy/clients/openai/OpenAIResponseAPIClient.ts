@@ -278,7 +278,7 @@ export class OpenAIResponseAPIClient extends OpenAIBaseClient<
       for (const imageContent of imageContents) {
         const image = await window.api.file.base64Image(imageContent.fileId + imageContent.fileExt)
         parts.push({
-          detail: 'auto',
+          detail: 'high',
           type: 'input_image',
           image_url: image.data
         })
@@ -290,13 +290,13 @@ export class OpenAIResponseAPIClient extends OpenAIBaseClient<
         if (imageBlock.file) {
           const image = await window.api.file.base64Image(imageBlock.file.id + imageBlock.file.ext)
           parts.push({
-            detail: 'auto',
+            detail: 'high',
             type: 'input_image',
             image_url: image.data as string
           })
         } else if (imageBlock.url && imageBlock.url.startsWith('data:')) {
           parts.push({
-            detail: 'auto',
+            detail: 'high',
             type: 'input_image',
             image_url: imageBlock.url
           })

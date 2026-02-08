@@ -459,7 +459,7 @@ export function mcpToolCallResponseToOpenAICompatibleMessage(
               type: 'image_url',
               image_url: {
                 url: `data:${item.mimeType};base64,${item.data}`,
-                detail: 'auto'
+                detail: 'high'
               }
             })
             break
@@ -525,7 +525,7 @@ export function mcpToolCallResponseToOpenAIMessage(
             content.push({
               type: 'input_image',
               image_url: `data:${item.mimeType};base64,${item.data}`,
-              detail: 'auto'
+              detail: 'high'
             })
             break
           default:
