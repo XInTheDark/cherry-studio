@@ -79,7 +79,6 @@ const logger = loggerService.withContext('MessageThunk')
 const AUTO_CONTINUE_MAX_ATTEMPTS = 5
 const CONTINUE_SYSTEM_MESSAGE: ModelMessage = { role: 'system', content: 'Continue' }
 const SLEEP_RECOVERY_MAX_ATTEMPTS = 1
-const RECENT_SYSTEM_RESUME_WINDOW_MS = 2 * 60 * 1000
 const SLEEP_RECOVERY_WAIT_ONLINE_MS = 15 * 1000
 const SLEEP_RECOVERY_ONLINE_STABILIZATION_MS = 1500
 
@@ -150,8 +149,7 @@ const isLikelyNetworkInterruptionError = (error: unknown): boolean => {
     'econnaborted',
     'socket hang up',
     'network changed',
-    'etimedout',
-    'timeout'
+    'etimedout'
   ].some((token) => lowerName.includes(token) || lowerMessage.includes(token))
 }
 
@@ -161,16 +159,6 @@ const shouldAttemptSleepRecovery = (state: RootState, error: unknown, sleepRecov
   }
 
   if (sleepRecoveryAttempt >= SLEEP_RECOVERY_MAX_ATTEMPTS) {
-    return false
-  }
-
-  const lastSystemResumeAt = state.runtime.lastSystemResumeAt ?? 0
-  const resumedRecently =
-    Number.isFinite(lastSystemResumeAt) &&
-    lastSystemResumeAt > 0 &&
-    Date.now() - lastSystemResumeAt <= RECENT_SYSTEM_RESUME_WINDOW_MS
-
-  if (!resumedRecently) {
     return false
   }
 
@@ -1172,12 +1160,11 @@ const fetchAndProcessAssistantResponseImpl = async (
     if (shouldAttemptSleepRecovery(stateAtError, error, currentSleepRecoveryAttempt)) {
       const nextSleepRecoveryAttempt = currentSleepRecoveryAttempt + 1
 
-      logger.warn('[sleep-recovery] Detected likely post-resume network interruption, scheduling retry.', {
+      logger.warn('[sleep-recovery] Detected likely network interruption, scheduling retry.', {
         topicId,
         assistantMsgId,
         currentSleepRecoveryAttempt,
-        nextSleepRecoveryAttempt,
-        lastSystemResumeAt: stateAtError.runtime.lastSystemResumeAt
+        nextSleepRecoveryAttempt
       })
 
       dispatch(
