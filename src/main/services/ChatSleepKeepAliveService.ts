@@ -40,7 +40,7 @@ class ChatSleepKeepAliveService {
       return
     }
 
-    this.blockerId = powerSaveBlocker.start('prevent-app-suspension')
+    this.blockerId = powerSaveBlocker.start('prevent-display-sleep')
     logger.info('Started powerSaveBlocker for in-flight chat requests', { blockerId: this.blockerId })
   }
 

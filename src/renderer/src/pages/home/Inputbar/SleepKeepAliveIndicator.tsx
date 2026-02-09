@@ -11,7 +11,6 @@ const SleepKeepAliveIndicator: FC = () => {
     <Tooltip title={t('chat.input.sleep_keepalive_active.tip')} arrow>
       <Container aria-label={t('chat.input.sleep_keepalive_active.label')}>
         <MoonStar size={12} />
-        {t('chat.input.sleep_keepalive_active.label')}
       </Container>
     </Tooltip>
   )
@@ -25,8 +24,7 @@ const Container = styled.div`
   border-radius: 20px;
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  padding: 3px 8px;
+  padding: 4px;
   background: var(--color-background-soft);
 `
 

@@ -78,6 +78,104 @@ const logger = loggerService.withContext('MessageThunk')
 
 const AUTO_CONTINUE_MAX_ATTEMPTS = 5
 const CONTINUE_SYSTEM_MESSAGE: ModelMessage = { role: 'system', content: 'Continue' }
+const SLEEP_RECOVERY_MAX_ATTEMPTS = 1
+const RECENT_SYSTEM_RESUME_WINDOW_MS = 2 * 60 * 1000
+const SLEEP_RECOVERY_WAIT_ONLINE_MS = 15 * 1000
+const SLEEP_RECOVERY_ONLINE_STABILIZATION_MS = 1500
+
+const waitForNetworkRecovery = async () => {
+  if (typeof window === 'undefined') {
+    return
+  }
+
+  if (navigator.onLine) {
+    await new Promise((resolve) => setTimeout(resolve, SLEEP_RECOVERY_ONLINE_STABILIZATION_MS))
+    return
+  }
+
+  await new Promise<void>((resolve) => {
+    let settled = false
+
+    const done = () => {
+      if (settled) {
+        return
+      }
+
+      settled = true
+      window.removeEventListener('online', onOnline)
+      clearTimeout(timeoutId)
+      resolve()
+    }
+
+    const onOnline = () => {
+      window.setTimeout(done, SLEEP_RECOVERY_ONLINE_STABILIZATION_MS)
+    }
+
+    const timeoutId = window.setTimeout(done, SLEEP_RECOVERY_WAIT_ONLINE_MS)
+    window.addEventListener('online', onOnline, { once: true })
+  })
+}
+
+const extractErrorText = (error: unknown): string => {
+  if (typeof error === 'string') {
+    return error
+  }
+
+  if (error && typeof error === 'object') {
+    const candidate = (error as { message?: unknown }).message
+    if (typeof candidate === 'string') {
+      return candidate
+    }
+  }
+
+  return ''
+}
+
+const isLikelyNetworkInterruptionError = (error: unknown): boolean => {
+  const name = error && typeof error === 'object' && 'name' in error ? String((error as { name?: string }).name) : ''
+  const lowerName = name.toLowerCase()
+  const lowerMessage = extractErrorText(error).toLowerCase()
+
+  if (lowerName.includes('abort') || lowerMessage.includes('abort')) {
+    return false
+  }
+
+  return [
+    'network',
+    'failed to fetch',
+    'fetch failed',
+    'internet disconnected',
+    'err_internet_disconnected',
+    'econnreset',
+    'econnaborted',
+    'socket hang up',
+    'network changed',
+    'etimedout',
+    'timeout'
+  ].some((token) => lowerName.includes(token) || lowerMessage.includes(token))
+}
+
+const shouldAttemptSleepRecovery = (state: RootState, error: unknown, sleepRecoveryAttempt = 0): boolean => {
+  if (!state.settings.keepChatRequestsAliveOnSleep) {
+    return false
+  }
+
+  if (sleepRecoveryAttempt >= SLEEP_RECOVERY_MAX_ATTEMPTS) {
+    return false
+  }
+
+  const lastSystemResumeAt = state.runtime.lastSystemResumeAt ?? 0
+  const resumedRecently =
+    Number.isFinite(lastSystemResumeAt) &&
+    lastSystemResumeAt > 0 &&
+    Date.now() - lastSystemResumeAt <= RECENT_SYSTEM_RESUME_WINDOW_MS
+
+  if (!resumedRecently) {
+    return false
+  }
+
+  return isLikelyNetworkInterruptionError(error)
+}
 
 const finishTopicLoading = async (topicId: string) => {
   await waitForTopicQueue(topicId)
@@ -881,6 +979,8 @@ const fetchAndProcessAssistantResponseImpl = async (
     contextEndMessageId?: string
     /** 0-based continue attempt counter for auto-continue recursion. */
     continueAttempt?: number
+    /** 0-based retry counter for resume/network recovery retries. */
+    sleepRecoveryAttempt?: number
   }
 ) => {
   const topic = origAssistant.topics.find((t) => t.id === topicId)
@@ -1065,6 +1165,54 @@ const fetchAndProcessAssistantResponseImpl = async (
       error: error,
       modelName: assistant.model?.name
     })
+
+    const stateAtError = getState()
+    const currentSleepRecoveryAttempt = options?.sleepRecoveryAttempt ?? 0
+
+    if (shouldAttemptSleepRecovery(stateAtError, error, currentSleepRecoveryAttempt)) {
+      const nextSleepRecoveryAttempt = currentSleepRecoveryAttempt + 1
+
+      logger.warn('[sleep-recovery] Detected likely post-resume network interruption, scheduling retry.', {
+        topicId,
+        assistantMsgId,
+        currentSleepRecoveryAttempt,
+        nextSleepRecoveryAttempt,
+        lastSystemResumeAt: stateAtError.runtime.lastSystemResumeAt
+      })
+
+      dispatch(
+        newMessagesActions.updateMessage({
+          topicId,
+          messageId: assistantMsgId,
+          updates: { status: AssistantMessageStatus.PENDING }
+        })
+      )
+      await saveUpdatesToDB(assistantMsgId, topicId, { status: AssistantMessageStatus.PENDING }, [])
+      dispatch(newMessagesActions.setTopicLoading({ topicId, loading: false }))
+
+      const queue = getTopicQueue(topicId)
+      queue.add(async () => {
+        await waitForNetworkRecovery()
+
+        const latest = getState().messages.entities[assistantMsgId]
+        if (!latest) {
+          logger.warn('[sleep-recovery] Assistant message disappeared before retry could start.', {
+            topicId,
+            assistantMsgId
+          })
+          return
+        }
+
+        await fetchAndProcessAssistantResponseImpl(dispatch, getState, topicId, origAssistant, latest, {
+          contextEndMessageId: assistantMsgId,
+          continueAttempt: options?.continueAttempt,
+          sleepRecoveryAttempt: nextSleepRecoveryAttempt
+        })
+      })
+
+      return
+    }
+
     // 统一错误处理：确保 loading 状态被正确设置，避免队列任务卡住
     try {
       callbacks.onError?.(error)

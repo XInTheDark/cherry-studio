@@ -10,7 +10,13 @@ import { useAppDispatch } from '@renderer/store'
 import { useAppSelector } from '@renderer/store'
 import { handleSaveData } from '@renderer/store'
 import { selectMemoryConfig } from '@renderer/store/memory'
-import { setAvatar, setFilesPath, setResourcesPath, setUpdateState } from '@renderer/store/runtime'
+import {
+  setAvatar,
+  setFilesPath,
+  setLastSystemResumeAt,
+  setResourcesPath,
+  setUpdateState
+} from '@renderer/store/runtime'
 import {
   type ToolPermissionRequestPayload,
   type ToolPermissionResultPayload,
@@ -74,6 +80,16 @@ export function useAppInit() {
       await handleSaveData()
     })
   }, [])
+
+  useEffect(() => {
+    if (!window.electron?.ipcRenderer) return
+
+    return window.electron.ipcRenderer.on(IpcChannel.App_SystemResumed, (_event, resumedAt?: number) => {
+      const resumeTimestamp = typeof resumedAt === 'number' ? resumedAt : Date.now()
+      dispatch(setLastSystemResumeAt(resumeTimestamp))
+      logger.info('Renderer received system resume event', { resumedAt: resumeTimestamp })
+    })
+  }, [dispatch])
 
   useUpdateHandler()
   useFullScreenNotice()

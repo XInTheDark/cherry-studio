@@ -9,7 +9,8 @@ import { loggerService } from '@logger'
 import { electronApp, optimizer } from '@electron-toolkit/utils'
 import { replaceDevtoolsFont } from '@main/utils/windowUtil'
 import { API_SERVER_DEFAULTS } from '@shared/config/constant'
-import { app, crashReporter } from 'electron'
+import { IpcChannel } from '@shared/IpcChannel'
+import { app, BrowserWindow, crashReporter, powerMonitor } from 'electron'
 import installExtension, { REACT_DEVELOPER_TOOLS, REDUX_DEVTOOLS } from 'electron-devtools-installer'
 import { isDev, isLinux, isWin } from './constant'
 
@@ -150,6 +151,19 @@ if (!app.requestSingleInstanceLock()) {
 
     nodeTraceService.init()
     powerMonitorService.init()
+
+    powerMonitor.on('resume', () => {
+      const resumedAt = Date.now()
+      logger.info('System resume detected, broadcasting to renderer windows', { resumedAt })
+
+      for (const win of BrowserWindow.getAllWindows()) {
+        if (win.isDestroyed()) {
+          continue
+        }
+
+        win.webContents.send(IpcChannel.App_SystemResumed, resumedAt)
+      }
+    })
 
     app.on('activate', function () {
       const mainWindow = windowService.getMainWindow()

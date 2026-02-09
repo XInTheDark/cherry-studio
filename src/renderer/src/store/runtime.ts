@@ -69,6 +69,8 @@ export interface RuntimeState {
   searching: boolean
   filesPath: string
   resourcesPath: string
+  /** Timestamp (ms) of the last system resume event observed from main process. */
+  lastSystemResumeAt: number
   update: UpdateState
   export: ExportState
   chat: ChatState
@@ -90,6 +92,7 @@ const initialState: RuntimeState = {
   searching: false,
   filesPath: '',
   resourcesPath: '',
+  lastSystemResumeAt: 0,
   update: {
     info: null,
     checking: false,
@@ -154,6 +157,9 @@ const runtimeSlice = createSlice({
     },
     setResourcesPath: (state, action: PayloadAction<string>) => {
       state.resourcesPath = action.payload
+    },
+    setLastSystemResumeAt: (state, action: PayloadAction<number>) => {
+      state.lastSystemResumeAt = action.payload
     },
     setUpdateState: (state, action: PayloadAction<Partial<UpdateState>>) => {
       state.update = { ...state.update, ...action.payload }
@@ -221,6 +227,7 @@ export const {
   setSearching,
   setFilesPath,
   setResourcesPath,
+  setLastSystemResumeAt,
   setUpdateState,
   setExportState,
   // Chat related actions
