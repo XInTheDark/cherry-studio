@@ -31,6 +31,7 @@ import {
   setConfirmRegenerateMessage,
   setEnableQuickPanelTriggers,
   setFontSize,
+  setKeepChatRequestsAliveOnSleep,
   setMathEnableSingleDollar,
   setMathEngine,
   setMessageFont,
@@ -110,6 +111,7 @@ const SettingsTab: FC<Props> = (props) => {
     thoughtAutoCollapse,
     workSequenceAutoCollapse,
     autoContinueEnabled,
+    keepChatRequestsAliveOnSleep,
     messageNavigation,
     enableQuickPanelTriggers,
     showTranslateConfirm,
@@ -224,6 +226,18 @@ const SettingsTab: FC<Props> = (props) => {
               size="small"
               checked={autoContinueEnabled}
               onChange={(checked) => dispatch(setAutoContinueEnabled(checked))}
+            />
+          </SettingRow>
+          <SettingDivider />
+          <SettingRow>
+            <SettingRowTitleSmall>
+              {t('chat.settings.keep_chat_requests_alive_on_sleep.label')}
+              <HelpTooltip title={t('chat.settings.keep_chat_requests_alive_on_sleep.tip')} />
+            </SettingRowTitleSmall>
+            <Switch
+              size="small"
+              checked={keepChatRequestsAliveOnSleep}
+              onChange={(checked) => dispatch(setKeepChatRequestsAliveOnSleep(checked))}
             />
           </SettingRow>
           <SettingDivider />

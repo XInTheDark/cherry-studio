@@ -19,6 +19,7 @@ import { registerIpc } from './ipc'
 import { agentService } from './services/agents'
 import { apiServerService } from './services/ApiServerService'
 import { appMenuService } from './services/AppMenuService'
+import { chatSleepKeepAliveService } from './services/ChatSleepKeepAliveService'
 import { configManager } from './services/ConfigManager'
 import { lanTransferClientService } from './services/lanTransfer'
 import mcpService from './services/MCPService'
@@ -191,6 +192,49 @@ if (!app.requestSingleInstanceLock()) {
       }
     })
 
+    // Keep in-flight chat requests alive during system sleep when enabled by user.
+    runAsyncFunction(async () => {
+      const keepAliveEnabledSelector = 'state.settings.keepChatRequestsAliveOnSleep'
+      const hasActiveChatRequestSelector = [
+        '(() => {',
+        'const loadingByTopic = state.messages?.loadingByTopic ?? {}',
+        'return Object.values(loadingByTopic).some((loading) => Boolean(loading))',
+        '})()'
+      ].join('\n')
+
+      try {
+        const keepAliveEnabled = await reduxService.select<boolean>(keepAliveEnabledSelector)
+        chatSleepKeepAliveService.setEnabled(Boolean(keepAliveEnabled))
+      } catch (error) {
+        logger.warn('Failed to read keep-alive-on-sleep setting from Redux; disabling feature', { error })
+        chatSleepKeepAliveService.setEnabled(false)
+      }
+
+      try {
+        const hasActiveChatRequest = await reduxService.select<boolean>(hasActiveChatRequestSelector)
+        chatSleepKeepAliveService.setHasActiveChatRequest(Boolean(hasActiveChatRequest))
+      } catch (error) {
+        logger.warn('Failed to read in-flight chat status from Redux; assuming no active requests', { error })
+        chatSleepKeepAliveService.setHasActiveChatRequest(false)
+      }
+
+      try {
+        await reduxService.subscribe(keepAliveEnabledSelector, (value) => {
+          chatSleepKeepAliveService.setEnabled(Boolean(value))
+        })
+      } catch (error) {
+        logger.warn('Failed to subscribe to keep-alive-on-sleep setting changes', { error })
+      }
+
+      try {
+        await reduxService.subscribe(hasActiveChatRequestSelector, (value) => {
+          chatSleepKeepAliveService.setHasActiveChatRequest(Boolean(value))
+        })
+      } catch (error) {
+        logger.warn('Failed to subscribe to in-flight chat status changes', { error })
+      }
+    })
+
     localTransferService.startDiscovery({ resetList: true })
 
     replaceDevtoolsFont(mainWindow)
@@ -276,6 +320,7 @@ if (!app.requestSingleInstanceLock()) {
 
     lanTransferClientService.dispose()
     localTransferService.dispose()
+    chatSleepKeepAliveService.dispose()
   })
 
   app.on('will-quit', async () => {

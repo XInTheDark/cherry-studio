@@ -748,6 +748,10 @@
         "description": "Agent 工作階段斜線指令",
         "title": "斜線指令"
       },
+      "sleep_keepalive_active": {
+        "label": "防睡眠進行中",
+        "tip": "聊天請求進行中時，正在啟用防睡眠保護。"
+      },
       "thinking": {
         "budget_exceeds_max": "思考預算超過最大 Token 數",
         "label": "思考",
@@ -971,6 +975,10 @@
       "context_count": {
         "label": "上下文",
         "tip": "在上下文中保留的前幾則訊息"
+      },
+      "keep_chat_requests_alive_on_sleep": {
+        "label": "睡眠時保持聊天進行",
+        "tip": "盡力而為：當聊天請求進行中時，Cherry Studio 會嘗試阻止系統睡眠以完成生成。這可能會增加電量消耗。"
       },
       "max": "不限",
       "max_tokens": {

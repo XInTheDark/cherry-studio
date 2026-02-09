@@ -47,6 +47,7 @@ import InputbarTools from './InputbarTools'
 import KnowledgeBaseInput from './KnowledgeBaseInput'
 import MentionModelsInput from './MentionModelsInput'
 import { getInputbarConfig } from './registry'
+import SleepKeepAliveIndicator from './SleepKeepAliveIndicator'
 import TokenCount from './TokenCount'
 
 const logger = loggerService.withContext('Inputbar')
@@ -164,7 +165,8 @@ const InputbarInner: FC<InputbarInnerProps> = ({
   })
 
   const { assistant, addTopic, model, setModel, updateAssistant } = useAssistant(initialAssistant.id)
-  const { sendMessageShortcut, showInputEstimatedTokens, enableQuickPanelTriggers } = useSettings()
+  const { sendMessageShortcut, showInputEstimatedTokens, enableQuickPanelTriggers, keepChatRequestsAliveOnSleep } =
+    useSettings()
   const [estimateTokenCount, setEstimateTokenCount] = useState(0)
   const [contextCount, setContextCount] = useState({ current: 0, max: 0 })
 
@@ -176,6 +178,10 @@ const InputbarInner: FC<InputbarInnerProps> = ({
   const isGenerateImageAssistant = useMemo(() => isGenerateImageModel(model), [model])
   const { setTimeoutTimer } = useTimer()
   const isMultiSelectMode = useAppSelector((state) => state.runtime.chat.isMultiSelectMode)
+  const hasActiveChatRequest = useAppSelector((state) =>
+    Object.values(state.messages.loadingByTopic ?? {}).some((isLoading) => Boolean(isLoading))
+  )
+  const showSleepKeepAliveIndicator = keepChatRequestsAliveOnSleep && hasActiveChatRequest
 
   const isVisionSupported = useMemo(
     () =>
@@ -474,6 +480,7 @@ const InputbarInner: FC<InputbarInnerProps> = ({
   // rightToolbar: 右侧工具栏
   const rightToolbar = (
     <>
+      {showSleepKeepAliveIndicator && <SleepKeepAliveIndicator />}
       {tokenCountProps && (
         <TokenCount
           estimateTokenCount={tokenCountProps.estimateTokenCount}

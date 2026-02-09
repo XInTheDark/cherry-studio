@@ -748,6 +748,10 @@
         "description": "代理会话斜杠命令",
         "title": "斜杠命令"
       },
+      "sleep_keepalive_active": {
+        "label": "防睡眠进行中",
+        "tip": "聊天请求进行中时，正在启用防睡眠保护。"
+      },
       "thinking": {
         "budget_exceeds_max": "思考预算超过最大 Token 数",
         "label": "思考",
@@ -971,6 +975,10 @@
       "context_count": {
         "label": "上下文数",
         "tip": "要保留在上下文中的消息数量，数值越大，上下文越长，消耗的 Token 越多。普通聊天建议 5-10"
+      },
+      "keep_chat_requests_alive_on_sleep": {
+        "label": "睡眠时保持聊天进行",
+        "tip": "尽力而为：在聊天请求进行中时，Cherry Studio 会尝试阻止系统休眠以完成生成。这可能会增加电量消耗。"
       },
       "max": "不限",
       "max_tokens": {

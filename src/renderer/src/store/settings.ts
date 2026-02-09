@@ -261,6 +261,11 @@ export interface SettingsState {
    * the app will automatically issue up to a fixed number of "Continue" attempts to the model.
    */
   autoContinueEnabled: boolean
+  /**
+   * Best-effort option: keep the app process active during in-flight chat requests
+   * so system sleep is less likely to interrupt generation.
+   */
+  keepChatRequestsAliveOnSleep: boolean
   notionExportReasoning: boolean
   excludeCitationsInExport: boolean
   standardizeCitationsInExport: boolean
@@ -452,6 +457,7 @@ export const initialState: SettingsState = {
   thoughtAutoCollapse: true,
   workSequenceAutoCollapse: true,
   autoContinueEnabled: false,
+  keepChatRequestsAliveOnSleep: false,
   notionExportReasoning: false,
   excludeCitationsInExport: false,
   standardizeCitationsInExport: false,
@@ -852,6 +858,9 @@ const settingsSlice = createSlice({
     setAutoContinueEnabled: (state, action: PayloadAction<boolean>) => {
       state.autoContinueEnabled = action.payload
     },
+    setKeepChatRequestsAliveOnSleep: (state, action: PayloadAction<boolean>) => {
+      state.keepChatRequestsAliveOnSleep = action.payload
+    },
     setNotionExportReasoning: (state, action: PayloadAction<boolean>) => {
       state.notionExportReasoning = action.payload
     },
@@ -1099,6 +1108,7 @@ export const {
   setThoughtAutoCollapse,
   setWorkSequenceAutoCollapse,
   setAutoContinueEnabled,
+  setKeepChatRequestsAliveOnSleep,
   setNotionExportReasoning,
   setExcludeCitationsInExport,
   setStandardizeCitationsInExport,

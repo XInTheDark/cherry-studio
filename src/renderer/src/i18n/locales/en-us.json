@@ -748,6 +748,10 @@
         "description": "Agent session slash commands",
         "title": "Slash Commands"
       },
+      "sleep_keepalive_active": {
+        "label": "Sleep guard active",
+        "tip": "Sleep prevention is active while chat requests are running."
+      },
       "thinking": {
         "budget_exceeds_max": "Thinking budget exceeds the maximum token number",
         "label": "Thinking",
@@ -971,6 +975,10 @@
       "context_count": {
         "label": "Context",
         "tip": "The number of previous messages to keep in the context."
+      },
+      "keep_chat_requests_alive_on_sleep": {
+        "label": "Keep chat running during sleep",
+        "tip": "Best effort: while a chat request is in progress, Cherry Studio will try to prevent system sleep so generation can finish. This may increase battery usage."
       },
       "max": "Unlimited",
       "max_tokens": {
