@@ -1,6 +1,5 @@
 import { HStack, VStack } from '@renderer/components/Layout'
 import MaxContextCount from '@renderer/components/MaxContextCount'
-import { useSettings } from '@renderer/hooks/useSettings'
 import type { ConversationCompactionState } from '@renderer/types'
 import { Button, Collapse, Divider, Popover } from 'antd'
 import { ArrowUp, MenuIcon, Package } from 'lucide-react'
@@ -26,6 +25,7 @@ type Props = {
   contextTokens: ContextTokens
   onCompactConversation?: () => void
   onClearCompaction?: () => void
+  showEstimatedTokens?: boolean
 } & React.HTMLAttributes<HTMLDivElement>
 
 const TokenCount: FC<Props> = ({
@@ -33,14 +33,10 @@ const TokenCount: FC<Props> = ({
   inputTokenCount,
   contextTokens,
   onCompactConversation,
-  onClearCompaction
+  onClearCompaction,
+  showEstimatedTokens = true
 }) => {
   const { t } = useTranslation()
-  const { showInputEstimatedTokens } = useSettings()
-
-  if (!showInputEstimatedTokens) {
-    return null
-  }
 
   const compactionState = contextTokens.compaction?.state
   const hasCompaction = Boolean(compactionState)
@@ -58,12 +54,14 @@ const TokenCount: FC<Props> = ({
         </Text>
       </HStack>
       <Divider style={{ margin: '5px 0' }} />
-      <HStack justifyContent="space-between" w="100%">
-        <Text>{t('chat.input.estimated_tokens.tip')}</Text>
-        <Text>{estimateTokenCount}</Text>
-      </HStack>
+      {showEstimatedTokens && (
+        <HStack justifyContent="space-between" w="100%">
+          <Text>{t('chat.input.estimated_tokens.tip')}</Text>
+          <Text>{estimateTokenCount}</Text>
+        </HStack>
+      )}
 
-      <Divider style={{ margin: '8px 0' }} />
+      <Divider style={{ margin: showEstimatedTokens ? '8px 0' : '5px 0' }} />
       <HStack justifyContent="space-between" w="100%" style={{ gap: 8 }}>
         <Button size="small" onClick={onCompactConversation}>
           {t('chat.input.compaction.compact_action')}
@@ -140,13 +138,17 @@ const TokenCount: FC<Props> = ({
               {contextTokens.compaction?.segments}
             </CompactionBadge>
           )}
-          <Divider type="vertical" style={{ marginTop: 3, marginLeft: 5, marginRight: 3 }} />
-          <HStack style={{ alignItems: 'center' }}>
-            <ArrowUp size={12} className="icon" />
-            {inputTokenCount}
-            <SlashSeparatorSpan>/</SlashSeparatorSpan>
-            {estimateTokenCount}
-          </HStack>
+          {showEstimatedTokens && (
+            <>
+              <Divider type="vertical" style={{ marginTop: 3, marginLeft: 5, marginRight: 3 }} />
+              <HStack style={{ alignItems: 'center' }}>
+                <ArrowUp size={12} className="icon" />
+                {inputTokenCount}
+                <SlashSeparatorSpan>/</SlashSeparatorSpan>
+                {estimateTokenCount}
+              </HStack>
+            </>
+          )}
         </HStack>
       </Popover>
     </Container>

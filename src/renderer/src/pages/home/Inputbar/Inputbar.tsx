@@ -1,4 +1,5 @@
 import { loggerService } from '@logger'
+import { UNLIMITED_MAX_CONTEXT_TOKENS } from '@renderer/config/constant'
 import {
   isAutoEnableImageGenerationModel,
   isGenerateImageModel,
@@ -340,7 +341,15 @@ const InputbarInner: FC<InputbarInnerProps> = ({
   }, [t, topic.id])
 
   const tokenCountProps = useMemo(() => {
-    if (!config.showTokenCount || estimateTokenCount === undefined || !showInputEstimatedTokens) {
+    if (!config.showTokenCount || estimateTokenCount === undefined) {
+      return undefined
+    }
+
+    const maxContextTokens = assistant?.settings?.maxContextTokens ?? UNLIMITED_MAX_CONTEXT_TOKENS
+    const hasContextBudget = maxContextTokens < UNLIMITED_MAX_CONTEXT_TOKENS
+    const hasCompaction = Boolean(contextTokens?.compaction)
+    const shouldShowContextWidget = showInputEstimatedTokens || hasContextBudget || hasCompaction
+    if (!shouldShowContextWidget) {
       return undefined
     }
 
@@ -349,10 +358,12 @@ const InputbarInner: FC<InputbarInnerProps> = ({
       inputTokenCount: estimateTokenCount,
       contextTokens,
       onCompactConversation: handleCompactConversation,
-      onClearCompaction: handleClearCompaction
+      onClearCompaction: handleClearCompaction,
+      showEstimatedTokens: showInputEstimatedTokens
     }
   }, [
     config.showTokenCount,
+    assistant?.settings?.maxContextTokens,
     contextTokens,
     estimateTokenCount,
     handleClearCompaction,
@@ -552,6 +563,7 @@ const InputbarInner: FC<InputbarInnerProps> = ({
           contextTokens={tokenCountProps.contextTokens}
           onCompactConversation={tokenCountProps.onCompactConversation}
           onClearCompaction={tokenCountProps.onClearCompaction}
+          showEstimatedTokens={tokenCountProps.showEstimatedTokens}
         />
       )}
     </>
