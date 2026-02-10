@@ -42,10 +42,9 @@ const CHUNK_TARGET_RATIO = 0.28
 const CHUNK_MIN_TOKENS = 6_000
 const CHUNK_MAX_TOKENS = 32_000
 const CHUNK_OVERLAP_MESSAGE_COUNT = 2
-// Allow compaction to kick in earlier for file-heavy or tool-heavy conversations.
-// We still keep a small live tail so the model has verbatim recent context.
-const MIN_MESSAGES_TO_KEEP_LIVE = 3
-const MIN_MESSAGES_TO_COMPACT = 5
+// These constants are tuned minimums. So we still keep a small live tail so the model has verbatim recent context.
+const MIN_MESSAGES_TO_KEEP_LIVE = 2
+const MIN_MESSAGES_TO_COMPACT = 3 // so, total messages needed to compact = KEEP_LIVE + COMPACT
 const MAX_MAIN_TEXT_CHARS = 8_000
 const MAX_THINKING_CHARS = 4_000
 const MAX_TOOL_PAYLOAD_CHARS = 3_500
