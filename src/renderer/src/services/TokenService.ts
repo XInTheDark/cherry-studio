@@ -2,6 +2,7 @@ import type { Assistant, FileMetadata, Usage } from '@renderer/types'
 import { FileTypes } from '@renderer/types'
 import type { Message } from '@renderer/types/newMessage'
 import { findFileBlocks, getMainTextContent, getThinkingContent } from '@renderer/utils/messageUtils/find'
+import { estimateImageInputTokens } from '@renderer/utils/tokenEstimation'
 import { findLast } from 'lodash'
 import { approximateTokenSize } from 'tokenx'
 
@@ -21,14 +22,14 @@ export function estimateTextTokens(text: string) {
 /**
  * 估算图片文件的 token 数量
  *
- * 根据图片文件大小计算预估的 token 数量。
- * 当前使用简单的文件大小除以 100 的方式进行估算。
+ * 使用统一的图片 token 估算策略。
+ * 优先使用文件元数据中的 tokens；否则使用 OpenAI 常见 1024x1024 高细节输入的基线估值。
  *
  * @param file - 图片文件对象
  * @returns 返回估算的 token 数量
  */
 export function estimateImageTokens(file: FileMetadata) {
-  return Math.floor(file.size / 100)
+  return estimateImageInputTokens(file)
 }
 
 /**

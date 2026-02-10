@@ -734,6 +734,7 @@
       "context_count": {
         "tip": "コンテキスト数 / 最大コンテキスト数"
       },
+      "edit_image": "[to be translated]:Edit image",
       "estimated_tokens": {
         "tip": "推定トークン数"
       },
@@ -753,6 +754,9 @@
       "pause": "一時停止",
       "placeholder": "ここにメッセージを入力し、{{key}} を押して送信...",
       "placeholder_without_triggers": "ここにメッセージを入力し、{{key}} を押して送信...",
+      "screen_ask": {
+        "send_to_quick_assistant": "[to be translated]:Send to Quick Assistant"
+      },
       "screenshot": {
         "no_sources": "[to be translated]:Unable to capture screenshot. If you're on macOS, enable Screen Recording permission and restart the app.",
         "permission_required": "[to be translated]:To take a screenshot on macOS, enable Screen Recording in System Settings → Privacy & Security → Screen Recording, then restart the app."
@@ -1556,6 +1560,20 @@
     "generating": "生成中",
     "preview": "プレビュー",
     "split": "分割"
+  },
+  "image_editor": {
+    "redo": "[to be translated]:Redo",
+    "rotate_left": "[to be translated]:Rotate Left",
+    "rotate_right": "[to be translated]:Rotate Right",
+    "text_prompt": "[to be translated]:Enter annotation text",
+    "tool": {
+      "arrow": "[to be translated]:Arrow",
+      "crop": "[to be translated]:Crop",
+      "pen": "[to be translated]:Pen",
+      "rect": "[to be translated]:Rectangle",
+      "text": "[to be translated]:Text"
+    },
+    "undo": "[to be translated]:Undo"
   },
   "import": {
     "chatgpt": {
@@ -4857,6 +4875,7 @@
       "reset_defaults": "デフォルトのショートカットをリセット",
       "reset_defaults_confirm": "すべてのショートカットをリセットしてもよろしいですか？",
       "reset_to_default": "デフォルトにリセット",
+      "screen_ask": "[to be translated]:Ask About Screen",
       "search_message": "メッセージを検索",
       "search_message_in_chat": "現在のチャットでメッセージを検索",
       "selection_assistant_select_text": "選択アシスタント：テキストを選択",

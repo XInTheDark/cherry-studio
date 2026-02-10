@@ -734,6 +734,7 @@
       "context_count": {
         "tip": "上下文數 / 最大上下文數"
       },
+      "edit_image": "編輯圖片",
       "estimated_tokens": {
         "tip": "預估 Token 數"
       },
@@ -753,6 +754,9 @@
       "pause": "暫停",
       "placeholder": "在此輸入您的訊息，按 {{key}} 傳送 - @ 選擇模型，/ 包含工具",
       "placeholder_without_triggers": "在此輸入您的訊息，按 {{key}} 傳送",
+      "screen_ask": {
+        "send_to_quick_assistant": "傳送到快捷助手"
+      },
       "screenshot": {
         "no_sources": "[to be translated]:Unable to capture screenshot. If you're on macOS, enable Screen Recording permission and restart the app.",
         "permission_required": "[to be translated]:To take a screenshot on macOS, enable Screen Recording in System Settings → Privacy & Security → Screen Recording, then restart the app."
@@ -1556,6 +1560,20 @@
     "generating": "產生中",
     "preview": "預覽",
     "split": "分割畫面"
+  },
+  "image_editor": {
+    "redo": "重做",
+    "rotate_left": "向左旋轉",
+    "rotate_right": "向右旋轉",
+    "text_prompt": "輸入標註文字",
+    "tool": {
+      "arrow": "箭頭",
+      "crop": "裁切",
+      "pen": "畫筆",
+      "rect": "矩形",
+      "text": "文字"
+    },
+    "undo": "復原"
   },
   "import": {
     "chatgpt": {
@@ -4857,6 +4875,7 @@
       "reset_defaults": "重設預設快捷鍵",
       "reset_defaults_confirm": "確定要重設所有快捷鍵嗎？",
       "reset_to_default": "重設為預設",
+      "screen_ask": "詢問螢幕",
       "search_message": "搜尋訊息",
       "search_message_in_chat": "在目前對話中搜尋訊息",
       "selection_assistant_select_text": "劃詞助手：取詞",

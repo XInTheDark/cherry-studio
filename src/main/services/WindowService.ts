@@ -7,6 +7,7 @@ import { isDev, isLinux, isMac, isWin } from '@main/constant'
 import { getFilesDir } from '@main/utils/file'
 import { MIN_WINDOW_HEIGHT, MIN_WINDOW_WIDTH } from '@shared/config/constant'
 import { IpcChannel } from '@shared/IpcChannel'
+import type { FileMetadata } from '@types'
 import { app, BrowserWindow, nativeTheme, screen, shell } from 'electron'
 import windowStateKeeper from 'electron-window-state'
 import { join } from 'path'
@@ -29,7 +30,9 @@ export class WindowService {
   private static instance: WindowService | null = null
   private mainWindow: BrowserWindow | null = null
   private miniWindow: BrowserWindow | null = null
+  private screenCaptureWindow: BrowserWindow | null = null
   private isPinnedMiniWindow: boolean = false
+  private pendingMiniWindowSeed: { files: FileMetadata[] } | null = null
   //hacky-fix: store the focused status of mainWindow before miniWindow shows
   //to restore the focus status when miniWindow hides
   private wasMainWindowFocused: boolean = false
@@ -557,6 +560,7 @@ export class WindowService {
 
     this.miniWindow.on('show', () => {
       this.miniWindow?.webContents.send(IpcChannel.ShowMiniWindow)
+      this.flushMiniWindowSeed()
     })
 
     if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
@@ -640,6 +644,7 @@ export class WindowService {
 
       this.miniWindow?.setOpacity(1)
       this.miniWindow?.show()
+      this.flushMiniWindowSeed()
 
       return
     }
@@ -649,6 +654,7 @@ export class WindowService {
     }
 
     this.miniWindow.show()
+    this.flushMiniWindowSeed()
   }
 
   public hideMiniWindow() {
@@ -703,6 +709,106 @@ export class WindowService {
 
   public setPinMiniWindow(isPinned) {
     this.isPinnedMiniWindow = isPinned
+  }
+
+  public seedMiniWindowInput(payload: { files: FileMetadata[] }) {
+    if (!configManager.getEnableQuickAssistant()) {
+      this.pendingMiniWindowSeed = null
+      logger.warn('QuickAssistant is disabled, ignoring mini window input seed')
+      return
+    }
+
+    this.pendingMiniWindowSeed = payload
+    this.showMiniWindow()
+    this.flushMiniWindowSeed()
+  }
+
+  private flushMiniWindowSeed() {
+    if (!this.pendingMiniWindowSeed) {
+      return
+    }
+
+    if (!this.miniWindow || this.miniWindow.isDestroyed()) {
+      return
+    }
+
+    if (this.miniWindow.webContents.isLoadingMainFrame()) {
+      this.miniWindow.webContents.once('did-finish-load', () => this.flushMiniWindowSeed())
+      return
+    }
+
+    this.miniWindow.webContents.send(IpcChannel.MiniWindow_SeedInput, this.pendingMiniWindowSeed)
+    this.pendingMiniWindowSeed = null
+  }
+
+  private createScreenCaptureWindow(): BrowserWindow {
+    if (this.screenCaptureWindow && !this.screenCaptureWindow.isDestroyed()) {
+      return this.screenCaptureWindow
+    }
+
+    const cursorDisplay = screen.getDisplayNearestPoint(screen.getCursorScreenPoint())
+    const { x, y, width, height } = cursorDisplay.bounds
+
+    this.screenCaptureWindow = new BrowserWindow({
+      x,
+      y,
+      width,
+      height,
+      show: false,
+      frame: false,
+      transparent: false,
+      alwaysOnTop: true,
+      skipTaskbar: true,
+      minimizable: false,
+      maximizable: false,
+      fullscreenable: false,
+      movable: false,
+      resizable: false,
+      autoHideMenuBar: true,
+      backgroundColor: '#000000',
+      webPreferences: {
+        preload: join(__dirname, '../preload/index.js'),
+        sandbox: false,
+        webSecurity: false,
+        webviewTag: false
+      }
+    })
+
+    this.setupWebContentsHandlers(this.screenCaptureWindow)
+
+    this.screenCaptureWindow.setVisibleOnAllWorkspaces(true, {
+      visibleOnFullScreen: true
+    })
+    this.screenCaptureWindow.setAlwaysOnTop(true, 'screen-saver')
+
+    this.screenCaptureWindow.on('closed', () => {
+      this.screenCaptureWindow = null
+    })
+
+    if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
+      this.screenCaptureWindow.loadURL(process.env['ELECTRON_RENDERER_URL'] + '/screenCapture.html')
+    } else {
+      this.screenCaptureWindow.loadFile(join(__dirname, '../renderer/screenCapture.html'))
+    }
+
+    return this.screenCaptureWindow
+  }
+
+  public showScreenCaptureWindow() {
+    const captureWindow = this.createScreenCaptureWindow()
+    const cursorDisplay = screen.getDisplayNearestPoint(screen.getCursorScreenPoint())
+
+    captureWindow.setBounds(cursorDisplay.bounds)
+    captureWindow.show()
+    captureWindow.focus()
+  }
+
+  public closeScreenCaptureWindow() {
+    if (!this.screenCaptureWindow || this.screenCaptureWindow.isDestroyed()) {
+      return
+    }
+
+    this.screenCaptureWindow.close()
   }
 
   /**

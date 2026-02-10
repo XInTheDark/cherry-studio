@@ -642,6 +642,26 @@ const HomeWindowInner: FC<{ draggable: boolean; actionsRef: React.RefObject<Prov
   }, [focusTextarea, readClipboard])
 
   useEffect(() => {
+    return window.api.miniWindow.onSeedInput((payload) => {
+      if (!payload?.files?.length) return
+
+      setFiles((prev) => {
+        const existingPaths = new Set(prev.map((file) => file.path))
+        const merged = [...prev]
+
+        payload.files.forEach((file) => {
+          if (existingPaths.has(file.path)) return
+          existingPaths.add(file.path)
+          merged.push(file)
+        })
+
+        return merged
+      })
+      focusTextarea()
+    })
+  }, [focusTextarea, setFiles])
+
+  useEffect(() => {
     readClipboard()
   }, [readClipboard])
 

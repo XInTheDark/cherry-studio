@@ -43,7 +43,7 @@ import type {
   WebDavConfig
 } from '@types'
 import type { OpenDialogOptions } from 'electron'
-import { contextBridge, desktopCapturer, ipcRenderer, screen, shell, webUtils } from 'electron'
+import { contextBridge, ipcRenderer, shell, webUtils } from 'electron'
 import type { CreateDirectoryOptions } from 'webdav'
 
 import type {
@@ -257,38 +257,14 @@ const api = {
     getPermissionStatus: async (): Promise<string> => {
       return ipcRenderer.invoke(IpcChannel.Screenshot_GetPermissionStatus)
     },
-    /**
-     * Captures the primary display as a PNG and persists it into the app file storage.
-     * The returned FileMetadata can be used as a normal image attachment.
-     */
     capturePrimaryScreen: async (): Promise<FileMetadata> => {
-      const primary = screen.getPrimaryDisplay()
-      // desktopCapturer thumbnails can fail on HiDPI / large screens if requested size is too large.
-      // Clamp to a safe maximum while keeping the aspect ratio.
-      const nativeWidth = Math.floor(primary.size.width * primary.scaleFactor)
-      const nativeHeight = Math.floor(primary.size.height * primary.scaleFactor)
-      const maxEdge = 4096
-      const longestEdge = Math.max(nativeWidth, nativeHeight)
-      const ratio = longestEdge > maxEdge ? maxEdge / longestEdge : 1
-      const width = Math.max(1, Math.floor(nativeWidth * ratio))
-      const height = Math.max(1, Math.floor(nativeHeight * ratio))
-
-      const sources = await desktopCapturer.getSources({
-        types: ['screen'],
-        thumbnailSize: { width, height }
-      })
-
-      const source =
-        sources.find((s) => (s as any).display_id === String(primary.id)) ||
-        sources.find((s) => s.name?.toLowerCase().includes('screen')) ||
-        sources[0]
-
-      if (!source) {
-        throw new Error('SCREEN_CAPTURE_NO_SOURCES')
-      }
-
-      const png = source.thumbnail.toPNG()
-      return ipcRenderer.invoke(IpcChannel.File_SavePastedImage, png, '.png')
+      return ipcRenderer.invoke(IpcChannel.Screenshot_CapturePrimaryScreen)
+    },
+    captureDisplayDataUrl: async (displayId?: number): Promise<{ dataUrl: string; displayId: number }> => {
+      return ipcRenderer.invoke(IpcChannel.Screenshot_CaptureDisplayDataUrl, displayId)
+    },
+    openMacScreenRecordingSettings: async (): Promise<boolean> => {
+      return ipcRenderer.invoke(IpcChannel.Screenshot_OpenMacScreenRecordingSettings)
     }
   },
   fs: {
@@ -400,7 +376,20 @@ const api = {
     hide: () => ipcRenderer.invoke(IpcChannel.MiniWindow_Hide),
     close: () => ipcRenderer.invoke(IpcChannel.MiniWindow_Close),
     toggle: () => ipcRenderer.invoke(IpcChannel.MiniWindow_Toggle),
-    setPin: (isPinned: boolean) => ipcRenderer.invoke(IpcChannel.MiniWindow_SetPin, isPinned)
+    setPin: (isPinned: boolean) => ipcRenderer.invoke(IpcChannel.MiniWindow_SetPin, isPinned),
+    seedInput: (payload: { files: FileMetadata[] }) => ipcRenderer.invoke(IpcChannel.MiniWindow_SeedInput, payload),
+    onSeedInput: (callback: (payload: { files: FileMetadata[] }) => void): (() => void) => {
+      const channel = IpcChannel.MiniWindow_SeedInput
+      const listener = (_: Electron.IpcRendererEvent, payload: { files: FileMetadata[] }) => callback(payload)
+      ipcRenderer.on(channel, listener)
+      return () => {
+        ipcRenderer.removeListener(channel, listener)
+      }
+    }
+  },
+  screenCapture: {
+    open: (): Promise<void> => ipcRenderer.invoke(IpcChannel.ScreenCapture_Open),
+    close: (): Promise<void> => ipcRenderer.invoke(IpcChannel.ScreenCapture_Close)
   },
   aes: {
     encrypt: (text: string, secretKey: string, iv: string) =>

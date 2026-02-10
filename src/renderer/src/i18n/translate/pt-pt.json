@@ -734,6 +734,7 @@
       "context_count": {
         "tip": "Número de contexto / Número máximo de contexto"
       },
+      "edit_image": "[to be translated]:Edit image",
       "estimated_tokens": {
         "tip": "Número estimado de tokens"
       },
@@ -753,6 +754,9 @@
       "pause": "Pausar",
       "placeholder": "Digite sua mensagem aqui...",
       "placeholder_without_triggers": "Escreve a tua mensagem aqui, pressiona {{key}} para enviar",
+      "screen_ask": {
+        "send_to_quick_assistant": "[to be translated]:Send to Quick Assistant"
+      },
       "screenshot": {
         "no_sources": "[to be translated]:Unable to capture screenshot. If you're on macOS, enable Screen Recording permission and restart the app.",
         "permission_required": "[to be translated]:To take a screenshot on macOS, enable Screen Recording in System Settings → Privacy & Security → Screen Recording, then restart the app."
@@ -1556,6 +1560,20 @@
     "generating": "Gerando",
     "preview": "Visualizar",
     "split": "Dividir"
+  },
+  "image_editor": {
+    "redo": "[to be translated]:Redo",
+    "rotate_left": "[to be translated]:Rotate Left",
+    "rotate_right": "[to be translated]:Rotate Right",
+    "text_prompt": "[to be translated]:Enter annotation text",
+    "tool": {
+      "arrow": "[to be translated]:Arrow",
+      "crop": "[to be translated]:Crop",
+      "pen": "[to be translated]:Pen",
+      "rect": "[to be translated]:Rectangle",
+      "text": "[to be translated]:Text"
+    },
+    "undo": "[to be translated]:Undo"
   },
   "import": {
     "chatgpt": {
@@ -4857,6 +4875,7 @@
       "reset_defaults": "Redefinir atalhos padrão",
       "reset_defaults_confirm": "Tem certeza de que deseja redefinir todos os atalhos?",
       "reset_to_default": "Redefinir para padrão",
+      "screen_ask": "[to be translated]:Ask About Screen",
       "search_message": "Pesquisar mensagem",
       "search_message_in_chat": "Pesquisar mensagens nesta conversa",
       "selection_assistant_select_text": "Assistente de seleção de texto: selecionar texto",

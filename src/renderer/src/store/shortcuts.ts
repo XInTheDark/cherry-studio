@@ -48,6 +48,13 @@ const initialState: ShortcutsState = {
       system: true
     },
     {
+      key: 'screen_ask',
+      shortcut: ['CommandOrControl', 'Shift', 'E'],
+      editable: true,
+      enabled: true,
+      system: true
+    },
+    {
       //enable/disable selection assistant
       key: 'selection_assistant_toggle',
       shortcut: [],

@@ -734,6 +734,7 @@
       "context_count": {
         "tip": "Kontextanzahl / Maximale Kontextanzahl"
       },
+      "edit_image": "[to be translated]:Edit image",
       "estimated_tokens": {
         "tip": "Geschätzte Token-Anzahl"
       },
@@ -753,6 +754,9 @@
       "pause": "Pause",
       "placeholder": "Geben Sie hier eine Nachricht ein, drücken Sie {{key}} zum Senden - @ für Modellauswahl, / für Tools",
       "placeholder_without_triggers": "Geben Sie hier eine Nachricht ein, drücken Sie {{key}} zum Senden",
+      "screen_ask": {
+        "send_to_quick_assistant": "[to be translated]:Send to Quick Assistant"
+      },
       "screenshot": {
         "no_sources": "[to be translated]:Unable to capture screenshot. If you're on macOS, enable Screen Recording permission and restart the app.",
         "permission_required": "[to be translated]:To take a screenshot on macOS, enable Screen Recording in System Settings → Privacy & Security → Screen Recording, then restart the app."
@@ -1556,6 +1560,20 @@
     "generating": "Wird generiert",
     "preview": "Vorschau",
     "split": "Geteilte Ansicht"
+  },
+  "image_editor": {
+    "redo": "[to be translated]:Redo",
+    "rotate_left": "[to be translated]:Rotate Left",
+    "rotate_right": "[to be translated]:Rotate Right",
+    "text_prompt": "[to be translated]:Enter annotation text",
+    "tool": {
+      "arrow": "[to be translated]:Arrow",
+      "crop": "[to be translated]:Crop",
+      "pen": "[to be translated]:Pen",
+      "rect": "[to be translated]:Rectangle",
+      "text": "[to be translated]:Text"
+    },
+    "undo": "[to be translated]:Undo"
   },
   "import": {
     "chatgpt": {
@@ -4857,6 +4875,7 @@
       "reset_defaults": "Standard-Shortcuts zurücksetzen",
       "reset_defaults_confirm": "Alle Shortcuts wirklich zurücksetzen?",
       "reset_to_default": "Auf Standard zurücksetzen",
+      "screen_ask": "[to be translated]:Ask About Screen",
       "search_message": "Nachricht suchen",
       "search_message_in_chat": "In aktuellem Chat suchen",
       "selection_assistant_select_text": "Textauswahl-Assistent: Text erfassen",

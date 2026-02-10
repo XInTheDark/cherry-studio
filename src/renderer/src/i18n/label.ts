@@ -209,6 +209,7 @@ const shortcutKeyMap = {
   reset_defaults: 'settings.shortcuts.reset_defaults',
   reset_defaults_confirm: 'settings.shortcuts.reset_defaults_confirm',
   reset_to_default: 'settings.shortcuts.reset_to_default',
+  screen_ask: 'settings.shortcuts.screen_ask',
   search_message: 'settings.shortcuts.search_message',
   search_message_in_chat: 'settings.shortcuts.search_message_in_chat',
   selection_assistant_select_text: 'settings.shortcuts.selection_assistant_select_text',

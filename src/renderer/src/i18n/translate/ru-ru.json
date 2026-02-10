@@ -734,6 +734,7 @@
       "context_count": {
         "tip": "Контекст / Макс. контекст"
       },
+      "edit_image": "[to be translated]:Edit image",
       "estimated_tokens": {
         "tip": "Затраты токенов"
       },
@@ -753,6 +754,9 @@
       "pause": "Остановить",
       "placeholder": "Введите ваше сообщение здесь, нажмите {{key}} для отправки...",
       "placeholder_without_triggers": "Напишите сообщение здесь, нажмите {{key}} для отправки",
+      "screen_ask": {
+        "send_to_quick_assistant": "[to be translated]:Send to Quick Assistant"
+      },
       "screenshot": {
         "no_sources": "[to be translated]:Unable to capture screenshot. If you're on macOS, enable Screen Recording permission and restart the app.",
         "permission_required": "[to be translated]:To take a screenshot on macOS, enable Screen Recording in System Settings → Privacy & Security → Screen Recording, then restart the app."
@@ -1556,6 +1560,20 @@
     "generating": "Генерация",
     "preview": "Предпросмотр",
     "split": "Разделить"
+  },
+  "image_editor": {
+    "redo": "[to be translated]:Redo",
+    "rotate_left": "[to be translated]:Rotate Left",
+    "rotate_right": "[to be translated]:Rotate Right",
+    "text_prompt": "[to be translated]:Enter annotation text",
+    "tool": {
+      "arrow": "[to be translated]:Arrow",
+      "crop": "[to be translated]:Crop",
+      "pen": "[to be translated]:Pen",
+      "rect": "[to be translated]:Rectangle",
+      "text": "[to be translated]:Text"
+    },
+    "undo": "[to be translated]:Undo"
   },
   "import": {
     "chatgpt": {
@@ -4857,6 +4875,7 @@
       "reset_defaults": "Сбросить настройки по умолчанию",
       "reset_defaults_confirm": "Вы уверены, что хотите сбросить все горячие клавиши?",
       "reset_to_default": "Сбросить настройки по умолчанию",
+      "screen_ask": "[to be translated]:Ask About Screen",
       "search_message": "Поиск сообщения",
       "search_message_in_chat": "Поиск сообщения в текущем диалоге",
       "selection_assistant_select_text": "Помощник выделения: выделить текст",

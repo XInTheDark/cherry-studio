@@ -38,6 +38,16 @@ interface BaseCallbacksDependencies {
   isContinueMode?: boolean
 }
 
+function shouldEstimateUsage(response?: Response): boolean {
+  const usage = response?.usage
+  if (!usage) {
+    return true
+  }
+
+  const usageValues = [usage.total_tokens, usage.prompt_tokens, usage.completion_tokens]
+  return !usageValues.some((value) => typeof value === 'number' && Number.isFinite(value) && value > 0)
+}
+
 export const createBaseCallbacks = (deps: BaseCallbacksDependencies) => {
   const {
     blockManager,
@@ -259,13 +269,7 @@ export const createBaseCallbacks = (deps: BaseCallbacksDependencies) => {
         // 处理usage估算
         // For OpenRouter, always use the accurate usage data from API, don't estimate
         const isOpenRouter = assistant.model?.provider === 'openrouter'
-        if (
-          !isOpenRouter &&
-          response &&
-          (response.usage?.total_tokens === 0 ||
-            response?.usage?.prompt_tokens === 0 ||
-            response?.usage?.completion_tokens === 0)
-        ) {
+        if (!isOpenRouter && response && shouldEstimateUsage(response)) {
           const usage = await estimateMessagesUsage({ assistant, messages: finalContextWithAssistant })
           response.usage = usage
         }

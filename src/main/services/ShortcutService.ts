@@ -30,6 +30,7 @@ let showAppAccelerator: string | null = null
 let showMiniWindowAccelerator: string | null = null
 let selectionAssistantToggleAccelerator: string | null = null
 let selectionAssistantSelectTextAccelerator: string | null = null
+let screenAskAccelerator: string | null = null
 
 //indicate if the shortcuts are registered on app boot time
 let isRegisterOnBoot = true
@@ -73,6 +74,16 @@ function getShortcutHandler(shortcut: Shortcut) {
         if (selectionService) {
           selectionService.processSelectTextByShortcut()
         }
+      }
+    case 'screen_ask':
+      return () => {
+        const quickAssistantEnabled = configManager.getEnableQuickAssistant()
+        if (!quickAssistantEnabled) {
+          logger.warn('QuickAssistant is disabled, ignoring screen_ask shortcut trigger')
+          return
+        }
+
+        windowService.showScreenCaptureWindow()
       }
     default:
       return null
@@ -180,8 +191,21 @@ export function registerShortcuts(window: BrowserWindow) {
   const register = (onlyUniversalShortcuts: boolean = false) => {
     if (window.isDestroyed()) return
 
-    const shortcuts = configManager.getShortcuts()
-    if (!shortcuts) return
+    const configuredShortcuts = configManager.getShortcuts()
+    if (!configuredShortcuts) return
+
+    const shortcuts = configuredShortcuts.some((shortcut) => shortcut.key === 'screen_ask')
+      ? configuredShortcuts
+      : [
+          ...configuredShortcuts,
+          {
+            key: 'screen_ask',
+            shortcut: ['CommandOrControl', 'Shift', 'E'],
+            editable: true,
+            enabled: true,
+            system: true
+          } as Shortcut
+        ]
 
     shortcuts.forEach((shortcut) => {
       try {
@@ -197,9 +221,13 @@ export function registerShortcuts(window: BrowserWindow) {
         // only register universal shortcuts when needed
         if (
           onlyUniversalShortcuts &&
-          !['show_app', 'mini_window', 'selection_assistant_toggle', 'selection_assistant_select_text'].includes(
-            shortcut.key
-          )
+          ![
+            'show_app',
+            'mini_window',
+            'selection_assistant_toggle',
+            'selection_assistant_select_text',
+            'screen_ask'
+          ].includes(shortcut.key)
         ) {
           return
         }
@@ -227,6 +255,10 @@ export function registerShortcuts(window: BrowserWindow) {
 
           case 'selection_assistant_select_text':
             selectionAssistantSelectTextAccelerator = formatShortcutKey(shortcut.shortcut)
+            break
+
+          case 'screen_ask':
+            screenAskAccelerator = formatShortcutKey(shortcut.shortcut)
             break
 
           //the following ZOOMs will register shortcuts separately, so will return
@@ -283,6 +315,12 @@ export function registerShortcuts(window: BrowserWindow) {
         const accelerator = convertShortcutFormat(selectionAssistantSelectTextAccelerator)
         handler && globalShortcut.register(accelerator, () => handler(window))
       }
+
+      if (screenAskAccelerator) {
+        const handler = getShortcutHandler({ key: 'screen_ask' } as Shortcut)
+        const accelerator = convertShortcutFormat(screenAskAccelerator)
+        handler && globalShortcut.register(accelerator, () => handler(window))
+      }
     } catch (error) {
       logger.warn('Failed to unregister shortcuts')
     }
@@ -310,6 +348,7 @@ export function unregisterAllShortcuts() {
     showMiniWindowAccelerator = null
     selectionAssistantToggleAccelerator = null
     selectionAssistantSelectTextAccelerator = null
+    screenAskAccelerator = null
     windowOnHandlers.forEach((handlers, window) => {
       window.off('focus', handlers.onFocusHandler)
       window.off('blur', handlers.onBlurHandler)

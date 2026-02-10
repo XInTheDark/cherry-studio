@@ -80,6 +80,11 @@ const AttachmentButton: FC<Props> = ({
         return
       }
 
+      if (message.includes('SCREEN_CAPTURE_PERMISSION_REQUIRED')) {
+        window.toast.info(t('chat.input.screenshot.permission_required'))
+        return
+      }
+
       window.toast.error(t('chat.input.file_error'))
     } finally {
       try {

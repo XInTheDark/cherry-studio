@@ -734,6 +734,7 @@
       "context_count": {
         "tip": "Nombre de contextes / Nombre maximal de contextes"
       },
+      "edit_image": "[to be translated]:Edit image",
       "estimated_tokens": {
         "tip": "Estimation du nombre de tokens"
       },
@@ -753,6 +754,9 @@
       "pause": "Pause",
       "placeholder": "Entrez votre message ici...",
       "placeholder_without_triggers": "Tapez votre message ici, appuyez sur {{key}} pour envoyer",
+      "screen_ask": {
+        "send_to_quick_assistant": "[to be translated]:Send to Quick Assistant"
+      },
       "screenshot": {
         "no_sources": "[to be translated]:Unable to capture screenshot. If you're on macOS, enable Screen Recording permission and restart the app.",
         "permission_required": "[to be translated]:To take a screenshot on macOS, enable Screen Recording in System Settings → Privacy & Security → Screen Recording, then restart the app."
@@ -1556,6 +1560,20 @@
     "generating": "Génération",
     "preview": "Aperçu",
     "split": "Diviser"
+  },
+  "image_editor": {
+    "redo": "[to be translated]:Redo",
+    "rotate_left": "[to be translated]:Rotate Left",
+    "rotate_right": "[to be translated]:Rotate Right",
+    "text_prompt": "[to be translated]:Enter annotation text",
+    "tool": {
+      "arrow": "[to be translated]:Arrow",
+      "crop": "[to be translated]:Crop",
+      "pen": "[to be translated]:Pen",
+      "rect": "[to be translated]:Rectangle",
+      "text": "[to be translated]:Text"
+    },
+    "undo": "[to be translated]:Undo"
   },
   "import": {
     "chatgpt": {
@@ -4857,6 +4875,7 @@
       "reset_defaults": "Réinitialiser raccourcis par défaut",
       "reset_defaults_confirm": "Êtes-vous sûr de vouloir réinitialiser tous les raccourcis clavier ?",
       "reset_to_default": "Réinitialiser aux valeurs par défaut",
+      "screen_ask": "[to be translated]:Ask About Screen",
       "search_message": "Rechercher un message",
       "search_message_in_chat": "Rechercher un message dans la conversation actuelle",
       "selection_assistant_select_text": "Assistant de sélection de texte : extraire le texte",

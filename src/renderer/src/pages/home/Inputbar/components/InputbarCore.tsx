@@ -13,7 +13,7 @@ import PasteService from '@renderer/services/PasteService'
 import { translateText } from '@renderer/services/TranslateService'
 import { useAppDispatch } from '@renderer/store'
 import { setSearching } from '@renderer/store/runtime'
-import type { FileType } from '@renderer/types'
+import type { FileMetadata, FileType } from '@renderer/types'
 import { classNames } from '@renderer/utils'
 import { formatQuotedText } from '@renderer/utils/formats'
 import { isSendMessageKeyPressed } from '@renderer/utils/input'
@@ -38,6 +38,7 @@ import { usePasteHandler } from '../hooks/usePasteHandler'
 import { getInputbarConfig } from '../registry'
 import SendMessageButton from '../SendMessageButton'
 import type { InputbarScope } from '../types'
+import ImageAttachmentEditorModal from './ImageAttachmentEditorModal'
 
 const logger = loggerService.withContext('InputbarCore')
 
@@ -147,6 +148,7 @@ export const InputbarCore: FC<InputbarCoreProps> = ({
 
   const { t } = useTranslation()
   const [isTranslating, setIsTranslating] = useState(false)
+  const [editingImageFile, setEditingImageFile] = useState<FileMetadata | null>(null)
   const { getLanguageByLangcode } = useTranslate()
 
   const dispatch = useAppDispatch()
@@ -499,6 +501,20 @@ export const InputbarCore: FC<InputbarCoreProps> = ({
     [resizeTextArea, setText, setTimeoutTimer]
   )
 
+  const handleEditImageAttachment = useCallback((file: FileMetadata) => {
+    setEditingImageFile(file)
+  }, [])
+
+  const handleEditedImageSaved = useCallback(
+    (editedFile: FileMetadata) => {
+      setFiles((prev) =>
+        prev.map((currentFile) => (currentFile.id === editingImageFile?.id ? editedFile : currentFile))
+      )
+      setEditingImageFile(null)
+    },
+    [editingImageFile?.id, setFiles]
+  )
+
   const appendTxtContentToInput = useCallback(
     async (file: FileType, event: React.MouseEvent<HTMLDivElement>) => {
       event.preventDefault()
@@ -681,7 +697,12 @@ export const InputbarCore: FC<InputbarCoreProps> = ({
             <HolderOutlined style={{ fontSize: 12 }} />
           </DragHandle>
           {files.length > 0 && (
-            <AttachmentPreview files={files} setFiles={setFiles} onAttachmentContextMenu={appendTxtContentToInput} />
+            <AttachmentPreview
+              files={files}
+              setFiles={setFiles}
+              onAttachmentContextMenu={appendTxtContentToInput}
+              onEditImageAttachment={handleEditImageAttachment}
+            />
           )}
           {topContent}
 
@@ -721,6 +742,14 @@ export const InputbarCore: FC<InputbarCoreProps> = ({
           </BottomBar>
         </InputBarContainer>
       </Container>
+      {editingImageFile && (
+        <ImageAttachmentEditorModal
+          open
+          file={editingImageFile}
+          onCancel={() => setEditingImageFile(null)}
+          onSaved={handleEditedImageSaved}
+        />
+      )}
     </NarrowLayout>
   )
 }

@@ -2,6 +2,7 @@ import { combineReducers, configureStore } from '@reduxjs/toolkit'
 import { BlockManager } from '@renderer/services/messageStreaming/BlockManager'
 import { createCallbacks } from '@renderer/services/messageStreaming/callbacks'
 import { createStreamProcessor } from '@renderer/services/StreamProcessingService'
+import { estimateMessagesUsage } from '@renderer/services/TokenService'
 import type { AppDispatch } from '@renderer/store'
 import { messageBlocksSlice } from '@renderer/store/messageBlock'
 import { messagesSlice } from '@renderer/store/newMessage'
@@ -401,6 +402,61 @@ describe('streamCallback Integration Tests', () => {
     // 验证消息状态更新
     const message = state.messages.entities[mockAssistantMsgId]
     expect(message?.status).toBe(AssistantMessageStatus.SUCCESS)
+    expect(message?.usage?.total_tokens).toBe(150)
+  })
+
+  it('should not estimate usage when provider returns partial usage with positive token values', async () => {
+    const callbacks = createMockCallbacks(mockAssistantMsgId, mockTopicId, mockAssistant, dispatch, getState)
+
+    const chunks: Chunk[] = [
+      { type: ChunkType.LLM_RESPONSE_CREATED },
+      { type: ChunkType.TEXT_START },
+      { type: ChunkType.TEXT_DELTA, text: 'Hello world!' },
+      { type: ChunkType.TEXT_COMPLETE, text: 'Hello world!' },
+      {
+        type: ChunkType.BLOCK_COMPLETE,
+        response: {
+          usage: { prompt_tokens: 100, completion_tokens: 0, total_tokens: 100 },
+          metrics: { completion_tokens: 0, time_completion_millsec: 1000 }
+        }
+      }
+    ]
+
+    await processChunks(chunks, callbacks)
+
+    const estimateMessagesUsageMock = vi.mocked(estimateMessagesUsage)
+    expect(estimateMessagesUsageMock).not.toHaveBeenCalled()
+
+    const state = getState()
+    const message = state.messages.entities[mockAssistantMsgId]
+    expect(message?.usage?.total_tokens).toBe(100)
+    expect(message?.usage?.prompt_tokens).toBe(100)
+    expect(message?.usage?.completion_tokens).toBe(0)
+  })
+
+  it('should estimate usage when provider usage is missing', async () => {
+    const callbacks = createMockCallbacks(mockAssistantMsgId, mockTopicId, mockAssistant, dispatch, getState)
+
+    const chunks: Chunk[] = [
+      { type: ChunkType.LLM_RESPONSE_CREATED },
+      { type: ChunkType.TEXT_START },
+      { type: ChunkType.TEXT_DELTA, text: 'Hello world!' },
+      { type: ChunkType.TEXT_COMPLETE, text: 'Hello world!' },
+      {
+        type: ChunkType.BLOCK_COMPLETE,
+        response: {
+          metrics: { completion_tokens: 0, time_completion_millsec: 1000 }
+        }
+      }
+    ]
+
+    await processChunks(chunks, callbacks)
+
+    const estimateMessagesUsageMock = vi.mocked(estimateMessagesUsage)
+    expect(estimateMessagesUsageMock).toHaveBeenCalledTimes(1)
+
+    const state = getState()
+    const message = state.messages.entities[mockAssistantMsgId]
     expect(message?.usage?.total_tokens).toBe(150)
   })
 

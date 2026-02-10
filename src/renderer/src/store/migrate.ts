@@ -3215,6 +3215,16 @@ const migrateConfig = {
       logger.error('migrate 194 error', error as Error)
       return state
     }
+  },
+  '195': (state: RootState) => {
+    try {
+      addShortcuts(state, ['screen_ask'], 'mini_window')
+      logger.info('migrate 195 success')
+      return state
+    } catch (error) {
+      logger.error('migrate 195 error', error as Error)
+      return state
+    }
   }
 }
 

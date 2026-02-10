@@ -33,7 +33,17 @@ import type {
 } from '@types'
 import checkDiskSpace from 'check-disk-space'
 import type { ProxyConfig } from 'electron'
-import { BrowserWindow, dialog, ipcMain, session, shell, systemPreferences, webContents } from 'electron'
+import {
+  BrowserWindow,
+  desktopCapturer,
+  dialog,
+  ipcMain,
+  screen,
+  session,
+  shell,
+  systemPreferences,
+  webContents
+} from 'electron'
 import fontList from 'font-list'
 
 import { agentMessageRepository } from './services/agents/database'
@@ -119,6 +129,78 @@ function extractPluginError(error: unknown): PluginError | null {
     return error as PluginError
   }
   return null
+}
+
+type CapturedDisplayResult = {
+  displayId: number
+  png: Buffer
+  dataUrl: string
+}
+
+function ensureScreenCapturePermission(): void {
+  if (!isMac) return
+
+  // Electron returns values like: 'granted' | 'denied' | 'restricted' | 'not-determined' | 'unknown'
+  const status = systemPreferences.getMediaAccessStatus('screen')
+  if (status !== 'granted') {
+    throw new Error('SCREEN_CAPTURE_PERMISSION_REQUIRED')
+  }
+}
+
+function resolveCaptureDisplay(options?: { displayId?: number; preferCursorDisplay?: boolean }): Electron.Display {
+  const allDisplays = screen.getAllDisplays()
+
+  if (options?.displayId !== undefined) {
+    const explicit = allDisplays.find((display) => display.id === options.displayId)
+    if (explicit) return explicit
+  }
+
+  if (options?.preferCursorDisplay) {
+    return screen.getDisplayNearestPoint(screen.getCursorScreenPoint())
+  }
+
+  return screen.getPrimaryDisplay()
+}
+
+async function captureDisplay(options?: {
+  displayId?: number
+  preferCursorDisplay?: boolean
+  maxEdge?: number
+}): Promise<CapturedDisplayResult> {
+  ensureScreenCapturePermission()
+
+  const targetDisplay = resolveCaptureDisplay(options)
+  const displayWidth = Math.max(1, Math.floor(targetDisplay.size.width))
+  const displayHeight = Math.max(1, Math.floor(targetDisplay.size.height))
+  const maxEdge = Math.max(1, options?.maxEdge ?? 4096)
+  const longestEdge = Math.max(displayWidth, displayHeight)
+  const ratio = longestEdge > maxEdge ? maxEdge / longestEdge : 1
+
+  const thumbnailWidth = Math.max(1, Math.floor(displayWidth * ratio))
+  const thumbnailHeight = Math.max(1, Math.floor(displayHeight * ratio))
+
+  const sources = await desktopCapturer.getSources({
+    types: ['screen'],
+    thumbnailSize: {
+      width: thumbnailWidth,
+      height: thumbnailHeight
+    }
+  })
+
+  const source =
+    sources.find((item) => (item as { display_id?: string }).display_id === String(targetDisplay.id)) ||
+    sources.find((item) => item.name?.toLowerCase().includes('screen')) ||
+    sources[0]
+
+  if (!source) {
+    throw new Error('SCREEN_CAPTURE_NO_SOURCES')
+  }
+
+  return {
+    displayId: targetDisplay.id,
+    png: source.thumbnail.toPNG(),
+    dataUrl: source.thumbnail.toDataURL()
+  }
 }
 
 export async function registerIpc(mainWindow: BrowserWindow, app: Electron.App) {
@@ -597,6 +679,25 @@ export async function registerIpc(mainWindow: BrowserWindow, app: Electron.App) 
     // Electron returns values like: 'granted' | 'denied' | 'restricted' | 'not-determined' | 'unknown'
     return systemPreferences.getMediaAccessStatus('screen')
   })
+  ipcMain.handle(IpcChannel.Screenshot_CapturePrimaryScreen, async (event) => {
+    const capture = await captureDisplay({ preferCursorDisplay: true, maxEdge: 4096 })
+    return fileManager.savePastedImage(event, capture.png, '.png')
+  })
+  ipcMain.handle(IpcChannel.Screenshot_CaptureDisplayDataUrl, async (_, displayId?: number) => {
+    const capture = await captureDisplay({ displayId, preferCursorDisplay: true, maxEdge: 4096 })
+    return {
+      dataUrl: capture.dataUrl,
+      displayId: capture.displayId
+    }
+  })
+  ipcMain.handle(IpcChannel.Screenshot_OpenMacScreenRecordingSettings, async () => {
+    if (!isMac) {
+      return false
+    }
+
+    await shell.openExternal('x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture')
+    return true
+  })
   ipcMain.handle(IpcChannel.File_OpenPath, fileManager.openPath.bind(fileManager))
   ipcMain.handle(IpcChannel.File_Save, fileManager.save.bind(fileManager))
   ipcMain.handle(IpcChannel.File_Select, fileManager.selectFile.bind(fileManager))
@@ -799,6 +900,17 @@ export async function registerIpc(mainWindow: BrowserWindow, app: Electron.App) 
   ipcMain.handle(IpcChannel.MiniWindow_Close, () => windowService.closeMiniWindow())
   ipcMain.handle(IpcChannel.MiniWindow_Toggle, () => windowService.toggleMiniWindow())
   ipcMain.handle(IpcChannel.MiniWindow_SetPin, (_, isPinned) => windowService.setPinMiniWindow(isPinned))
+  ipcMain.handle(IpcChannel.MiniWindow_SeedInput, (_, payload: { files: FileMetadata[] }) => {
+    windowService.seedMiniWindowInput(payload)
+  })
+
+  // screen capture
+  ipcMain.handle(IpcChannel.ScreenCapture_Open, () => {
+    windowService.showScreenCaptureWindow()
+  })
+  ipcMain.handle(IpcChannel.ScreenCapture_Close, () => {
+    windowService.closeScreenCaptureWindow()
+  })
 
   // aes
   ipcMain.handle(IpcChannel.Aes_Encrypt, (_, text: string, secretKey: string, iv: string) =>

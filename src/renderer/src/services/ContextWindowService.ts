@@ -17,6 +17,7 @@ import {
   getMainTextContent,
   getThinkingContent
 } from '@renderer/utils/messageUtils/find'
+import { estimateImageInputTokens } from '@renderer/utils/tokenEstimation'
 import { approximateTokenSize } from 'tokenx'
 
 const MESSAGE_OVERHEAD_TOKENS = 12
@@ -39,7 +40,7 @@ function estimateFileTokens(message: Message): number {
     }
 
     if (file.type === FileTypes.IMAGE) {
-      return acc + Math.max(1, Math.floor((file.size || 0) / 100))
+      return acc + estimateImageInputTokens(file)
     }
 
     // Text/doc files are represented by metadata here. Use a conservative estimate from file size.

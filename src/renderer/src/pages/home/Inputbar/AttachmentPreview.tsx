@@ -21,7 +21,7 @@ import { formatFileSize } from '@renderer/utils'
 import { Flex, Image, Tooltip } from 'antd'
 import { isEmpty } from 'lodash'
 import type { FC, MouseEvent } from 'react'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import styled from 'styled-components'
 
@@ -29,6 +29,7 @@ interface Props {
   files: FileMetadata[]
   setFiles: (files: FileMetadata[]) => void
   onAttachmentContextMenu?: (file: FileMetadata, event: MouseEvent<HTMLDivElement>) => void
+  onEditImageAttachment?: (file: FileMetadata) => void
 }
 
 const MAX_FILENAME_DISPLAY_LENGTH = 20
@@ -85,6 +86,11 @@ export const getFileIcon = (type?: string) => {
   return <FileUnknownFilled />
 }
 
+const isImageFile = (ext?: string) => {
+  if (!ext) return false
+  return ['.png', '.jpg', '.jpeg', '.gif', '.bmp', '.webp'].includes(ext.toLowerCase())
+}
+
 export const FileNameRender: FC<{ file: FileMetadata }> = ({ file }) => {
   const { preview } = useAttachment()
   const [visible, setVisible] = useState<boolean>(false)
@@ -137,9 +143,14 @@ export const FileNameRender: FC<{ file: FileMetadata }> = ({ file }) => {
   )
 }
 
-const AttachmentPreview: FC<Props> = ({ files, setFiles, onAttachmentContextMenu }) => {
+const AttachmentPreview: FC<Props> = ({ files, setFiles, onAttachmentContextMenu, onEditImageAttachment }) => {
   const { t } = useTranslation()
   const [contextMenu, setContextMenu] = useState<{
+    file: FileMetadata
+    x: number
+    y: number
+  } | null>(null)
+  const [imageEditMenu, setImageEditMenu] = useState<{
     file: FileMetadata
     x: number
     y: number
@@ -149,13 +160,17 @@ const AttachmentPreview: FC<Props> = ({ files, setFiles, onAttachmentContextMenu
     event.preventDefault()
     event.stopPropagation()
 
-    // 获取被点击元素的位置
     const target = event.currentTarget as HTMLElement
     const rect = target.getBoundingClientRect()
 
-    // 计算对话框位置：附件标签的中心位置
-    const x = rect.left + rect.width / 2
-    const y = rect.top
+    const x = rect.left
+    const y = rect.bottom
+
+    if (isImageFile(file.ext) && onEditImageAttachment) {
+      setImageEditMenu({ file, x, y })
+      setContextMenu(null)
+      return
+    }
 
     try {
       const isText = await window.api.file.isTextFile(file.path)
@@ -166,12 +181,34 @@ const AttachmentPreview: FC<Props> = ({ files, setFiles, onAttachmentContextMenu
 
       setContextMenu({
         file,
-        x,
-        y
+        x: rect.left + rect.width / 2,
+        y: rect.top
       })
     } catch (error) {
       setContextMenu(null)
     }
+  }
+
+  useEffect(() => {
+    if (!imageEditMenu) {
+      return
+    }
+
+    const handleGlobalClick = () => {
+      setImageEditMenu(null)
+    }
+
+    window.addEventListener('mousedown', handleGlobalClick)
+    return () => {
+      window.removeEventListener('mousedown', handleGlobalClick)
+    }
+  }, [imageEditMenu])
+
+  const handleImageEdit = () => {
+    if (imageEditMenu && onEditImageAttachment) {
+      onEditImageAttachment(imageEditMenu.file)
+    }
+    setImageEditMenu(null)
   }
 
   const handleConfirm = () => {
@@ -188,6 +225,7 @@ const AttachmentPreview: FC<Props> = ({ files, setFiles, onAttachmentContextMenu
 
   const handleCancel = () => {
     setContextMenu(null)
+    setImageEditMenu(null)
   }
 
   if (isEmpty(files)) {
@@ -211,6 +249,16 @@ const AttachmentPreview: FC<Props> = ({ files, setFiles, onAttachmentContextMenu
           </CustomTag>
         ))}
       </ContentContainer>
+
+      {imageEditMenu && (
+        <ImageMenu
+          style={{ left: imageEditMenu.x, top: imageEditMenu.y }}
+          onClick={(event) => {
+            event.stopPropagation()
+          }}>
+          <ImageMenuButton onClick={handleImageEdit}>{t('chat.input.edit_image')}</ImageMenuButton>
+        </ImageMenu>
+      )}
 
       {contextMenu && (
         <ConfirmDialog
@@ -241,3 +289,29 @@ const FileName = styled.span`
 `
 
 export default AttachmentPreview
+
+const ImageMenu = styled.div`
+  position: fixed;
+  z-index: 1200;
+  background: var(--color-background-mute);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.2);
+  padding: 4px;
+`
+
+const ImageMenuButton = styled.button`
+  border: 0;
+  width: 100%;
+  background: transparent;
+  color: var(--color-text);
+  text-align: left;
+  font-size: 12px;
+  border-radius: 6px;
+  padding: 6px 10px;
+  cursor: pointer;
+
+  &:hover {
+    background: var(--color-background-soft);
+  }
+`

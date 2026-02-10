@@ -734,6 +734,7 @@
       "context_count": {
         "tip": "Context / Max Context"
       },
+      "edit_image": "Edit image",
       "estimated_tokens": {
         "tip": "Estimated tokens"
       },
@@ -753,6 +754,9 @@
       "pause": "Pause",
       "placeholder": "Type your message here, press {{key}} to send - @ to Select Model, / to Include Tools",
       "placeholder_without_triggers": "Type your message here, press {{key}} to send",
+      "screen_ask": {
+        "send_to_quick_assistant": "Send to Quick Assistant"
+      },
       "screenshot": {
         "no_sources": "Unable to capture screenshot. If you're on macOS, enable Screen Recording permission and restart the app.",
         "permission_required": "To take a screenshot on macOS, enable Screen Recording in System Settings → Privacy & Security → Screen Recording, then restart the app."
@@ -1556,6 +1560,20 @@
     "generating": "Generating",
     "preview": "Preview",
     "split": "Split"
+  },
+  "image_editor": {
+    "redo": "Redo",
+    "rotate_left": "Rotate Left",
+    "rotate_right": "Rotate Right",
+    "text_prompt": "Enter annotation text",
+    "tool": {
+      "arrow": "Arrow",
+      "crop": "Crop",
+      "pen": "Pen",
+      "rect": "Rectangle",
+      "text": "Text"
+    },
+    "undo": "Undo"
   },
   "import": {
     "chatgpt": {
@@ -4857,6 +4875,7 @@
       "reset_defaults": "Reset Defaults",
       "reset_defaults_confirm": "Are you sure you want to reset all shortcuts?",
       "reset_to_default": "Reset to Default",
+      "screen_ask": "Ask About Screen",
       "search_message": "Search Message",
       "search_message_in_chat": "Search Message in Current Chat",
       "selection_assistant_select_text": "Selection Assistant: Select Text",

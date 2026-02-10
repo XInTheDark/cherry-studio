@@ -75,6 +75,10 @@ export enum IpcChannel {
   MiniWindow_Close = 'miniwindow:close',
   MiniWindow_Toggle = 'miniwindow:toggle',
   MiniWindow_SetPin = 'miniwindow:set-pin',
+  MiniWindow_SeedInput = 'miniwindow:seed-input',
+
+  ScreenCapture_Open = 'screen-capture:open',
+  ScreenCapture_Close = 'screen-capture:close',
 
   // Mcp
   Mcp_AddServer = 'mcp:add-server',
@@ -196,6 +200,9 @@ export enum IpcChannel {
 
   // screenshot
   Screenshot_GetPermissionStatus = 'screenshot:get-permission-status',
+  Screenshot_CapturePrimaryScreen = 'screenshot:capture-primary-screen',
+  Screenshot_CaptureDisplayDataUrl = 'screenshot:capture-display-data-url',
+  Screenshot_OpenMacScreenRecordingSettings = 'screenshot:open-mac-screen-recording-settings',
   File_Copy = 'file:copy',
   File_BinaryImage = 'file:binaryImage',
   File_Base64File = 'file:base64File',
