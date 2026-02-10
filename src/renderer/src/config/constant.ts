@@ -1,9 +1,10 @@
 export const DEFAULT_TEMPERATURE = 1.0
-// Context messages kept for each assistant by default.
-// Use MAX_CONTEXT_COUNT ("Max" in UI), which will be treated as unlimited when preparing requests.
-export const MAX_CONTEXT_COUNT = 100
-export const UNLIMITED_CONTEXT_COUNT = 100000
-export const DEFAULT_CONTEXTCOUNT = MAX_CONTEXT_COUNT
+// Context window budget (prompt tokens) for each assistant.
+// UNLIMITED_MAX_CONTEXT_TOKENS is a sentinel used by UI/settings to represent Max.
+export const UNLIMITED_MAX_CONTEXT_TOKENS = 10000000
+export const DEFAULT_MAX_CONTEXT_TOKENS = UNLIMITED_MAX_CONTEXT_TOKENS
+// Reserve a small margin to avoid hitting provider hard limits due to estimation variance.
+export const CONTEXT_HARD_SAFETY_MARGIN_TOKENS = 512
 export const DEFAULT_MAX_TOKENS = 4096
 export const SYSTEM_PROMPT_THRESHOLD = 128
 export const DEFAULT_KNOWLEDGE_DOCUMENT_COUNT = 6

@@ -716,6 +716,21 @@
         "title": "清除所有訊息？"
       },
       "collapse": "折疊",
+      "compaction": {
+        "already_compact": "目前對話已是最新壓縮狀態。",
+        "badge_tip": "此對話包含已壓縮歷史",
+        "clear_action": "清除壓縮",
+        "clear_success": "已清除壓縮狀態。",
+        "compact_action": "壓縮對話",
+        "compact_failed": "壓縮對話失敗。",
+        "compact_success": "已將 {{count}} 則訊息壓縮為 {{segments}} 個分段。",
+        "details": "壓縮詳情",
+        "messages": "壓縮訊息數",
+        "not_enough_messages": "目前歷史不足，暫時無法壓縮。",
+        "segments": "壓縮分段",
+        "summary_tokens": "摘要 Token",
+        "updated_at": "更新時間"
+      },
       "context_count": {
         "tip": "上下文數 / 最大上下文數"
       },
@@ -973,8 +988,8 @@
       },
       "code_wrappable": "程式碼區塊可自動換行",
       "context_count": {
-        "label": "上下文",
-        "tip": "在上下文中保留的前幾則訊息"
+        "label": "最大上下文 Token",
+        "tip": "對話歷史的上下文 Token 預算（包含提示詞/訊息等）。超過預算時，較早的訊息會從請求中被裁剪（並可被壓縮為摘要）。"
       },
       "keep_chat_requests_alive_on_sleep": {
         "label": "睡眠時保持聊天進行",

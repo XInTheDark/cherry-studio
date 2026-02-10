@@ -5,7 +5,11 @@ import { DeleteIcon, ResetIcon } from '@renderer/components/Icons'
 import { HStack } from '@renderer/components/Layout'
 import { SelectModelPopup } from '@renderer/components/Popups/SelectModelPopup'
 import Selector from '@renderer/components/Selector'
-import { DEFAULT_CONTEXTCOUNT, DEFAULT_TEMPERATURE, MAX_CONTEXT_COUNT } from '@renderer/config/constant'
+import {
+  DEFAULT_MAX_CONTEXT_TOKENS,
+  DEFAULT_TEMPERATURE,
+  UNLIMITED_MAX_CONTEXT_TOKENS
+} from '@renderer/config/constant'
 import { isEmbeddingModel, isRerankModel } from '@renderer/config/models'
 import { useTimer } from '@renderer/hooks/useTimer'
 import { SettingRow } from '@renderer/pages/settings'
@@ -28,7 +32,9 @@ interface Props {
 
 const AssistantModelSettings: FC<Props> = ({ assistant, updateAssistant, updateAssistantSettings }) => {
   const [temperature, setTemperature] = useState(assistant?.settings?.temperature ?? DEFAULT_TEMPERATURE)
-  const [contextCount, setContextCount] = useState(assistant?.settings?.contextCount ?? DEFAULT_CONTEXTCOUNT)
+  const [maxContextTokens, setMaxContextTokens] = useState(
+    assistant?.settings?.maxContextTokens ?? DEFAULT_MAX_CONTEXT_TOKENS
+  )
   const [enableMaxTokens, setEnableMaxTokens] = useState(assistant?.settings?.enableMaxTokens ?? false)
   const [maxTokens, setMaxTokens] = useState(assistant?.settings?.maxTokens ?? 0)
   const [streamOutput, setStreamOutput] = useState(assistant?.settings?.streamOutput)
@@ -56,9 +62,9 @@ const AssistantModelSettings: FC<Props> = ({ assistant, updateAssistant, updateA
     }
   }
 
-  const onContextCountChange = (value) => {
+  const onMaxContextTokensChange = (value) => {
     if (!isNaN(value as number)) {
-      updateAssistantSettings({ contextCount: value })
+      updateAssistantSettings({ maxContextTokens: value })
     }
   }
 
@@ -169,7 +175,7 @@ const AssistantModelSettings: FC<Props> = ({ assistant, updateAssistant, updateA
   const onReset = () => {
     setTemperature(DEFAULT_ASSISTANT_SETTINGS.temperature)
     setEnableTemperature(DEFAULT_ASSISTANT_SETTINGS.enableTemperature ?? false)
-    setContextCount(DEFAULT_ASSISTANT_SETTINGS.contextCount)
+    setMaxContextTokens(DEFAULT_ASSISTANT_SETTINGS.maxContextTokens)
     setEnableMaxTokens(DEFAULT_ASSISTANT_SETTINGS.enableMaxTokens ?? false)
     setMaxTokens(DEFAULT_ASSISTANT_SETTINGS.maxTokens ?? 0)
     setStreamOutput(DEFAULT_ASSISTANT_SETTINGS.streamOutput)
@@ -206,11 +212,6 @@ const AssistantModelSettings: FC<Props> = ({ assistant, updateAssistant, updateA
     return () => updateAssistantSettings({ customParameters: customParametersRef.current })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
-
-  const formatSliderTooltip = (value?: number) => {
-    if (value === undefined) return ''
-    return value.toString()
-  }
 
   return (
     <Container>
@@ -347,33 +348,19 @@ const AssistantModelSettings: FC<Props> = ({ assistant, updateAssistant, updateA
         </Col>
         <Col span={4}>
           <EditableNumber
-            min={0}
-            max={MAX_CONTEXT_COUNT}
-            step={1}
-            value={contextCount}
+            min={1}
+            max={UNLIMITED_MAX_CONTEXT_TOKENS}
+            step={256}
+            value={maxContextTokens}
             changeOnBlur
             onChange={(value) => {
               if (!isNull(value)) {
-                setContextCount(value)
-                setTimeoutTimer('contextCount_onChange', () => updateAssistantSettings({ contextCount: value }), 500)
+                setMaxContextTokens(value)
+                setTimeoutTimer('maxContextTokens_onChange', () => onMaxContextTokensChange(value), 500)
               }
             }}
-            formatter={(value) => (value === MAX_CONTEXT_COUNT ? t('chat.settings.max') : (value ?? ''))}
+            formatter={(value) => (value === UNLIMITED_MAX_CONTEXT_TOKENS ? t('chat.settings.max') : (value ?? ''))}
             style={{ width: '100%' }}
-          />
-        </Col>
-      </Row>
-      <Row align="middle" gutter={24}>
-        <Col span={24}>
-          <Slider
-            min={0}
-            max={MAX_CONTEXT_COUNT}
-            onChange={setContextCount}
-            onChangeComplete={onContextCountChange}
-            value={typeof contextCount === 'number' ? contextCount : 0}
-            marks={{ 0: '0', 25: '25', 50: '50', 75: '75', 100: t('chat.settings.max') }}
-            step={1}
-            tooltip={{ formatter: formatSliderTooltip, open: false }}
           />
         </Col>
       </Row>

@@ -7,7 +7,7 @@ import { getTemperature, getTimeout, getTopP } from '../modelParameters'
 
 vi.mock('@renderer/services/AssistantService', () => ({
   getAssistantSettings: (assistant: Assistant): AssistantSettings => ({
-    contextCount: assistant.settings?.contextCount ?? 4096,
+    maxContextTokens: assistant.settings?.maxContextTokens ?? 10000000,
     temperature: assistant.settings?.temperature ?? 0.7,
     enableTemperature: assistant.settings?.enableTemperature ?? true,
     topP: assistant.settings?.topP ?? 1,

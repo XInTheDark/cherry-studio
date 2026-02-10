@@ -716,6 +716,21 @@
         "title": "Limpar mensagens"
       },
       "collapse": "Colapsar",
+      "compaction": {
+        "already_compact": "[to be translated]:Conversation is already compacted.",
+        "badge_tip": "[to be translated]:Conversation has compacted history",
+        "clear_action": "[to be translated]:Clear compaction",
+        "clear_success": "[to be translated]:Compaction cleared.",
+        "compact_action": "[to be translated]:Compact conversation",
+        "compact_failed": "[to be translated]:Failed to compact conversation.",
+        "compact_success": "[to be translated]:Compacted {{count}} messages into {{segments}} segment(s).",
+        "details": "[to be translated]:Compaction details",
+        "messages": "[to be translated]:Compacted messages",
+        "not_enough_messages": "[to be translated]:Not enough history to compact yet.",
+        "segments": "[to be translated]:Compacted segments",
+        "summary_tokens": "[to be translated]:Summary tokens",
+        "updated_at": "[to be translated]:Updated at"
+      },
       "context_count": {
         "tip": "Número de contexto / Número máximo de contexto"
       },
@@ -747,6 +762,10 @@
       "slash_commands": {
         "description": "Comandos de barra da sessão do agente",
         "title": "Comandos de Barra"
+      },
+      "sleep_keepalive_active": {
+        "label": "[to be translated]:Sleep guard active",
+        "tip": "[to be translated]:Sleep prevention is active while chat requests are running."
       },
       "thinking": {
         "budget_exceeds_max": "Orçamento de pensamento excede o número máximo de tokens",
@@ -969,8 +988,12 @@
       },
       "code_wrappable": "Bloco de código com quebra de linha",
       "context_count": {
-        "label": "Número de contexto",
-        "tip": "Número de mensagens a serem mantidas no contexto. Quanto maior o número, mais longo será o contexto e mais tokens serão consumidos. Para conversas normais, é recomendado um valor entre 5-10"
+        "label": "Tokens máximos de contexto",
+        "tip": "Orçamento de tokens para o prompt/histórico. Quando excedido, mensagens mais antigas são removidas das solicitações (e podem ser compactadas em resumos)."
+      },
+      "keep_chat_requests_alive_on_sleep": {
+        "label": "[to be translated]:Keep chat running during sleep",
+        "tip": "[to be translated]:Best effort: while a chat request is in progress, Cherry Studio will try to prevent system sleep so generation can finish. This may increase battery usage."
       },
       "max": "Sem limite",
       "max_tokens": {

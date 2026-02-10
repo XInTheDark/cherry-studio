@@ -30,6 +30,8 @@ import type {
 import { convertFileBlockToFilePart, convertFileBlockToTextPart } from './fileProcessor'
 
 const logger = loggerService.withContext('messageConverter')
+const TOOL_ARGUMENTS_MAX_CHARS = 2000
+const TOOL_RESPONSE_MAX_CHARS = 8000
 
 /**
  * 转换消息为 AI SDK 参数格式
@@ -70,6 +72,15 @@ function stringifyToolOutput(value: unknown): string {
   }
 }
 
+function truncateToolPayload(value: string, maxChars: number): string {
+  if (value.length <= maxChars) {
+    return value
+  }
+
+  const omittedChars = value.length - maxChars
+  return value.slice(0, maxChars) + '\n...[truncated, omitted ' + omittedChars + ' chars]'
+}
+
 async function buildToolHistoryMessages(toolBlocks: any[]): Promise<ModelMessage[]> {
   const toolResponses = toolBlocks.map((block) => (block as any)?.metadata?.rawMcpToolResponse).filter(Boolean)
 
@@ -91,7 +102,12 @@ async function buildToolHistoryMessages(toolBlocks: any[]): Promise<ModelMessage
       type: 'tool-call' as const,
       toolCallId: tr.toolCallId ?? tr.id,
       toolName: tr.tool?.name ?? tr.toolName,
-      input: await parseToolCallInput(tr.arguments)
+      input: await parseToolCallInput(
+        truncateToolPayload(
+          typeof tr.arguments === 'string' ? tr.arguments : stringifyToolOutput(tr.arguments),
+          TOOL_ARGUMENTS_MAX_CHARS
+        )
+      )
     }))
   )
 
@@ -106,7 +122,7 @@ async function buildToolHistoryMessages(toolBlocks: any[]): Promise<ModelMessage
         value:
           tr.status === 'cancelled' && (tr.response === undefined || tr.response === null)
             ? 'cancelled'
-            : stringifyToolOutput(tr.response)
+            : truncateToolPayload(stringifyToolOutput(tr.response), TOOL_RESPONSE_MAX_CHARS)
       }
     }))
 

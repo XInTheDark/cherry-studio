@@ -1,18 +1,11 @@
 import { loggerService } from '@logger'
 import { convertMessagesToSdkMessages } from '@renderer/aiCore/prepareParams'
 import type { Assistant, Message } from '@renderer/types'
-import { filterAdjacentUserMessaegs, filterLastAssistantMessage } from '@renderer/utils/messageUtils/filters'
 import type { ModelMessage } from 'ai'
-import { findLast, isEmpty, takeRight } from 'lodash'
+import { findLast, isEmpty } from 'lodash'
 
 import { getAssistantSettings, getDefaultModel } from './AssistantService'
-import {
-  filterAfterContextClearMessages,
-  filterEmptyMessages,
-  filterErrorOnlyMessagesWithRelated,
-  filterUsefulMessages,
-  filterUserRoleStartMessages
-} from './MessagesService'
+import { filterMessagesPipelineByTokens } from './ContextWindowService'
 
 const logger = loggerService.withContext('ConversationService')
 
@@ -23,7 +16,7 @@ export class ConversationService {
    */
   static filterMessagesPipeline(
     messages: Message[],
-    contextCount: number,
+    maxContextTokens: number,
     options?: {
       /**
        * When true, keep trailing assistant messages (used by \"continue\" where the context may end with assistant output).
@@ -31,19 +24,7 @@ export class ConversationService {
       allowTrailingAssistant?: boolean
     }
   ): Message[] {
-    const messagesAfterContextClear = filterAfterContextClearMessages(messages)
-    const usefulMessages = filterUsefulMessages(messagesAfterContextClear)
-    // Run the error-only filter before trimming trailing assistant responses so the pair is removed together.
-    const withoutErrorOnlyPairs = filterErrorOnlyMessagesWithRelated(usefulMessages)
-    const withoutTrailingAssistant = options?.allowTrailingAssistant
-      ? withoutErrorOnlyPairs
-      : filterLastAssistantMessage(withoutErrorOnlyPairs)
-    const withoutAdjacentUsers = filterAdjacentUserMessaegs(withoutTrailingAssistant)
-    const limitedByContext = takeRight(withoutAdjacentUsers, contextCount + 2)
-    const contextClearFiltered = filterAfterContextClearMessages(limitedByContext)
-    const nonEmptyMessages = filterEmptyMessages(contextClearFiltered)
-    const userRoleStartMessages = filterUserRoleStartMessages(nonEmptyMessages)
-    return userRoleStartMessages
+    return filterMessagesPipelineByTokens(messages, maxContextTokens, options)
   }
 
   static async prepareMessagesForModel(
@@ -56,9 +37,7 @@ export class ConversationService {
       allowTrailingAssistant?: boolean
     }
   ): Promise<{ modelMessages: ModelMessage[]; uiMessages: Message[] }> {
-    const { contextCount } = getAssistantSettings(assistant)
-    // This logic is extracted from the original ApiService.fetchChatCompletion
-    // const contextMessages = filterContextMessages(messages)
+    const { maxContextTokens } = getAssistantSettings(assistant)
     const lastUserMessage = findLast(messages, (m) => m.role === 'user')
     if (!lastUserMessage) {
       return {
@@ -67,17 +46,31 @@ export class ConversationService {
       }
     }
 
-    const uiMessagesFromPipeline = ConversationService.filterMessagesPipeline(messages, contextCount, options)
+    const { ConversationCompactionService } = await import('./ConversationCompactionService')
+    const compactionContext = await ConversationCompactionService.resolveContextWindow({
+      topicId: lastUserMessage.topicId,
+      messages,
+      maxContextTokens
+    })
+
+    const uiMessagesFromPipeline = ConversationService.filterMessagesPipeline(
+      compactionContext.liveMessages,
+      compactionContext.adjustedMaxContextTokens,
+      options
+    )
     logger.debug('uiMessagesFromPipeline', uiMessagesFromPipeline)
 
     // Fallback: ensure at least the last user message is present to avoid empty payloads
     let uiMessages = uiMessagesFromPipeline
-    if ((!uiMessages || uiMessages.length === 0) && lastUserMessage) {
-      uiMessages = [lastUserMessage]
+    const fallbackLastUser = findLast(compactionContext.liveMessages, (m) => m.role === 'user') || lastUserMessage
+    if ((!uiMessages || uiMessages.length === 0) && fallbackLastUser) {
+      uiMessages = [fallbackLastUser]
     }
 
+    const liveModelMessages = await convertMessagesToSdkMessages(uiMessages, assistant.model || getDefaultModel())
+
     return {
-      modelMessages: await convertMessagesToSdkMessages(uiMessages, assistant.model || getDefaultModel()),
+      modelMessages: [...compactionContext.summaryMessages, ...liveModelMessages],
       uiMessages
     }
   }

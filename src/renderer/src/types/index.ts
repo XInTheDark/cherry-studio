@@ -20,6 +20,7 @@ import type { BaseTool, MCPTool } from './tool'
 export * from './agent'
 export * from './apiModels'
 export * from './apiServer'
+export * from './compaction'
 export * from './knowledge'
 export * from './mcp'
 export * from './notification'
@@ -144,7 +145,10 @@ export type AssistantSettings = {
   enableTemperature?: boolean
   topP: number
   enableTopP?: boolean
-  contextCount: number
+  /** Prompt/context token budget used to trim history before each request. */
+  maxContextTokens: number
+  /** @deprecated Legacy message-count context window, kept for migration compatibility only. */
+  contextCount?: number
   streamOutput: boolean
   defaultModel?: Model
   customParameters?: AssistantSettingCustomParameters[]

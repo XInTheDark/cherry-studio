@@ -19,10 +19,11 @@ import db from '@renderer/databases'
 import FileManager from '@renderer/services/FileManager'
 import store from '@renderer/store'
 import { updateTopicUpdatedAt } from '@renderer/store/assistants'
+import type { ConversationCompactionState } from '@renderer/types/compaction'
 import type { Message, MessageBlock } from '@renderer/types/newMessage'
 import { isEmpty } from 'lodash'
 
-import type { MessageDataSource } from './types'
+import type { MessageDataSource, TopicRecord } from './types'
 
 const logger = loggerService.withContext('DexieMessageDataSource')
 
@@ -64,11 +65,53 @@ export class DexieMessageDataSource implements MessageDataSource {
     }
   }
 
-  async getRawTopic(topicId: string): Promise<{ id: string; messages: Message[] } | undefined> {
+  async getRawTopic(topicId: string): Promise<TopicRecord | undefined> {
     try {
       return await db.topics.get(topicId)
     } catch (error) {
       logger.error(`Failed to get raw topic ${topicId}:`, error as Error)
+      throw error
+    }
+  }
+
+  async getCompactionState(topicId: string): Promise<ConversationCompactionState | undefined> {
+    try {
+      const topic = await db.topics.get(topicId)
+      return topic?.compactionState
+    } catch (error) {
+      logger.error(`Failed to get compaction state for topic ${topicId}:`, error as Error)
+      throw error
+    }
+  }
+
+  async saveCompactionState(topicId: string, state: ConversationCompactionState): Promise<void> {
+    try {
+      await db.transaction('rw', db.topics, async () => {
+        const topic = await db.topics.get(topicId)
+        if (!topic) {
+          await db.topics.add({ id: topicId, messages: [], compactionState: state })
+          return
+        }
+
+        await db.topics.update(topicId, { compactionState: state })
+      })
+    } catch (error) {
+      logger.error(`Failed to save compaction state for topic ${topicId}:`, error as Error)
+      throw error
+    }
+  }
+
+  async clearCompactionState(topicId: string): Promise<void> {
+    try {
+      await db.topics
+        .where('id')
+        .equals(topicId)
+        .modify((topic: any) => {
+          if (!topic) return
+          delete topic.compactionState
+        })
+    } catch (error) {
+      logger.error(`Failed to clear compaction state for topic ${topicId}:`, error as Error)
       throw error
     }
   }

@@ -716,6 +716,21 @@
         "title": "清空消息"
       },
       "collapse": "收起",
+      "compaction": {
+        "already_compact": "当前会话已是最新压缩状态。",
+        "badge_tip": "当前会话包含压缩后的历史",
+        "clear_action": "清除压缩",
+        "clear_success": "已清除压缩状态。",
+        "compact_action": "压缩会话",
+        "compact_failed": "压缩会话失败。",
+        "compact_success": "已将 {{count}} 条消息压缩为 {{segments}} 个分段。",
+        "details": "压缩详情",
+        "messages": "压缩消息数",
+        "not_enough_messages": "当前历史不足，暂时无法压缩。",
+        "segments": "压缩分段",
+        "summary_tokens": "摘要 Token",
+        "updated_at": "更新时间"
+      },
       "context_count": {
         "tip": "上下文数 / 最大上下文数"
       },
@@ -973,8 +988,8 @@
       },
       "code_wrappable": "代码块可换行",
       "context_count": {
-        "label": "上下文数",
-        "tip": "要保留在上下文中的消息数量，数值越大，上下文越长，消耗的 Token 越多。普通聊天建议 5-10"
+        "label": "最大上下文 Token",
+        "tip": "对话历史的上下文 Token 预算（包含提示词/消息等）。超过预算时，较早的消息会从请求中被裁剪（并可被压缩为摘要）。"
       },
       "keep_chat_requests_alive_on_sleep": {
         "label": "睡眠时保持聊天进行",

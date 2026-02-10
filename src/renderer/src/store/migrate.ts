@@ -17,7 +17,7 @@
 import { loggerService } from '@logger'
 import { nanoid } from '@reduxjs/toolkit'
 import {
-  DEFAULT_CONTEXTCOUNT,
+  DEFAULT_MAX_CONTEXT_TOKENS,
   DEFAULT_STREAM_OPTIONS_INCLUDE_USAGE,
   DEFAULT_TEMPERATURE,
   isMac
@@ -1755,7 +1755,7 @@ const migrateConfig = {
         if (!assistant.settings) {
           assistant.settings = {
             temperature: DEFAULT_TEMPERATURE,
-            contextCount: DEFAULT_CONTEXTCOUNT,
+            maxContextTokens: DEFAULT_MAX_CONTEXT_TOKENS,
             topP: 1,
             toolUseMode: 'prompt',
             customParameters: [],
@@ -3185,6 +3185,34 @@ const migrateConfig = {
       return state
     } catch (error) {
       logger.error('migrate 193 error', error as Error)
+      return state
+    }
+  },
+  '194': (state: RootState) => {
+    try {
+      const normalizeSettings = (assistant: Assistant) => {
+        if (!assistant.settings) {
+          assistant.settings = {
+            ...DEFAULT_ASSISTANT_SETTINGS,
+            maxContextTokens: DEFAULT_MAX_CONTEXT_TOKENS
+          }
+          return
+        }
+
+        if (typeof assistant.settings.maxContextTokens !== 'number' || assistant.settings.maxContextTokens <= 0) {
+          assistant.settings.maxContextTokens = DEFAULT_MAX_CONTEXT_TOKENS
+        }
+
+        delete assistant.settings.contextCount
+      }
+
+      normalizeSettings(state.assistants.defaultAssistant)
+      state.assistants.assistants.forEach((assistant) => normalizeSettings(assistant))
+
+      logger.info('migrate 194 success')
+      return state
+    } catch (error) {
+      logger.error('migrate 194 error', error as Error)
       return state
     }
   }

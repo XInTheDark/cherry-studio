@@ -56,6 +56,8 @@ export interface CompletionsParams {
   enableGenerateImage?: boolean
 
   // 上下文控制
+  maxContextTokens?: number
+  /** @deprecated Legacy message-count context window */
   contextCount?: number
   topicId?: string // 主题ID，用于关联上下文
 

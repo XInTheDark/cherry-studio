@@ -17,7 +17,7 @@ vi.mock('@renderer/store', () => ({
 // Full-files injection needs base params and some defaults. Mock the whole AssistantService module
 // to avoid pulling in the full dependency graph (which can create circular init in tests).
 vi.mock('@renderer/services/AssistantService', () => {
-  const defaultAssistantSettings = { contextCount: 10 }
+  const defaultAssistantSettings = { maxContextTokens: 10000000 }
 
   const createDefaultTopic = (assistantId: string) => ({
     id: 'topic-default',

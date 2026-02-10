@@ -716,6 +716,21 @@
         "title": "Ștergi toate mesajele?"
       },
       "collapse": "Restrânge",
+      "compaction": {
+        "already_compact": "[to be translated]:Conversation is already compacted.",
+        "badge_tip": "[to be translated]:Conversation has compacted history",
+        "clear_action": "[to be translated]:Clear compaction",
+        "clear_success": "[to be translated]:Compaction cleared.",
+        "compact_action": "[to be translated]:Compact conversation",
+        "compact_failed": "[to be translated]:Failed to compact conversation.",
+        "compact_success": "[to be translated]:Compacted {{count}} messages into {{segments}} segment(s).",
+        "details": "[to be translated]:Compaction details",
+        "messages": "[to be translated]:Compacted messages",
+        "not_enough_messages": "[to be translated]:Not enough history to compact yet.",
+        "segments": "[to be translated]:Compacted segments",
+        "summary_tokens": "[to be translated]:Summary tokens",
+        "updated_at": "[to be translated]:Updated at"
+      },
       "context_count": {
         "tip": "Context / Context maxim"
       },
@@ -747,6 +762,10 @@
       "slash_commands": {
         "description": "Comenzi slash pentru sesiunea agentului",
         "title": "Comenzi slash"
+      },
+      "sleep_keepalive_active": {
+        "label": "[to be translated]:Sleep guard active",
+        "tip": "[to be translated]:Sleep prevention is active while chat requests are running."
       },
       "thinking": {
         "budget_exceeds_max": "Bugetul de gândire depășește numărul maxim de tokeni",
@@ -969,8 +988,12 @@
       },
       "code_wrappable": "Încadrare text în blocul de cod",
       "context_count": {
-        "label": "Context",
-        "tip": "Numărul de mesaje anterioare de păstrat în context."
+        "label": "Token-uri maxime de context",
+        "tip": "Buget de token-uri pentru prompt/istoric. Când este depășit, mesajele mai vechi sunt eliminate din cereri (și pot fi compactate în rezumate)."
+      },
+      "keep_chat_requests_alive_on_sleep": {
+        "label": "[to be translated]:Keep chat running during sleep",
+        "tip": "[to be translated]:Best effort: while a chat request is in progress, Cherry Studio will try to prevent system sleep so generation can finish. This may increase battery usage."
       },
       "max": "Nelimitat",
       "max_tokens": {

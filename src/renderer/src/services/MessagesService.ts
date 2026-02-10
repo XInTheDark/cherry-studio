@@ -1,6 +1,6 @@
 import { loggerService } from '@logger'
 import SearchPopup from '@renderer/components/Popups/SearchPopup'
-import { DEFAULT_CONTEXTCOUNT, MAX_CONTEXT_COUNT, UNLIMITED_CONTEXT_COUNT } from '@renderer/config/constant'
+import { DEFAULT_MAX_CONTEXT_TOKENS } from '@renderer/config/constant'
 import { getTopicById } from '@renderer/hooks/useTopic'
 import i18n from '@renderer/i18n'
 import { fetchMessagesSummary } from '@renderer/services/ApiService'
@@ -21,13 +21,14 @@ import {
   createMessage,
   resetMessage
 } from '@renderer/utils/messageUtils/create'
-import { filterContextMessages } from '@renderer/utils/messageUtils/filters'
 import { getMainTextContent } from '@renderer/utils/messageUtils/find'
 import dayjs from 'dayjs'
 import { t } from 'i18next'
+import { findLast } from 'lodash'
 import type { NavigateFunction } from 'react-router'
 
 import { getAssistantById, getAssistantProvider, getDefaultModel } from './AssistantService'
+import { estimateMessagesContextTokens, filterMessagesPipelineByTokens } from './ContextWindowService'
 import { EVENT_NAMES, EventEmitter } from './EventService'
 import FileManager from './FileManager'
 import { isThreadTopicId, parseThreadTopicId } from './ThreadService'
@@ -44,15 +45,37 @@ export {
   getGroupedMessages
 } from '@renderer/utils/messageUtils/filters'
 
-export function getContextCount(assistant: Assistant, messages: Message[]) {
-  const settingContextCount = assistant?.settings?.contextCount ?? DEFAULT_CONTEXTCOUNT
-  const actualContextCount = settingContextCount === MAX_CONTEXT_COUNT ? UNLIMITED_CONTEXT_COUNT : settingContextCount
+export async function getContextTokens(assistant: Assistant, messages: Message[]) {
+  const maxContextTokens = assistant?.settings?.maxContextTokens ?? DEFAULT_MAX_CONTEXT_TOKENS
+  const topicId = findLast(messages, (message) => message.role === 'user')?.topicId
 
-  const contextMsgs = filterContextMessages(messages, actualContextCount)
+  const { ConversationCompactionService } = await import('./ConversationCompactionService')
+  const compactionContext = await ConversationCompactionService.resolveContextWindow({
+    topicId,
+    messages,
+    maxContextTokens
+  })
+
+  const contextMsgs = filterMessagesPipelineByTokens(
+    compactionContext.liveMessages,
+    compactionContext.adjustedMaxContextTokens,
+    {
+      allowTrailingAssistant: true
+    }
+  )
 
   return {
-    current: contextMsgs.length,
-    max: settingContextCount
+    current: compactionContext.summaryTokenEstimate + estimateMessagesContextTokens(contextMsgs),
+    max: maxContextTokens,
+    compaction: compactionContext.compactionState
+      ? {
+          summaryTokens: compactionContext.summaryTokenEstimate,
+          segments: compactionContext.compactionState.segments.length,
+          compactedMessageCount: compactionContext.compactionState.compactedMessageCount,
+          updatedAt: compactionContext.compactionState.updatedAt,
+          state: compactionContext.compactionState
+        }
+      : undefined
   }
 }
 

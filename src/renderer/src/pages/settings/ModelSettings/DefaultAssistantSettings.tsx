@@ -4,7 +4,11 @@ import { ResetIcon } from '@renderer/components/Icons'
 import { HStack } from '@renderer/components/Layout'
 import Selector from '@renderer/components/Selector'
 import { TopView } from '@renderer/components/TopView'
-import { DEFAULT_CONTEXTCOUNT, DEFAULT_TEMPERATURE } from '@renderer/config/constant'
+import {
+  DEFAULT_MAX_CONTEXT_TOKENS,
+  DEFAULT_TEMPERATURE,
+  UNLIMITED_MAX_CONTEXT_TOKENS
+} from '@renderer/config/constant'
 import { useTheme } from '@renderer/context/ThemeProvider'
 import { useDefaultAssistant } from '@renderer/hooks/useAssistant'
 import { DEFAULT_ASSISTANT_SETTINGS } from '@renderer/services/AssistantService'
@@ -23,7 +27,9 @@ const AssistantSettings: FC = () => {
   const { defaultAssistant, updateDefaultAssistant } = useDefaultAssistant()
   const [temperature, setTemperature] = useState(defaultAssistant.settings?.temperature ?? DEFAULT_TEMPERATURE)
   const [enableTemperature, setEnableTemperature] = useState(defaultAssistant.settings?.enableTemperature ?? false)
-  const [contextCount, setContextCount] = useState(defaultAssistant.settings?.contextCount ?? DEFAULT_CONTEXTCOUNT)
+  const [maxContextTokens, setMaxContextTokens] = useState(
+    defaultAssistant.settings?.maxContextTokens ?? DEFAULT_MAX_CONTEXT_TOKENS
+  )
   const [enableMaxTokens, setEnableMaxTokens] = useState(defaultAssistant?.settings?.enableMaxTokens ?? false)
   const [maxTokens, setMaxTokens] = useState(defaultAssistant?.settings?.maxTokens ?? 0)
   const [topP, setTopP] = useState(defaultAssistant.settings?.topP ?? 1)
@@ -46,7 +52,7 @@ const AssistantSettings: FC = () => {
         ...defaultAssistant.settings,
         temperature: settings.temperature ?? temperature,
         enableTemperature: settings.enableTemperature ?? enableTemperature,
-        contextCount: settings.contextCount ?? contextCount,
+        maxContextTokens: settings.maxContextTokens ?? maxContextTokens,
         enableMaxTokens: settings.enableMaxTokens ?? enableMaxTokens,
         maxTokens: settings.maxTokens ?? maxTokens,
         streamOutput: settings.streamOutput ?? true,
@@ -65,8 +71,8 @@ const AssistantSettings: FC = () => {
       }
     }
   const onTemperatureChange = handleChange(setTemperature, (value) => onUpdateAssistantSettings({ temperature: value }))
-  const onContextCountChange = handleChange(setContextCount, (value) =>
-    onUpdateAssistantSettings({ contextCount: value })
+  const onMaxContextTokensChange = handleChange(setMaxContextTokens, (value) =>
+    onUpdateAssistantSettings({ maxContextTokens: value })
   )
   const onMaxTokensChange = handleChange(setMaxTokens, (value) => onUpdateAssistantSettings({ maxTokens: value }))
   const onTopPChange = handleChange(setTopP, (value) => onUpdateAssistantSettings({ topP: value }))
@@ -74,7 +80,7 @@ const AssistantSettings: FC = () => {
   const onReset = () => {
     setTemperature(DEFAULT_TEMPERATURE)
     setEnableTemperature(true)
-    setContextCount(DEFAULT_CONTEXTCOUNT)
+    setMaxContextTokens(DEFAULT_MAX_CONTEXT_TOKENS)
     setEnableMaxTokens(false)
     setMaxTokens(0)
     setTopP(1)
@@ -242,24 +248,19 @@ const AssistantSettings: FC = () => {
         </Tooltip>
       </Row>
       <Row align="middle" gutter={20} style={{ marginTop: -5, marginBottom: -10 }}>
-        <Col span={19}>
-          <Slider
-            min={0}
-            max={20}
-            marks={{ 0: '0', 5: '5', 10: '10', 15: '15', 20: t('chat.settings.max') }}
-            onChange={setContextCount}
-            onChangeComplete={onContextCountChange}
-            value={typeof contextCount === 'number' ? contextCount : 0}
-            step={1}
-          />
-        </Col>
-        <Col span={5}>
+        <Col span={24}>
           <InputNumber
-            min={0}
-            max={20}
-            step={1}
-            value={contextCount}
-            onChange={onContextCountChange}
+            min={1}
+            max={UNLIMITED_MAX_CONTEXT_TOKENS}
+            step={256}
+            value={maxContextTokens}
+            onChange={onMaxContextTokensChange}
+            formatter={(value) => {
+              if (value === UNLIMITED_MAX_CONTEXT_TOKENS) {
+                return t('chat.settings.max')
+              }
+              return value === undefined ? '' : value.toString()
+            }}
             style={{ width: '100%' }}
           />
         </Col>

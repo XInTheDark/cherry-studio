@@ -716,6 +716,21 @@
         "title": "Clear all messages?"
       },
       "collapse": "Collapse",
+      "compaction": {
+        "already_compact": "Conversation is already compacted.",
+        "badge_tip": "Conversation has compacted history",
+        "clear_action": "Clear compaction",
+        "clear_success": "Compaction cleared.",
+        "compact_action": "Compact conversation",
+        "compact_failed": "Failed to compact conversation.",
+        "compact_success": "Compacted {{count}} messages into {{segments}} segment(s).",
+        "details": "Compaction details",
+        "messages": "Compacted messages",
+        "not_enough_messages": "Not enough history to compact yet.",
+        "segments": "Compacted segments",
+        "summary_tokens": "Summary tokens",
+        "updated_at": "Updated at"
+      },
       "context_count": {
         "tip": "Context / Max Context"
       },
@@ -973,8 +988,8 @@
       },
       "code_wrappable": "Code block wrappable",
       "context_count": {
-        "label": "Context",
-        "tip": "The number of previous messages to keep in the context."
+        "label": "Max context tokens",
+        "tip": "Prompt/context token budget for the conversation history. When exceeded, older messages are trimmed from requests (and may be compacted into summaries)."
       },
       "keep_chat_requests_alive_on_sleep": {
         "label": "Keep chat running during sleep",

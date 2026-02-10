@@ -716,6 +716,21 @@
         "title": "すべてのメッセージをクリアしますか？"
       },
       "collapse": "折りたたむ",
+      "compaction": {
+        "already_compact": "[to be translated]:Conversation is already compacted.",
+        "badge_tip": "[to be translated]:Conversation has compacted history",
+        "clear_action": "[to be translated]:Clear compaction",
+        "clear_success": "[to be translated]:Compaction cleared.",
+        "compact_action": "[to be translated]:Compact conversation",
+        "compact_failed": "[to be translated]:Failed to compact conversation.",
+        "compact_success": "[to be translated]:Compacted {{count}} messages into {{segments}} segment(s).",
+        "details": "[to be translated]:Compaction details",
+        "messages": "[to be translated]:Compacted messages",
+        "not_enough_messages": "[to be translated]:Not enough history to compact yet.",
+        "segments": "[to be translated]:Compacted segments",
+        "summary_tokens": "[to be translated]:Summary tokens",
+        "updated_at": "[to be translated]:Updated at"
+      },
       "context_count": {
         "tip": "コンテキスト数 / 最大コンテキスト数"
       },
@@ -747,6 +762,10 @@
       "slash_commands": {
         "description": "エージェントセッションスラッシュコマンド",
         "title": "スラッシュコマンド"
+      },
+      "sleep_keepalive_active": {
+        "label": "[to be translated]:Sleep guard active",
+        "tip": "[to be translated]:Sleep prevention is active while chat requests are running."
       },
       "thinking": {
         "budget_exceeds_max": "思考予算が最大トークン数を超えました",
@@ -969,8 +988,12 @@
       },
       "code_wrappable": "コードブロック折り返し",
       "context_count": {
-        "label": "コンテキスト",
-        "tip": "コンテキストに保持する以前のメッセージの数"
+        "label": "最大コンテキストトークン",
+        "tip": "会話履歴に使うトークン予算です。超えると古いメッセージはリクエストから省かれます（要約に圧縮される場合があります）。"
+      },
+      "keep_chat_requests_alive_on_sleep": {
+        "label": "[to be translated]:Keep chat running during sleep",
+        "tip": "[to be translated]:Best effort: while a chat request is in progress, Cherry Studio will try to prevent system sleep so generation can finish. This may increase battery usage."
       },
       "max": "制限なし",
       "max_tokens": {

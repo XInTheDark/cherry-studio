@@ -1,4 +1,4 @@
-import { MAX_CONTEXT_COUNT } from '@renderer/config/constant'
+import { UNLIMITED_MAX_CONTEXT_TOKENS } from '@renderer/config/constant'
 import { Infinity as InfinityIcon } from 'lucide-react'
 import type { CSSProperties } from 'react'
 
@@ -9,7 +9,7 @@ type Props = {
 }
 
 export default function MaxContextCount({ maxContext, style, size = 14 }: Props) {
-  return maxContext === MAX_CONTEXT_COUNT ? (
+  return maxContext >= UNLIMITED_MAX_CONTEXT_TOKENS ? (
     <InfinityIcon size={size} style={style} aria-label="infinity" />
   ) : (
     <span style={style}>{maxContext.toString()}</span>

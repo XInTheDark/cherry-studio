@@ -17,7 +17,7 @@
 // @ts-nocheck
 import type { PayloadAction } from '@reduxjs/toolkit'
 import { createSelector, createSlice } from '@reduxjs/toolkit'
-import { DEFAULT_CONTEXTCOUNT, DEFAULT_TEMPERATURE } from '@renderer/config/constant'
+import { DEFAULT_MAX_CONTEXT_TOKENS, DEFAULT_TEMPERATURE } from '@renderer/config/constant'
 import { TopicManager } from '@renderer/hooks/useTopic'
 import { DEFAULT_ASSISTANT_SETTINGS, getDefaultAssistant, getDefaultTopic } from '@renderer/services/AssistantService'
 import type { Assistant, AssistantPreset, AssistantSettings, Model, Topic, TrashedTopic } from '@renderer/types'
@@ -87,7 +87,7 @@ const assistantsSlice = createSlice({
             if (!assistant.settings) {
               assistant.settings = {
                 temperature: DEFAULT_TEMPERATURE,
-                contextCount: DEFAULT_CONTEXTCOUNT,
+                maxContextTokens: DEFAULT_MAX_CONTEXT_TOKENS,
                 enableMaxTokens: false,
                 maxTokens: 0,
                 streamOutput: true

@@ -31,7 +31,7 @@ vi.mock('@renderer/services/AssistantService', () => {
     isNameManuallyEdited: false
   })
 
-  const defaultAssistantSettings = { contextCount: 10 }
+  const defaultAssistantSettings = { maxContextTokens: 10000000 }
 
   const createDefaultAssistant = () => ({
     id: 'assistant-default',
@@ -46,7 +46,7 @@ vi.mock('@renderer/services/AssistantService', () => {
 
   return {
     DEFAULT_ASSISTANT_SETTINGS: defaultAssistantSettings,
-    getAssistantSettings: () => ({ contextCount: 10 }),
+    getAssistantSettings: () => ({ maxContextTokens: 10000000 }),
     getDefaultModel: () => ({ id: 'default-model' }),
     getDefaultAssistant: () => createDefaultAssistant(),
     getDefaultTopic: () => createDefaultTopic(),
@@ -110,7 +110,7 @@ describe('ConversationService.filterMessagesPipeline', () => {
 
     const filtered = ConversationService.filterMessagesPipeline(
       [user1, assistant1, user2, assistantError],
-      /* contextCount */ 10
+      /* maxContextTokens */ 10000000
     )
 
     expect(filtered.map((m) => m.id)).toEqual(['user-1'])
@@ -155,12 +155,40 @@ describe('ConversationService.filterMessagesPipeline', () => {
 
     const filtered = ConversationService.filterMessagesPipeline(
       [leadingAssistant, user1, assistant1, user2, user3],
-      /* contextCount */ 10
+      /* maxContextTokens */ 10000000
     )
 
     expect(filtered.map((m) => m.id)).toEqual(['user-1', 'assistant-1', 'user-3'])
     expect(filtered.find((m) => m.id === 'user-2')).toBeUndefined()
     expect(filtered[0].role).toBe('user')
     expect(filtered[filtered.length - 1].role).toBe('user')
+  })
+
+  it('keeps the most recent message when token budget is very small', () => {
+    const topicId = 'topic-1'
+    const assistantId = 'assistant-1'
+
+    const user1Block = createMainTextBlock('user-1', 'older question', { status: MessageBlockStatus.SUCCESS })
+    const user1 = createMessage('user', topicId, assistantId, { id: 'user-1', blocks: [user1Block.id] })
+
+    const assistant1Block = createMainTextBlock('assistant-1', 'older answer', {
+      status: MessageBlockStatus.SUCCESS
+    })
+    const assistant1 = createMessage('assistant', topicId, assistantId, {
+      id: 'assistant-1',
+      askId: 'user-1',
+      blocks: [assistant1Block.id]
+    })
+
+    const user2Block = createMainTextBlock('user-2', 'newest question', { status: MessageBlockStatus.SUCCESS })
+    const user2 = createMessage('user', topicId, assistantId, { id: 'user-2', blocks: [user2Block.id] })
+
+    mockStore.dispatch(messageBlocksSlice.actions.upsertOneBlock(user1Block))
+    mockStore.dispatch(messageBlocksSlice.actions.upsertOneBlock(assistant1Block))
+    mockStore.dispatch(messageBlocksSlice.actions.upsertOneBlock(user2Block))
+
+    const filtered = ConversationService.filterMessagesPipeline([user1, assistant1, user2], 1)
+
+    expect(filtered.map((m) => m.id)).toEqual(['user-2'])
   })
 })

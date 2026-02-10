@@ -17,12 +17,13 @@
 import { loggerService } from '@logger'
 import store from '@renderer/store'
 import type { AgentPersistedMessage } from '@renderer/types/agent'
+import type { ConversationCompactionState } from '@renderer/types/compaction'
 import type { Message, MessageBlock } from '@renderer/types/newMessage'
 import { IpcChannel } from '@shared/IpcChannel'
 import { throttle } from 'lodash'
 import { LRUCache } from 'lru-cache'
 
-import type { MessageDataSource } from './types'
+import type { MessageDataSource, TopicRecord } from './types'
 import { extractSessionId } from './types'
 
 const logger = loggerService.withContext('AgentMessageDataSource')
@@ -639,7 +640,7 @@ export class AgentMessageDataSource implements MessageDataSource {
     logger.info(`ensureTopic called for agent session ${sessionId}, no action needed`)
   }
 
-  async getRawTopic(topicId: string): Promise<{ id: string; messages: Message[] } | undefined> {
+  async getRawTopic(topicId: string): Promise<TopicRecord | undefined> {
     try {
       // For agent sessions, fetch messages from backend and return in raw topic format
       const { messages } = await this.fetchMessages(topicId)
@@ -651,6 +652,23 @@ export class AgentMessageDataSource implements MessageDataSource {
       logger.error(`Failed to get raw topic for agent session ${topicId}:`, error as Error)
       return undefined
     }
+  }
+
+  async getCompactionState(topicId: string): Promise<ConversationCompactionState | undefined> {
+    void topicId
+    // Agent sessions currently do not support persisted compaction state
+    return undefined
+  }
+
+  async saveCompactionState(topicId: string, state: ConversationCompactionState): Promise<void> {
+    void topicId
+    void state
+    logger.warn('saveCompactionState called for agent session, operation not supported')
+  }
+
+  async clearCompactionState(topicId: string): Promise<void> {
+    void topicId
+    logger.warn('clearCompactionState called for agent session, operation not supported')
   }
 
   // ============ Additional Methods for Interface Compatibility ============

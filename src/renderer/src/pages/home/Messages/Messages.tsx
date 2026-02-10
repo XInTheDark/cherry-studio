@@ -14,7 +14,7 @@ import { autoRenameTopic } from '@renderer/hooks/useTopic'
 import SelectionBox from '@renderer/pages/home/Messages/SelectionBox'
 import { getDefaultTopic } from '@renderer/services/AssistantService'
 import { EVENT_NAMES, EventEmitter } from '@renderer/services/EventService'
-import { getContextCount, getGroupedMessages, getUserMessage } from '@renderer/services/MessagesService'
+import { getContextTokens, getGroupedMessages, getUserMessage } from '@renderer/services/MessagesService'
 import { estimateHistoryTokens } from '@renderer/services/TokenService'
 import store, { useAppDispatch } from '@renderer/store'
 import { messageBlocksSelectors, updateOneBlock } from '@renderer/store/messageBlock'
@@ -447,14 +447,51 @@ const Messages: React.FC<MessagesProps> = ({
     topic
   ])
 
-  useEffect(() => {
+  const emitEstimatedTokenCount = useCallback(async () => {
+    const [tokensCount, contextTokens] = await Promise.all([
+      estimateHistoryTokens(assistant, messages),
+      getContextTokens(assistant, messages)
+    ])
+
+    EventEmitter.emit(EVENT_NAMES.ESTIMATED_TOKEN_COUNT, {
+      tokensCount,
+      contextTokens
+    })
+
+    // Auto-compaction is best-effort and should never block UI refreshes.
+    // We only attempt it when the app is idle (not generating), and only for the active topic.
+    if (!enableGlobalEvents) return
+    if (store.getState().runtime.generating) return
+
     runAsyncFunction(async () => {
-      EventEmitter.emit(EVENT_NAMES.ESTIMATED_TOKEN_COUNT, {
-        tokensCount: await estimateHistoryTokens(assistant, messages),
-        contextCount: getContextCount(assistant, messages)
+      const { ConversationCompactionService } = await import('@renderer/services/ConversationCompactionService')
+      const result = await ConversationCompactionService.autoCompactConversation({
+        topicId: topic.id,
+        assistant,
+        messages
       })
-    }).then(() => onFirstUpdate?.())
-  }, [assistant, messages, onFirstUpdate])
+
+      if (result?.status === 'success') {
+        EventEmitter.emit(EVENT_NAMES.REFRESH_CONTEXT_TOKEN_COUNT, { topicId: topic.id })
+      }
+    })
+  }, [assistant, enableGlobalEvents, messages, topic.id])
+
+  useEffect(() => {
+    runAsyncFunction(emitEstimatedTokenCount).then(() => onFirstUpdate?.())
+  }, [emitEstimatedTokenCount, onFirstUpdate])
+
+  useEffect(() => {
+    const unsubscribe = EventEmitter.on(EVENT_NAMES.REFRESH_CONTEXT_TOKEN_COUNT, (payload?: { topicId?: string }) => {
+      if (payload?.topicId && payload.topicId !== topic.id) {
+        return
+      }
+
+      runAsyncFunction(emitEstimatedTokenCount)
+    })
+
+    return () => unsubscribe()
+  }, [emitEstimatedTokenCount, topic.id])
 
   const loadMoreMessages = useCallback(() => {
     if (!hasMore || isLoadingMore) return

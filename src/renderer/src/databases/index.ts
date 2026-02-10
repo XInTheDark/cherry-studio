@@ -21,6 +21,7 @@ import type {
   QuickPhrase,
   TranslateHistory
 } from '@renderer/types'
+import type { ConversationCompactionState } from '@renderer/types/compaction'
 // Import necessary types for blocks and new message structure
 import type { Message as NewMessage, MessageBlock } from '@renderer/types/newMessage'
 import { Dexie, type EntityTable } from 'dexie'
@@ -32,7 +33,7 @@ export const db = new Dexie('CherryStudio', {
   chromeTransactionDurability: 'strict'
 }) as Dexie & {
   files: EntityTable<FileMetadata, 'id'>
-  topics: EntityTable<{ id: string; messages: NewMessage[] }, 'id'> // Correct type for topics
+  topics: EntityTable<{ id: string; messages: NewMessage[]; compactionState?: ConversationCompactionState }, 'id'> // Correct type for topics
   settings: EntityTable<{ id: string; value: any }, 'id'>
   knowledge_notes: EntityTable<KnowledgeNoteItem, 'id'>
   translate_history: EntityTable<TranslateHistory, 'id'>

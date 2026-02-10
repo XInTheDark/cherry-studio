@@ -11,7 +11,7 @@ import {
 import db from '@renderer/databases'
 import { useAssistant } from '@renderer/hooks/useAssistant'
 import { useInputText } from '@renderer/hooks/useInputText'
-import { useMessageOperations, useTopicLoading } from '@renderer/hooks/useMessageOperations'
+import { useMessageOperations, useTopicLoading, useTopicMessages } from '@renderer/hooks/useMessageOperations'
 import { useSettings } from '@renderer/hooks/useSettings'
 import { useShortcut } from '@renderer/hooks/useShortcuts'
 import { useTextareaResize } from '@renderer/hooks/useTextareaResize'
@@ -24,6 +24,7 @@ import {
 } from '@renderer/pages/home/Inputbar/context/InputbarToolsProvider'
 import { getDefaultTopic } from '@renderer/services/AssistantService'
 import { CacheService } from '@renderer/services/CacheService'
+import { ConversationCompactionService } from '@renderer/services/ConversationCompactionService'
 import { EVENT_NAMES, EventEmitter } from '@renderer/services/EventService'
 import FileManager from '@renderer/services/FileManager'
 import { checkRateLimit, getUserMessage } from '@renderer/services/MessagesService'
@@ -32,7 +33,15 @@ import { estimateTextTokens as estimateTxtTokens, estimateUserPromptUsage } from
 import WebSearchService from '@renderer/services/WebSearchService'
 import { useAppDispatch, useAppSelector } from '@renderer/store'
 import { sendMessage as _sendMessage } from '@renderer/store/thunk/messageThunk'
-import { type Assistant, type FileType, type KnowledgeBase, type Model, type Topic, TopicType } from '@renderer/types'
+import {
+  type Assistant,
+  type ConversationCompactionState,
+  type FileType,
+  type KnowledgeBase,
+  type Model,
+  type Topic,
+  TopicType
+} from '@renderer/types'
 import type { MessageInputBaseParams } from '@renderer/types/newMessage'
 import { delay } from '@renderer/utils'
 import { getSendMessageShortcutLabel } from '@renderer/utils/input'
@@ -79,6 +88,18 @@ type ProviderActionHandlers = {
   onNewContext: () => void
   onTextChange: (updater: string | ((prev: string) => string)) => void
   toggleExpanded: (nextState?: boolean) => void
+}
+
+type ContextTokenStats = {
+  current: number
+  max: number
+  compaction?: {
+    summaryTokens: number
+    segments: number
+    compactedMessageCount: number
+    updatedAt: string
+    state: ConversationCompactionState
+  }
 }
 
 const Inputbar: FC<Props> = ({ assistant: initialAssistant, setActiveTopic, topic, draftCacheKey }) => {
@@ -168,10 +189,11 @@ const InputbarInner: FC<InputbarInnerProps> = ({
   const { sendMessageShortcut, showInputEstimatedTokens, enableQuickPanelTriggers, keepChatRequestsAliveOnSleep } =
     useSettings()
   const [estimateTokenCount, setEstimateTokenCount] = useState(0)
-  const [contextCount, setContextCount] = useState({ current: 0, max: 0 })
+  const [contextTokens, setContextTokens] = useState<ContextTokenStats>({ current: 0, max: 0 })
 
   const { t } = useTranslation()
   const { pauseMessages } = useMessageOperations(topic)
+  const topicMessages = useTopicMessages(topic.id)
   const loading = useTopicLoading(topic)
   const dispatch = useAppDispatch()
   const isVisionAssistant = useMemo(() => isVisionModel(model), [model])
@@ -284,6 +306,39 @@ const InputbarInner: FC<InputbarInnerProps> = ({
     }
   }, [assistant, topic, text, mentionedModels, files, dispatch, setText, setFiles, setTimeoutTimer, resizeTextArea])
 
+  const handleCompactConversation = useCallback(async () => {
+    const result = await ConversationCompactionService.compactConversation({
+      topicId: topic.id,
+      assistant,
+      messages: topicMessages
+    })
+
+    if (result.status === 'success') {
+      window.toast.success(
+        t('chat.input.compaction.compact_success', {
+          count: result.compactedMessageCount,
+          segments: result.addedSegments
+        })
+      )
+    } else if (result.status === 'noop') {
+      const reasonKey =
+        result.reason === 'already_compact'
+          ? 'chat.input.compaction.already_compact'
+          : 'chat.input.compaction.not_enough_messages'
+      window.toast.info(t(reasonKey))
+    } else {
+      window.toast.error(result.message || t('chat.input.compaction.compact_failed'))
+    }
+
+    EventEmitter.emit(EVENT_NAMES.REFRESH_CONTEXT_TOKEN_COUNT, { topicId: topic.id })
+  }, [assistant, t, topic.id, topicMessages])
+
+  const handleClearCompaction = useCallback(async () => {
+    await ConversationCompactionService.clearCompaction(topic.id)
+    window.toast.success(t('chat.input.compaction.clear_success'))
+    EventEmitter.emit(EVENT_NAMES.REFRESH_CONTEXT_TOKEN_COUNT, { topicId: topic.id })
+  }, [t, topic.id])
+
   const tokenCountProps = useMemo(() => {
     if (!config.showTokenCount || estimateTokenCount === undefined || !showInputEstimatedTokens) {
       return undefined
@@ -292,9 +347,18 @@ const InputbarInner: FC<InputbarInnerProps> = ({
     return {
       estimateTokenCount,
       inputTokenCount: estimateTokenCount,
-      contextCount
+      contextTokens,
+      onCompactConversation: handleCompactConversation,
+      onClearCompaction: handleClearCompaction
     }
-  }, [config.showTokenCount, contextCount, estimateTokenCount, showInputEstimatedTokens])
+  }, [
+    config.showTokenCount,
+    contextTokens,
+    estimateTokenCount,
+    handleClearCompaction,
+    handleCompactConversation,
+    showInputEstimatedTokens
+  ])
 
   const onPause = useCallback(async () => {
     await pauseMessages()
@@ -387,9 +451,9 @@ const InputbarInner: FC<InputbarInnerProps> = ({
   useEffect(() => {
     const _setEstimateTokenCount = debounce(setEstimateTokenCount, 100, { leading: false, trailing: true })
     const unsubscribes = [
-      EventEmitter.on(EVENT_NAMES.ESTIMATED_TOKEN_COUNT, ({ tokensCount, contextCount }) => {
+      EventEmitter.on(EVENT_NAMES.ESTIMATED_TOKEN_COUNT, ({ tokensCount, contextTokens }) => {
         _setEstimateTokenCount(tokensCount)
-        setContextCount({ current: contextCount.current, max: contextCount.max })
+        setContextTokens(contextTokens)
       }),
       ...[EventEmitter.on(EVENT_NAMES.ADD_NEW_TOPIC, addNewTopic)]
     ]
@@ -485,8 +549,9 @@ const InputbarInner: FC<InputbarInnerProps> = ({
         <TokenCount
           estimateTokenCount={tokenCountProps.estimateTokenCount}
           inputTokenCount={tokenCountProps.inputTokenCount}
-          contextCount={tokenCountProps.contextCount}
-          onClick={onNewContext}
+          contextTokens={tokenCountProps.contextTokens}
+          onCompactConversation={tokenCountProps.onCompactConversation}
+          onClearCompaction={tokenCountProps.onClearCompaction}
         />
       )}
     </>

@@ -16,11 +16,12 @@
  */
 import { loggerService } from '@logger'
 import store from '@renderer/store'
+import type { ConversationCompactionState } from '@renderer/types/compaction'
 import type { Message, MessageBlock } from '@renderer/types/newMessage'
 
 import { AgentMessageDataSource } from './AgentMessageDataSource'
 import { DexieMessageDataSource } from './DexieMessageDataSource'
-import type { MessageDataSource } from './types'
+import type { MessageDataSource, TopicRecord } from './types'
 import { isAgentSessionTopicId } from './types'
 
 const logger = loggerService.withContext('DbService')
@@ -163,9 +164,24 @@ class DbService implements MessageDataSource {
 
   // ============ Optional Methods (with fallback) ============
 
-  async getRawTopic(topicId: string): Promise<{ id: string; messages: Message[] } | undefined> {
+  async getRawTopic(topicId: string): Promise<TopicRecord | undefined> {
     const source = this.getDataSource(topicId)
     return source.getRawTopic(topicId)
+  }
+
+  async getCompactionState(topicId: string): Promise<ConversationCompactionState | undefined> {
+    const source = this.getDataSource(topicId)
+    return source.getCompactionState(topicId)
+  }
+
+  async saveCompactionState(topicId: string, state: ConversationCompactionState): Promise<void> {
+    const source = this.getDataSource(topicId)
+    return source.saveCompactionState(topicId, state)
+  }
+
+  async clearCompactionState(topicId: string): Promise<void> {
+    const source = this.getDataSource(topicId)
+    return source.clearCompactionState(topicId)
   }
 
   async updateSingleBlock(blockId: string, updates: Partial<MessageBlock>): Promise<void> {

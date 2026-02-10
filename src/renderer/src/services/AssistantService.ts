@@ -1,11 +1,5 @@
 import { loggerService } from '@logger'
-import {
-  DEFAULT_CONTEXTCOUNT,
-  DEFAULT_MAX_TOKENS,
-  DEFAULT_TEMPERATURE,
-  MAX_CONTEXT_COUNT,
-  UNLIMITED_CONTEXT_COUNT
-} from '@renderer/config/constant'
+import { DEFAULT_MAX_CONTEXT_TOKENS, DEFAULT_MAX_TOKENS, DEFAULT_TEMPERATURE } from '@renderer/config/constant'
 import { getModelSupportedReasoningEffortOptions } from '@renderer/config/models'
 import { isQwenMTModel } from '@renderer/config/models/qwen'
 import { UNKNOWN } from '@renderer/config/translate'
@@ -38,7 +32,7 @@ const logger = loggerService.withContext('AssistantService')
  * - **MaxTokens disabled**: Use provider defaults by default
  * - **TopP disabled**: Use provider defaults by default
  * - **Streaming enabled**: Provides real-time response for better UX
- * - **Standard context count**: Balanced memory usage and conversation length
+ * - **Unlimited context budget by default**: Users can set a per-assistant token cap when needed
  */
 export const DEFAULT_ASSISTANT_SETTINGS = {
   maxTokens: DEFAULT_MAX_TOKENS,
@@ -47,7 +41,7 @@ export const DEFAULT_ASSISTANT_SETTINGS = {
   enableTemperature: false,
   topP: 1,
   enableTopP: false,
-  contextCount: DEFAULT_CONTEXTCOUNT,
+  maxContextTokens: DEFAULT_MAX_CONTEXT_TOKENS,
   streamOutput: true,
   defaultModel: undefined,
   customParameters: [],
@@ -217,16 +211,17 @@ export function getProviderByModelId(modelId?: string) {
  * Retrieves and normalizes assistant settings with special transformation handling.
  *
  * **Special Transformations:**
- * 1. **Context Count**: Converts `MAX_CONTEXT_COUNT` to `UNLIMITED_CONTEXT_COUNT` for internal processing
- * 2. **Max Tokens**: Only returns a value when `enableMaxTokens` is true, otherwise returns `undefined`
- * 3. **Max Tokens Validation**: Ensures maxTokens > 0, falls back to `DEFAULT_MAX_TOKENS` if invalid
- * 4. **Fallback Defaults**: Applies system defaults for all undefined/missing settings
+ * 1. **Max Tokens**: Only returns a value when enableMaxTokens is true, otherwise returns undefined
+ * 2. **Max Tokens Validation**: Ensures maxTokens > 0, falls back to DEFAULT_MAX_TOKENS if invalid
+ * 3. **Fallback Defaults**: Applies system defaults for all undefined/missing settings
  *
  * @param assistant - The assistant instance to extract settings from
  * @returns Normalized assistant settings with all transformations applied
  */
 export const getAssistantSettings = (assistant: Assistant): AssistantSettings => {
-  const contextCount = assistant?.settings?.contextCount ?? DEFAULT_CONTEXTCOUNT
+  const maxContextTokens = assistant?.settings?.maxContextTokens
+  const normalizedMaxContextTokens =
+    typeof maxContextTokens === 'number' && maxContextTokens > 0 ? maxContextTokens : DEFAULT_MAX_CONTEXT_TOKENS
   const getAssistantMaxTokens = () => {
     if (assistant.settings?.enableMaxTokens) {
       const maxTokens = assistant.settings.maxTokens
@@ -239,7 +234,7 @@ export const getAssistantSettings = (assistant: Assistant): AssistantSettings =>
   }
 
   return {
-    contextCount: contextCount === MAX_CONTEXT_COUNT ? UNLIMITED_CONTEXT_COUNT : contextCount,
+    maxContextTokens: normalizedMaxContextTokens,
     temperature: assistant?.settings?.temperature ?? DEFAULT_TEMPERATURE,
     enableTemperature: assistant?.settings?.enableTemperature ?? DEFAULT_ASSISTANT_SETTINGS.enableTemperature,
     topP: assistant?.settings?.topP ?? DEFAULT_ASSISTANT_SETTINGS.topP,

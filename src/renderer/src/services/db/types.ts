@@ -1,4 +1,11 @@
+import type { ConversationCompactionState } from '@renderer/types/compaction'
 import type { Message, MessageBlock } from '@renderer/types/newMessage'
+
+export interface TopicRecord {
+  id: string
+  messages: Message[]
+  compactionState?: ConversationCompactionState
+}
 
 /**
  * Message exchange data structure for persisting user-assistant conversations
@@ -36,9 +43,24 @@ export interface MessageDataSource {
   /**
    * Get raw topic data (just id and messages)
    */
-  getRawTopic(topicId: string): Promise<{ id: string; messages: Message[] } | undefined>
+  getRawTopic(topicId: string): Promise<TopicRecord | undefined>
+
+  /**
+   * Get conversation compaction state for a topic
+   */
+  getCompactionState(topicId: string): Promise<ConversationCompactionState | undefined>
 
   // ============ Write Operations ============
+  /**
+   * Save conversation compaction state
+   */
+  saveCompactionState(topicId: string, state: ConversationCompactionState): Promise<void>
+
+  /**
+   * Clear conversation compaction state
+   */
+  clearCompactionState(topicId: string): Promise<void>
+
   /**
    * Append a single message with its blocks
    */

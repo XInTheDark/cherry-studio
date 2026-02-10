@@ -2,52 +2,11 @@ import type { Assistant, FileMetadata, Usage } from '@renderer/types'
 import { FileTypes } from '@renderer/types'
 import type { Message } from '@renderer/types/newMessage'
 import { findFileBlocks, getMainTextContent, getThinkingContent } from '@renderer/utils/messageUtils/find'
-import { flatten, takeRight } from 'lodash'
+import { findLast } from 'lodash'
 import { approximateTokenSize } from 'tokenx'
 
 import { getAssistantSettings } from './AssistantService'
-import { filterAfterContextClearMessages, filterMessages } from './MessagesService'
-
-interface MessageItem {
-  name?: string
-  role: 'system' | 'user' | 'assistant'
-  content: string
-}
-
-async function getFileContent(file: FileMetadata) {
-  if (!file) {
-    return ''
-  }
-
-  if (file.type === FileTypes.TEXT) {
-    return await window.api.file.read(file.id + file.ext, true)
-  }
-
-  return ''
-}
-
-async function getMessageParam(message: Message): Promise<MessageItem[]> {
-  const param: MessageItem[] = []
-
-  const content = getMainTextContent(message)
-  const files = findFileBlocks(message)
-
-  param.push({
-    role: message.role,
-    content
-  })
-
-  if (files.length > 0) {
-    for (const file of files) {
-      param.push({
-        role: 'assistant',
-        content: await getFileContent(file.file)
-      })
-    }
-  }
-
-  return param
-}
+import { estimateMessagesContextTokens, filterMessagesPipelineByTokens } from './ContextWindowService'
 
 /**
  * 估算文本内容的 token 数量
@@ -166,31 +125,26 @@ export async function estimateMessagesUsage({
 }
 
 export async function estimateHistoryTokens(assistant: Assistant, msgs: Message[]) {
-  const { contextCount } = getAssistantSettings(assistant)
-  const maxContextCount = contextCount
-  const messages = filterMessages(filterAfterContextClearMessages(takeRight(msgs, maxContextCount)))
+  const { maxContextTokens } = getAssistantSettings(assistant)
+  const topicId = findLast(msgs, (message) => message.role === 'user')?.topicId
+  const { ConversationCompactionService } = await import('./ConversationCompactionService')
+  const compactionContext = await ConversationCompactionService.resolveContextWindow({
+    topicId,
+    messages: msgs,
+    maxContextTokens
+  })
 
-  // 有 usage 数据的消息，快速计算总数
-  const uasageTokens = messages
-    .filter((m) => m.usage)
-    .reduce((acc, message) => {
-      const inputTokens = message.usage?.total_tokens ?? 0
-      const outputTokens = message.usage!.completion_tokens ?? 0
-      return acc + (message.role === 'user' ? inputTokens : outputTokens)
-    }, 0)
+  const contextMessages = filterMessagesPipelineByTokens(
+    compactionContext.liveMessages,
+    compactionContext.adjustedMaxContextTokens,
+    {
+      allowTrailingAssistant: true
+    }
+  )
 
-  // 没有 usage 数据的消息，需要计算每条消息的 token
-  let allMessages: MessageItem[][] = []
-
-  for (const message of messages.filter((m) => !m.usage)) {
-    const items = await getMessageParam(message)
-    allMessages = allMessages.concat(items)
-  }
-
-  const prompt = assistant.prompt
-  const input = flatten(allMessages)
-    .map((m) => m.content)
-    .join('\n')
-
-  return estimateTextTokens(prompt + input) + uasageTokens
+  return (
+    estimateTextTokens(assistant.prompt || '') +
+    compactionContext.summaryTokenEstimate +
+    estimateMessagesContextTokens(contextMessages)
+  )
 }
