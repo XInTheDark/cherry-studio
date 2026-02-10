@@ -803,6 +803,23 @@ export class WindowService {
     captureWindow.focus()
   }
 
+  public hideScreenCaptureWindow() {
+    if (!this.screenCaptureWindow || this.screenCaptureWindow.isDestroyed()) {
+      return
+    }
+
+    this.screenCaptureWindow.hide()
+  }
+
+  public restoreScreenCaptureWindow() {
+    if (!this.screenCaptureWindow || this.screenCaptureWindow.isDestroyed()) {
+      return
+    }
+
+    this.screenCaptureWindow.show()
+    this.screenCaptureWindow.focus()
+  }
+
   public closeScreenCaptureWindow() {
     if (!this.screenCaptureWindow || this.screenCaptureWindow.isDestroyed()) {
       return

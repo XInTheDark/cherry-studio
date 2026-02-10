@@ -1,5 +1,6 @@
 import { loggerService } from '@logger'
 import ImageMarkupEditor from '@renderer/components/ImageEditor/ImageMarkupEditor'
+import FileManager from '@renderer/services/FileManager'
 import type { FileMetadata } from '@renderer/types'
 import type { FC } from 'react'
 import { useCallback, useEffect, useState } from 'react'
@@ -10,7 +11,7 @@ const logger = loggerService.withContext('ScreenCaptureWindow')
 
 const ScreenCaptureWindow: FC = () => {
   const { t } = useTranslation()
-  const [captureDataUrl, setCaptureDataUrl] = useState<string>('')
+  const [captureFile, setCaptureFile] = useState<FileMetadata | null>(null)
   const [loading, setLoading] = useState(true)
   const [errorCode, setErrorCode] = useState<string | null>(null)
 
@@ -21,13 +22,21 @@ const ScreenCaptureWindow: FC = () => {
       setLoading(true)
       setErrorCode(null)
 
+      let shouldRestoreCaptureWindow = false
+
       try {
-        const capture = await window.api.screenshot.captureDisplayDataUrl()
+        await window.api.screenCapture.hide()
+        shouldRestoreCaptureWindow = true
+
+        await new Promise((resolve) => setTimeout(resolve, 150))
+
+        // Reuse the same screenshot flow as the attachment button so behavior stays consistent.
+        const capture = await window.api.screenshot.capturePrimaryScreen()
         if (!mounted) {
           return
         }
 
-        setCaptureDataUrl(capture.dataUrl)
+        setCaptureFile(capture)
       } catch (error) {
         logger.error('Failed to initialize screen capture window:', error as Error)
         if (!mounted) {
@@ -43,6 +52,14 @@ const ScreenCaptureWindow: FC = () => {
           setErrorCode('unknown')
         }
       } finally {
+        if (shouldRestoreCaptureWindow) {
+          try {
+            await window.api.screenCapture.show()
+          } catch (error) {
+            logger.warn('Failed to restore screen capture window after capture:', error as Error)
+          }
+        }
+
         if (mounted) {
           setLoading(false)
         }
@@ -93,7 +110,7 @@ const ScreenCaptureWindow: FC = () => {
     return <CenterMessage>{t('common.loading')}</CenterMessage>
   }
 
-  if (!captureDataUrl || errorCode) {
+  if (!captureFile || errorCode) {
     return (
       <CenterMessage>
         <ErrorTitle>
@@ -116,7 +133,7 @@ const ScreenCaptureWindow: FC = () => {
   return (
     <Container>
       <ImageMarkupEditor
-        src={captureDataUrl}
+        src={`file://${FileManager.getSafePath(captureFile)}`}
         onCancel={handleCancel}
         onSave={handleSave}
         saveLabel={t('chat.input.screen_ask.send_to_quick_assistant')}

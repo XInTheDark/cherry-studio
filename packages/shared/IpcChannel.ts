@@ -79,6 +79,8 @@ export enum IpcChannel {
 
   ScreenCapture_Open = 'screen-capture:open',
   ScreenCapture_Close = 'screen-capture:close',
+  ScreenCapture_Show = 'screen-capture:show',
+  ScreenCapture_Hide = 'screen-capture:hide',
 
   // Mcp
   Mcp_AddServer = 'mcp:add-server',

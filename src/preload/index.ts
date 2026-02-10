@@ -389,7 +389,9 @@ const api = {
   },
   screenCapture: {
     open: (): Promise<void> => ipcRenderer.invoke(IpcChannel.ScreenCapture_Open),
-    close: (): Promise<void> => ipcRenderer.invoke(IpcChannel.ScreenCapture_Close)
+    close: (): Promise<void> => ipcRenderer.invoke(IpcChannel.ScreenCapture_Close),
+    show: (): Promise<void> => ipcRenderer.invoke(IpcChannel.ScreenCapture_Show),
+    hide: (): Promise<void> => ipcRenderer.invoke(IpcChannel.ScreenCapture_Hide)
   },
   aes: {
     encrypt: (text: string, secretKey: string, iv: string) =>

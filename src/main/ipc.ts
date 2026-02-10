@@ -911,6 +911,12 @@ export async function registerIpc(mainWindow: BrowserWindow, app: Electron.App) 
   ipcMain.handle(IpcChannel.ScreenCapture_Close, () => {
     windowService.closeScreenCaptureWindow()
   })
+  ipcMain.handle(IpcChannel.ScreenCapture_Show, () => {
+    windowService.restoreScreenCaptureWindow()
+  })
+  ipcMain.handle(IpcChannel.ScreenCapture_Hide, () => {
+    windowService.hideScreenCaptureWindow()
+  })
 
   // aes
   ipcMain.handle(IpcChannel.Aes_Encrypt, (_, text: string, secretKey: string, iv: string) =>

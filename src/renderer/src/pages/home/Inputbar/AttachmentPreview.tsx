@@ -1,4 +1,6 @@
 import {
+  CloseOutlined,
+  EditOutlined,
   FileExcelFilled,
   FileImageFilled,
   FileMarkdownFilled,
@@ -21,7 +23,7 @@ import { formatFileSize } from '@renderer/utils'
 import { Flex, Image, Tooltip } from 'antd'
 import { isEmpty } from 'lodash'
 import type { FC, MouseEvent } from 'react'
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import styled from 'styled-components'
 
@@ -150,27 +152,18 @@ const AttachmentPreview: FC<Props> = ({ files, setFiles, onAttachmentContextMenu
     x: number
     y: number
   } | null>(null)
-  const [imageEditMenu, setImageEditMenu] = useState<{
-    file: FileMetadata
-    x: number
-    y: number
-  } | null>(null)
 
   const handleContextMenu = async (file: FileMetadata, event: MouseEvent<HTMLDivElement>) => {
     event.preventDefault()
     event.stopPropagation()
 
-    const target = event.currentTarget as HTMLElement
-    const rect = target.getBoundingClientRect()
-
-    const x = rect.left
-    const y = rect.bottom
-
-    if (isImageFile(file.ext) && onEditImageAttachment) {
-      setImageEditMenu({ file, x, y })
+    if (isImageFile(file.ext)) {
       setContextMenu(null)
       return
     }
+
+    const target = event.currentTarget as HTMLElement
+    const rect = target.getBoundingClientRect()
 
     try {
       const isText = await window.api.file.isTextFile(file.path)
@@ -189,31 +182,8 @@ const AttachmentPreview: FC<Props> = ({ files, setFiles, onAttachmentContextMenu
     }
   }
 
-  useEffect(() => {
-    if (!imageEditMenu) {
-      return
-    }
-
-    const handleGlobalClick = () => {
-      setImageEditMenu(null)
-    }
-
-    window.addEventListener('mousedown', handleGlobalClick)
-    return () => {
-      window.removeEventListener('mousedown', handleGlobalClick)
-    }
-  }, [imageEditMenu])
-
-  const handleImageEdit = () => {
-    if (imageEditMenu && onEditImageAttachment) {
-      onEditImageAttachment(imageEditMenu.file)
-    }
-    setImageEditMenu(null)
-  }
-
   const handleConfirm = () => {
     if (contextMenu && onAttachmentContextMenu) {
-      // Create a synthetic mouse event for the callback
       const syntheticEvent = {
         preventDefault: () => {},
         stopPropagation: () => {}
@@ -225,7 +195,6 @@ const AttachmentPreview: FC<Props> = ({ files, setFiles, onAttachmentContextMenu
 
   const handleCancel = () => {
     setContextMenu(null)
-    setImageEditMenu(null)
   }
 
   if (isEmpty(files)) {
@@ -240,25 +209,40 @@ const AttachmentPreview: FC<Props> = ({ files, setFiles, onAttachmentContextMenu
             key={file.id}
             icon={getFileIcon(file.ext)}
             color="#37a5aa"
-            closable
-            onClose={() => setFiles(files.filter((f) => f.id !== file.id))}
+            closable={false}
             onContextMenu={(event) => {
               void handleContextMenu(file, event)
             }}>
-            <FileNameRender file={file} />
+            <AttachmentContent>
+              <FileNameRender file={file} />
+              <Actions>
+                {isImageFile(file.ext) && onEditImageAttachment && (
+                  <IconButton
+                    type="button"
+                    aria-label={t('chat.input.edit_image')}
+                    title={t('chat.input.edit_image')}
+                    onClick={(event) => {
+                      event.stopPropagation()
+                      onEditImageAttachment(file)
+                    }}>
+                    <EditOutlined />
+                  </IconButton>
+                )}
+                <IconButton
+                  type="button"
+                  aria-label={t('common.delete')}
+                  title={t('common.delete')}
+                  onClick={(event) => {
+                    event.stopPropagation()
+                    setFiles(files.filter((f) => f.id !== file.id))
+                  }}>
+                  <CloseOutlined />
+                </IconButton>
+              </Actions>
+            </AttachmentContent>
           </CustomTag>
         ))}
       </ContentContainer>
-
-      {imageEditMenu && (
-        <ImageMenu
-          style={{ left: imageEditMenu.x, top: imageEditMenu.y }}
-          onClick={(event) => {
-            event.stopPropagation()
-          }}>
-          <ImageMenuButton onClick={handleImageEdit}>{t('chat.input.edit_image')}</ImageMenuButton>
-        </ImageMenu>
-      )}
 
       {contextMenu && (
         <ConfirmDialog
@@ -288,30 +272,35 @@ const FileName = styled.span`
   }
 `
 
-export default AttachmentPreview
-
-const ImageMenu = styled.div`
-  position: fixed;
-  z-index: 1200;
-  background: var(--color-background-mute);
-  border: 1px solid var(--color-border);
-  border-radius: 8px;
-  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.2);
-  padding: 4px;
+const AttachmentContent = styled.div`
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
 `
 
-const ImageMenuButton = styled.button`
+const Actions = styled.div`
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+`
+
+const IconButton = styled.button`
   border: 0;
-  width: 100%;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  border-radius: 99px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   background: transparent;
-  color: var(--color-text);
-  text-align: left;
-  font-size: 12px;
-  border-radius: 6px;
-  padding: 6px 10px;
+  color: inherit;
   cursor: pointer;
 
   &:hover {
-    background: var(--color-background-soft);
+    background: rgba(0, 0, 0, 0.18);
+    color: #ffffff;
   }
 `
+
+export default AttachmentPreview
