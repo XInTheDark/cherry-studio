@@ -891,11 +891,15 @@ export class OpenAIAPIClient extends OpenAIBaseClient<
         }
 
         if (typeof chunk === 'string') {
+          const rawChunk = chunk
           try {
-            chunk = JSON.parse(chunk)
+            chunk = JSON.parse(rawChunk)
           } catch (error) {
-            logger.error('invalid chunk', { chunk, error })
-            throw new Error(t('error.chat.chunk.non_json'))
+            logger.warn('Failed to parse streaming JSON chunk. Skipping malformed chunk.', {
+              error,
+              chunkPreview: String(rawChunk).slice(0, 500)
+            })
+            return
           }
         }
 

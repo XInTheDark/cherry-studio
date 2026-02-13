@@ -40,6 +40,7 @@ import {
   extractAgentSessionIdFromTopicId,
   isAgentSessionTopicId
 } from '@renderer/utils/agentSession'
+import { isAbortError } from '@renderer/utils/error'
 import {
   createAssistantMessage,
   createTranslationBlock,
@@ -52,7 +53,7 @@ import { getStreamingUpdateDelayMs } from '@renderer/utils/throttling/streamingU
 import { API_SERVER_DEFAULTS } from '@shared/config/constant'
 import { IpcChannel } from '@shared/IpcChannel'
 import { defaultAppHeaders } from '@shared/utils'
-import type { ModelMessage, TextStreamPart } from 'ai'
+import { type ModelMessage, NoOutputGeneratedError, type TextStreamPart } from 'ai'
 import { t } from 'i18next'
 import { isEmpty } from 'lodash'
 import { LRUCache } from 'lru-cache'
@@ -77,6 +78,7 @@ import { newMessagesActions, selectMessagesForTopic } from '../newMessage'
 const logger = loggerService.withContext('MessageThunk')
 
 const AUTO_CONTINUE_MAX_ATTEMPTS = 5
+const AUTO_RETRY_MAX_ATTEMPTS = 3
 const CONTINUE_SYSTEM_MESSAGE: ModelMessage = { role: 'system', content: 'Continue' }
 const SLEEP_RECOVERY_MAX_ATTEMPTS = 1
 const SLEEP_RECOVERY_WAIT_ONLINE_MS = 15 * 1000
@@ -969,6 +971,8 @@ const fetchAndProcessAssistantResponseImpl = async (
     continueAttempt?: number
     /** 0-based retry counter for resume/network recovery retries. */
     sleepRecoveryAttempt?: number
+    /** 0-based retry counter for automatic generation retries. */
+    generationRetryAttempt?: number
   }
 ) => {
   const topic = origAssistant.topics.find((t) => t.id === topicId)
@@ -977,6 +981,74 @@ const fetchAndProcessAssistantResponseImpl = async (
     : origAssistant
   const assistantMsgId = assistantMessage.id
   let callbacks: StreamProcessorCallbacks = {}
+  let autoRetryScheduled = false
+
+  const scheduleAutoRetry = (error: unknown): boolean => {
+    if (autoRetryScheduled) {
+      return true
+    }
+
+    if (NoOutputGeneratedError.isInstance(error) || isAbortError(error)) {
+      return false
+    }
+
+    const currentRetryAttempt =
+      typeof options?.generationRetryAttempt === 'number' ? options.generationRetryAttempt : undefined
+    const nextRetryAttempt = typeof currentRetryAttempt === 'number' ? currentRetryAttempt + 1 : 0
+
+    if (nextRetryAttempt >= AUTO_RETRY_MAX_ATTEMPTS) {
+      return false
+    }
+
+    autoRetryScheduled = true
+    logger.warn('[auto-retry] Message generation failed; scheduling retry.', {
+      topicId,
+      assistantMsgId,
+      retryAttempt: nextRetryAttempt + 1,
+      maxRetryAttempts: AUTO_RETRY_MAX_ATTEMPTS,
+      continueAttempt: options?.continueAttempt,
+      errorMessage: extractErrorText(error)
+    })
+
+    const pendingMessageUpdate = {
+      status: AssistantMessageStatus.PENDING,
+      updatedAt: new Date().toISOString()
+    }
+
+    dispatch(
+      newMessagesActions.updateMessage({
+        topicId,
+        messageId: assistantMsgId,
+        updates: pendingMessageUpdate
+      })
+    )
+
+    void saveUpdatesToDB(assistantMsgId, topicId, pendingMessageUpdate, []).catch((dbError) => {
+      logger.error('[auto-retry] Failed to persist pending message update.', dbError as Error)
+    })
+
+    const queue = getTopicQueue(topicId)
+    queue.add(async () => {
+      const latest = getState().messages.entities[assistantMsgId]
+      if (!latest) {
+        logger.warn('[auto-retry] Assistant message disappeared before retry could start.', {
+          topicId,
+          assistantMsgId
+        })
+        return
+      }
+
+      await fetchAndProcessAssistantResponseImpl(dispatch, getState, topicId, origAssistant, latest, {
+        contextEndMessageId: assistantMsgId,
+        continueAttempt: options?.continueAttempt,
+        sleepRecoveryAttempt: options?.sleepRecoveryAttempt,
+        generationRetryAttempt: nextRetryAttempt
+      })
+    })
+
+    return true
+  }
+
   try {
     dispatch(newMessagesActions.setTopicLoading({ topicId, loading: true }))
 
@@ -1086,8 +1158,18 @@ const fetchAndProcessAssistantResponseImpl = async (
           headers: defaultAppHeaders()
         }
       },
-      streamProcessorCallbacks
+      (chunk) => {
+        if (chunk.type === ChunkType.ERROR && scheduleAutoRetry(chunk.error)) {
+          return
+        }
+
+        streamProcessorCallbacks(chunk)
+      }
     )
+
+    if (autoRetryScheduled) {
+      return
+    }
 
     // Auto-continue: if this run produced no visible output (tools/thoughts don't count), enqueue a continue call.
     // Note: this should be based on what this run added, not the whole message (continue might target older messages).
@@ -1193,10 +1275,15 @@ const fetchAndProcessAssistantResponseImpl = async (
         await fetchAndProcessAssistantResponseImpl(dispatch, getState, topicId, origAssistant, latest, {
           contextEndMessageId: assistantMsgId,
           continueAttempt: options?.continueAttempt,
-          sleepRecoveryAttempt: nextSleepRecoveryAttempt
+          sleepRecoveryAttempt: nextSleepRecoveryAttempt,
+          generationRetryAttempt: options?.generationRetryAttempt
         })
       })
 
+      return
+    }
+
+    if (scheduleAutoRetry(error)) {
       return
     }
 

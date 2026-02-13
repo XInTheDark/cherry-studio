@@ -67,7 +67,6 @@ import {
 } from '@renderer/utils/mcp-tools'
 import { findFileBlocks, findImageBlocks } from '@renderer/utils/messageUtils/find'
 import { buildClaudeCodeSystemMessage, getSdkClient } from '@shared/anthropic'
-import { t } from 'i18next'
 
 import type { GenericChunk } from '../../middleware/schemas'
 import { BaseApiClient } from '../BaseApiClient'
@@ -537,11 +536,15 @@ export class AnthropicAPIClient extends BaseApiClient<
       return {
         async transform(rawChunk: AnthropicSdkRawChunk, controller: TransformStreamDefaultController<GenericChunk>) {
           if (typeof rawChunk === 'string') {
+            const rawChunkText = rawChunk
             try {
-              rawChunk = JSON.parse(rawChunk)
+              rawChunk = JSON.parse(rawChunkText)
             } catch (error) {
-              logger.error('invalid chunk', { rawChunk, error })
-              throw new Error(t('error.chat.chunk.non_json'))
+              logger.warn('Failed to parse streaming JSON chunk. Skipping malformed chunk.', {
+                error,
+                chunkPreview: String(rawChunkText).slice(0, 500)
+              })
+              return
             }
           }
           switch (rawChunk.type) {

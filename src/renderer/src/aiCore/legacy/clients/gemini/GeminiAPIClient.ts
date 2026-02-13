@@ -56,7 +56,6 @@ import {
 import { findFileBlocks, findImageBlocks, getMainTextContent } from '@renderer/utils/messageUtils/find'
 import { defaultTimeout, MB } from '@shared/config/constant'
 import { getTrailingApiVersion, withoutTrailingApiVersion } from '@shared/utils'
-import { t } from 'i18next'
 
 import type { GenericChunk } from '../../middleware/schemas'
 import { BaseApiClient } from '../BaseApiClient'
@@ -598,11 +597,15 @@ export class GeminiAPIClient extends BaseApiClient<
       async transform(chunk: GeminiSdkRawChunk, controller: TransformStreamDefaultController<GenericChunk>) {
         logger.silly('chunk', chunk)
         if (typeof chunk === 'string') {
+          const rawChunk = chunk
           try {
-            chunk = JSON.parse(chunk)
+            chunk = JSON.parse(rawChunk)
           } catch (error) {
-            logger.error('invalid chunk', { chunk, error })
-            throw new Error(t('error.chat.chunk.non_json'))
+            logger.warn('Failed to parse streaming JSON chunk. Skipping malformed chunk.', {
+              error,
+              chunkPreview: String(rawChunk).slice(0, 500)
+            })
+            return
           }
         }
         if (chunk.candidates && chunk.candidates.length > 0) {

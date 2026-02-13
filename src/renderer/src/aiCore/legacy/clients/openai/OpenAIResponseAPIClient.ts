@@ -45,7 +45,6 @@ import {
 import { findFileBlocks, findImageBlocks, findToolBlocks } from '@renderer/utils/messageUtils/find'
 import { isSupportDeveloperRoleProvider } from '@renderer/utils/provider'
 import { MB } from '@shared/config/constant'
-import { t } from 'i18next'
 import { isEmpty } from 'lodash'
 
 import type { RequestTransformer, ResponseChunkTransformer } from '../types'
@@ -629,11 +628,15 @@ export class OpenAIResponseAPIClient extends OpenAIBaseClient<
     return () => ({
       async transform(chunk: OpenAIResponseSdkRawChunk, controller: TransformStreamDefaultController<GenericChunk>) {
         if (typeof chunk === 'string') {
+          const rawChunk = chunk
           try {
-            chunk = JSON.parse(chunk)
+            chunk = JSON.parse(rawChunk)
           } catch (error) {
-            logger.error('invalid chunk', { chunk, error })
-            throw new Error(t('error.chat.chunk.non_json'))
+            logger.warn('Failed to parse streaming JSON chunk. Skipping malformed chunk.', {
+              error,
+              chunkPreview: String(rawChunk).slice(0, 500)
+            })
+            return
           }
         }
         // 处理chunk
