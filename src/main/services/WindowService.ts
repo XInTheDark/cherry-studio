@@ -33,6 +33,7 @@ export class WindowService {
   private screenCaptureWindow: BrowserWindow | null = null
   private isPinnedMiniWindow: boolean = false
   private pendingMiniWindowSeed: { files: FileMetadata[] } | null = null
+  private screenCaptureRestoreState: { restoreMainWindow: boolean; restoreMiniWindow: boolean } | null = null
   //hacky-fix: store the focused status of mainWindow before miniWindow shows
   //to restore the focus status when miniWindow hides
   private wasMainWindowFocused: boolean = false
@@ -782,6 +783,7 @@ export class WindowService {
     this.screenCaptureWindow.setAlwaysOnTop(true, 'screen-saver')
 
     this.screenCaptureWindow.on('closed', () => {
+      this.restoreWindowsAfterScreenCapture()
       this.screenCaptureWindow = null
     })
 
@@ -794,7 +796,56 @@ export class WindowService {
     return this.screenCaptureWindow
   }
 
+  private prepareWindowsForScreenCapture() {
+    const shouldRestoreMainWindow =
+      !!this.mainWindow && !this.mainWindow.isDestroyed() && typeof this.mainWindow.isVisible === 'function'
+        ? this.mainWindow.isVisible()
+        : false
+
+    const shouldRestoreMiniWindow =
+      !!this.miniWindow && !this.miniWindow.isDestroyed() && typeof this.miniWindow.isVisible === 'function'
+        ? this.miniWindow.isVisible()
+        : false
+
+    this.screenCaptureRestoreState = {
+      restoreMainWindow: shouldRestoreMainWindow,
+      restoreMiniWindow: shouldRestoreMiniWindow
+    }
+
+    if (shouldRestoreMainWindow && this.mainWindow) {
+      this.mainWindow.hide()
+    }
+
+    if (shouldRestoreMiniWindow && this.miniWindow) {
+      this.miniWindow.hide()
+    }
+  }
+
+  private restoreWindowsAfterScreenCapture() {
+    if (!this.screenCaptureRestoreState) {
+      return
+    }
+
+    const { restoreMainWindow, restoreMiniWindow } = this.screenCaptureRestoreState
+    this.screenCaptureRestoreState = null
+
+    if (restoreMainWindow && this.mainWindow && !this.mainWindow.isDestroyed()) {
+      this.mainWindow.show()
+    }
+
+    if (
+      restoreMiniWindow &&
+      this.miniWindow &&
+      !this.miniWindow.isDestroyed() &&
+      configManager.getEnableQuickAssistant()
+    ) {
+      this.miniWindow.show()
+    }
+  }
+
   public showScreenCaptureWindow() {
+    this.prepareWindowsForScreenCapture()
+
     const captureWindow = this.createScreenCaptureWindow()
     const cursorDisplay = screen.getDisplayNearestPoint(screen.getCursorScreenPoint())
 

@@ -63,13 +63,6 @@ export const createToolCallbacks = (deps: ToolCallbacksDependencies) => {
       toolCallIdToBlockIdMap.delete(toolResponse.id)
 
       if (toolResponse.status === 'done' || toolResponse.status === 'error' || toolResponse.status === 'cancelled') {
-        if (!existingBlockId) {
-          logger.error(
-            `[onToolCallComplete] No existing block found for completed/error tool call ID: ${toolResponse.id}. Cannot update.`
-          )
-          return
-        }
-
         const finalStatus =
           toolResponse.status === 'done' || toolResponse.status === 'cancelled'
             ? MessageBlockStatus.SUCCESS
@@ -89,7 +82,23 @@ export const createToolCallbacks = (deps: ToolCallbacksDependencies) => {
             stack: null
           }
         }
-        blockManager.smartBlockUpdate(existingBlockId, changes, MessageBlockType.TOOL, true)
+
+        if (!existingBlockId) {
+          // Completion events can arrive without a pending event in rare race
+          // conditions; ensure every tool call still surfaces a final output.
+          const toolBlock = createToolBlock(assistantMsgId, toolResponse.id, {
+            toolName: toolResponse.tool.name,
+            status: finalStatus,
+            content: toolResponse.response,
+            error: changes.error,
+            metadata: { rawMcpToolResponse: toolResponse }
+          })
+          toolBlockId = toolBlock.id
+          blockManager.handleBlockTransition(toolBlock, MessageBlockType.TOOL)
+        } else {
+          blockManager.smartBlockUpdate(existingBlockId, changes, MessageBlockType.TOOL, true)
+        }
+
         // Handle citation block creation for web search results
         if (toolResponse.tool.name === 'builtin_web_search' && toolResponse.response) {
           const citationBlock = createCitationBlock(

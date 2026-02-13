@@ -560,6 +560,103 @@ describe('streamCallback Integration Tests', () => {
     expect((toolBlock as any)?.toolName).toBe('test-tool')
   })
 
+  it('should keep final tool output when complete arrives without pending', async () => {
+    const callbacks = createMockCallbacks(mockAssistantMsgId, mockTopicId, mockAssistant, dispatch, getState)
+
+    const mockTool: MCPTool = {
+      id: 'tool-no-pending-1',
+      serverId: 'server-1',
+      serverName: 'Test Server',
+      name: 'test-tool-no-pending',
+      description: 'Test tool without pending',
+      inputSchema: {
+        type: 'object',
+        title: 'Test Tool Input',
+        properties: {}
+      },
+      type: 'mcp'
+    }
+
+    const chunks: Chunk[] = [
+      { type: ChunkType.LLM_RESPONSE_CREATED },
+      {
+        type: ChunkType.MCP_TOOL_COMPLETE,
+        responses: [
+          {
+            id: 'tool-call-no-pending-1',
+            tool: mockTool,
+            arguments: { testArg: 'value' },
+            status: 'done' as const,
+            response: 'Tool result without pending'
+          }
+        ]
+      },
+      { type: ChunkType.BLOCK_COMPLETE }
+    ]
+
+    await processChunks(chunks, callbacks)
+
+    const state = getState()
+    const blocks = Object.values(state.messageBlocks.entities)
+
+    const toolBlock = blocks.find((block) => block.type === MessageBlockType.TOOL)
+    expect(toolBlock).toBeDefined()
+    expect(toolBlock?.content).toBe('Tool result without pending')
+    expect(toolBlock?.status).toBe(MessageBlockStatus.SUCCESS)
+    expect((toolBlock as any)?.toolName).toBe('test-tool-no-pending')
+  })
+
+  it('should keep error output when tool error arrives without pending', async () => {
+    const callbacks = createMockCallbacks(mockAssistantMsgId, mockTopicId, mockAssistant, dispatch, getState)
+
+    const mockTool: MCPTool = {
+      id: 'tool-no-pending-2',
+      serverId: 'server-1',
+      serverName: 'Test Server',
+      name: 'test-tool-error-no-pending',
+      description: 'Test tool error without pending',
+      inputSchema: {
+        type: 'object',
+        title: 'Test Tool Input',
+        properties: {}
+      },
+      type: 'mcp'
+    }
+
+    const errorResponse = {
+      isError: true,
+      content: [{ type: 'text' as const, text: 'Tool failed' }]
+    }
+
+    const chunks: Chunk[] = [
+      { type: ChunkType.LLM_RESPONSE_CREATED },
+      {
+        type: ChunkType.MCP_TOOL_COMPLETE,
+        responses: [
+          {
+            id: 'tool-call-no-pending-2',
+            tool: mockTool,
+            arguments: { testArg: 'value' },
+            status: 'error' as const,
+            response: errorResponse
+          }
+        ]
+      },
+      { type: ChunkType.BLOCK_COMPLETE }
+    ]
+
+    await processChunks(chunks, callbacks)
+
+    const state = getState()
+    const blocks = Object.values(state.messageBlocks.entities)
+
+    const toolBlock = blocks.find((block) => block.type === MessageBlockType.TOOL)
+    expect(toolBlock).toBeDefined()
+    expect(toolBlock?.content).toEqual(errorResponse)
+    expect((toolBlock as any)?.metadata?.rawMcpToolResponse?.status).toBe('error')
+    expect(toolBlock?.error?.message).toBe('Tool execution failed/error')
+  })
+
   it('should persist Responses reasoning encrypted content from RAW chunks', async () => {
     const callbacks = createMockCallbacks(mockAssistantMsgId, mockTopicId, mockAssistant, dispatch, getState)
 

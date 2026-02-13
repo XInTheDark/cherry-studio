@@ -866,7 +866,9 @@ class McpService {
           // Need server side support: https://modelcontextprotocol.io/specification/2025-06-18/basic/lifecycle#timeouts
           resetTimeoutOnProgress: server.longRunning,
           maxTotalTimeout: server.longRunning ? 10 * 60 * 1000 : undefined,
-          signal: this.activeToolCalls.get(toolCallId)?.signal
+          // Use the local controller directly so abort remains effective even if
+          // the active-call map entry is cleaned up concurrently.
+          signal: abortController.signal
         })
         return result as MCPCallToolResponse
       } catch (error) {
@@ -1052,10 +1054,12 @@ class McpService {
       this.activeToolCalls.delete(callId)
       logger.debug(`Aborted tool call`, { callId })
       return true
-    } else {
-      logger.warn(`No active tool call found for callId`, { callId })
-      return false
     }
+
+    // Treat missing call as already completed/aborted so callers can safely
+    // perform best-effort cancellation without surfacing a false failure.
+    logger.debug(`No active tool call found for callId; treating as already finished`, { callId })
+    return true
   }
 
   /**
