@@ -7,11 +7,16 @@ import { addNote } from '@renderer/services/NotesService'
 import store from '@renderer/store'
 import { setExportState } from '@renderer/store/runtime'
 import type { Topic } from '@renderer/types'
-import type { Message } from '@renderer/types/newMessage'
+import type { Message, MessageBlock } from '@renderer/types/newMessage'
 import { removeSpecialCharactersForFileName } from '@renderer/utils/file'
 import { captureScrollableAsBlob, captureScrollableAsDataURL } from '@renderer/utils/image'
 import { convertMathFormula, markdownToPlainText } from '@renderer/utils/markdown'
-import { getCitationContent, getMainTextContent, getThinkingContent } from '@renderer/utils/messageUtils/find'
+import {
+  findAllBlocks,
+  getCitationContent,
+  getMainTextContent,
+  getThinkingContent
+} from '@renderer/utils/messageUtils/find'
 import { markdownToBlocks } from '@tryfabric/martian'
 import dayjs from 'dayjs'
 import DOMPurify from 'dompurify'
@@ -393,6 +398,51 @@ export const topicToPlainText = async (topic: Topic): Promise<string> => {
   }
 
   return topicName
+}
+
+type TopicJsonExportPayload = {
+  format: 'cherry-studio.topic-export.v1'
+  exportedAt: string
+  topic: Pick<Topic, 'id' | 'assistantId' | 'name' | 'type' | 'createdAt' | 'updatedAt' | 'pinned' | 'prompt'>
+  messages: Message[]
+  blocks: MessageBlock[]
+}
+
+/**
+ * Export topic data as JSON string.
+ * Includes complete message records and resolved block entities (tool calls, citations, thinking, etc.).
+ */
+export const topicToJson = async (topic: Topic): Promise<string> => {
+  const messages = await fetchTopicMessages(topic.id)
+  const collectedBlockIds = new Set<string>()
+  const blocks = messages
+    .flatMap((message) => findAllBlocks(message))
+    .filter((block) => {
+      if (collectedBlockIds.has(block.id)) {
+        return false
+      }
+      collectedBlockIds.add(block.id)
+      return true
+    })
+
+  const payload: TopicJsonExportPayload = {
+    format: 'cherry-studio.topic-export.v1',
+    exportedAt: new Date().toISOString(),
+    topic: {
+      id: topic.id,
+      assistantId: topic.assistantId,
+      name: topic.name,
+      type: topic.type,
+      createdAt: topic.createdAt,
+      updatedAt: topic.updatedAt,
+      pinned: topic.pinned,
+      prompt: topic.prompt
+    },
+    messages,
+    blocks
+  }
+
+  return JSON.stringify(payload, null, 2)
 }
 
 export const exportTopicAsMarkdown = async (

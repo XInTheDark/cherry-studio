@@ -1,12 +1,13 @@
 import type { Message, Topic } from '@renderer/types'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { copyMessageAsPlainText, copyTopicAsMarkdown, copyTopicAsPlainText } from '../copy'
+import { copyMessageAsPlainText, copyTopicAsJson, copyTopicAsMarkdown, copyTopicAsPlainText } from '../copy'
 
 // Mock dependencies
 vi.mock('@renderer/utils/export', () => ({
   topicToMarkdown: vi.fn(),
   topicToPlainText: vi.fn(),
+  topicToJson: vi.fn(),
   messageToPlainText: vi.fn()
 }))
 
@@ -143,6 +144,33 @@ describe('copy', () => {
     })
   })
 
+  describe('copyTopicAsJson', () => {
+    it('should copy topic as JSON successfully', async () => {
+      const topic = createTestTopic()
+      const jsonContent = '{"format":"cherry-studio.topic-export.v1"}'
+
+      const { topicToJson } = await import('@renderer/utils/export')
+      vi.mocked(topicToJson).mockResolvedValue(jsonContent)
+      mockClipboard.writeText.mockResolvedValue(undefined)
+
+      await copyTopicAsJson(topic)
+
+      expect(topicToJson).toHaveBeenCalledWith(topic)
+      expect(mockClipboard.writeText).toHaveBeenCalledWith(jsonContent)
+      expect(mockedToast.success).toHaveBeenCalledWith('message.copy.success')
+    })
+
+    it('should handle topicToJson errors', async () => {
+      const topic = createTestTopic()
+      const { topicToJson } = await import('@renderer/utils/export')
+      vi.mocked(topicToJson).mockRejectedValue(new Error('JSON export error'))
+
+      await expect(copyTopicAsJson(topic)).rejects.toThrow('JSON export error')
+      expect(mockClipboard.writeText).not.toHaveBeenCalled()
+      expect(mockedToast.success).not.toHaveBeenCalled()
+    })
+  })
+
   describe('copyMessageAsPlainText', () => {
     it('should copy message as plain text successfully', async () => {
       // 测试成功复制消息纯文本
@@ -177,10 +205,13 @@ describe('copy', () => {
   describe('edge cases', () => {
     it('should handle null or undefined inputs gracefully', async () => {
       // 测试null/undefined输入的错误处理
-      const { topicToMarkdown, topicToPlainText, messageToPlainText } = await import('@renderer/utils/export')
+      const { topicToMarkdown, topicToPlainText, topicToJson, messageToPlainText } = await import(
+        '@renderer/utils/export'
+      )
 
       vi.mocked(topicToMarkdown).mockRejectedValue(new Error('Cannot read properties of null'))
       vi.mocked(topicToPlainText).mockRejectedValue(new Error('Cannot read properties of undefined'))
+      vi.mocked(topicToJson).mockRejectedValue(new Error('Cannot read properties of null'))
       vi.mocked(messageToPlainText).mockImplementation(() => {
         throw new Error('Cannot read properties of null')
       })
@@ -189,6 +220,8 @@ describe('copy', () => {
       await expect(copyTopicAsMarkdown(null)).rejects.toThrow('Cannot read properties of null')
       // @ts-expect-error 测试类型错误
       await expect(copyTopicAsPlainText(undefined)).rejects.toThrow('Cannot read properties of undefined')
+      // @ts-expect-error 测试类型错误
+      await expect(copyTopicAsJson(null)).rejects.toThrow('Cannot read properties of null')
       // @ts-expect-error 测试类型错误
       await expect(copyMessageAsPlainText(null)).rejects.toThrow('Cannot read properties of null')
     })

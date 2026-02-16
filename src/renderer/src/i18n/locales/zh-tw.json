@@ -1037,6 +1037,7 @@
       },
       "copy": {
         "image": "複製為圖片",
+        "json": "複製為 JSON（完整對話）",
         "md": "複製為 Markdown",
         "plain_text": "複製為純文字（移除 Markdown）",
         "title": "複製"

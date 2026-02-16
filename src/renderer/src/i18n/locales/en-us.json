@@ -1037,6 +1037,7 @@
       },
       "copy": {
         "image": "Copy as image",
+        "json": "Copy as JSON (full conversation)",
         "md": "Copy as markdown",
         "plain_text": "Copy as plain text (remove Markdown)",
         "title": "Copy"

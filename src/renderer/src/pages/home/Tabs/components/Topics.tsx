@@ -21,7 +21,7 @@ import { newMessagesActions } from '@renderer/store/newMessage'
 import { setGenerating } from '@renderer/store/runtime'
 import type { Assistant, Topic } from '@renderer/types'
 import { classNames, removeSpecialCharactersForFileName } from '@renderer/utils'
-import { copyTopicAsMarkdown, copyTopicAsPlainText } from '@renderer/utils/copy'
+import { copyTopicAsJson, copyTopicAsMarkdown, copyTopicAsPlainText } from '@renderer/utils/copy'
 import {
   exportMarkdownToJoplin,
   exportMarkdownToSiyuan,
@@ -335,6 +335,11 @@ export const Topics: React.FC<Props> = ({ assistant: _assistant, activeTopic, se
             label: t('chat.topics.copy.image'),
             key: 'img',
             onClick: () => EventEmitter.emit(EVENT_NAMES.COPY_TOPIC_IMAGE, topic)
+          },
+          {
+            label: t('chat.topics.copy.json'),
+            key: 'json',
+            onClick: () => copyTopicAsJson(topic)
           },
           {
             label: t('chat.topics.copy.md'),
