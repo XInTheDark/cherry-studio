@@ -39,7 +39,7 @@ const inputbarRegistry = new Map<InputbarScope, InputbarScopeConfig>([
       showTools: true,
       toolsCollapsible: false,
       enableQuickPanel: true,
-      enableDragDrop: false
+      enableDragDrop: true
     }
   ]
 ])
