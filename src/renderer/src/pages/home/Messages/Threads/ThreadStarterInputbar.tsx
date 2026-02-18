@@ -1,32 +1,26 @@
 import { loggerService } from '@logger'
-import { useInputText } from '@renderer/hooks/useInputText'
-import { useTextareaResize } from '@renderer/hooks/useTextareaResize'
-import { InputbarCore } from '@renderer/pages/home/Inputbar/components/InputbarCore'
-import { InputbarToolsProvider } from '@renderer/pages/home/Inputbar/context/InputbarToolsProvider'
-import { CacheService } from '@renderer/services/CacheService'
+import { useAssistant } from '@renderer/hooks/useAssistant'
+import Inputbar, { type InputbarController } from '@renderer/pages/home/Inputbar/Inputbar'
 import { EVENT_NAMES, EventEmitter } from '@renderer/services/EventService'
-import { TopicType } from '@renderer/types'
+import { type Topic, TopicType } from '@renderer/types'
 import type { FC } from 'react'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
-import styled from 'styled-components'
 
 const logger = loggerService.withContext('ThreadStarterInputbar')
 
-const DRAFT_CACHE_TTL = 24 * 60 * 60 * 1000 // 24 hours (same as main input)
-
 type Props = {
+  assistantId: string
   parentTopicId: string
   parentMessageId: string
-
   placeholder: string
   focusComposer?: boolean
   draft?: string
-
   onSend: (content: string) => Promise<void>
 }
 
 const ThreadStarterInputbar: FC<Props> = ({
+  assistantId,
   parentTopicId,
   parentMessageId,
   placeholder,
@@ -35,6 +29,8 @@ const ThreadStarterInputbar: FC<Props> = ({
   onSend
 }) => {
   const { t } = useTranslation()
+  const { assistant } = useAssistant(assistantId)
+  const controllerRef = useRef<InputbarController | null>(null)
 
   // Keep drafts isolated per parent message so navigating between threads doesn't overwrite user input.
   const draftCacheKey = useMemo(
@@ -42,56 +38,55 @@ const ThreadStarterInputbar: FC<Props> = ({
     [parentMessageId, parentTopicId]
   )
 
-  const initialState = useMemo(
-    () => ({
-      files: [],
-      mentionedModels: [],
-      selectedKnowledgeBases: [],
-      isExpanded: false,
-      couldAddImageFile: false,
-      extensions: []
-    }),
-    []
-  )
+  const now = useMemo(() => new Date().toISOString(), [])
+  const parentTopic = useMemo<Topic | null>(() => {
+    if (!assistant) return null
 
-  const { text, setText } = useInputText({
-    initialValue: CacheService.get<string>(draftCacheKey) ?? '',
-    onChange: (value) => CacheService.set(draftCacheKey, value, DRAFT_CACHE_TTL)
-  })
+    const existing = assistant.topics.find((topic) => topic.id === parentTopicId)
+    if (existing) {
+      return existing
+    }
 
-  const {
-    textareaRef,
-    resize: resizeTextArea,
-    focus: focusTextarea,
-    customHeight,
-    setCustomHeight
-  } = useTextareaResize({
-    maxHeight: 500,
-    minHeight: 30
-  })
+    return {
+      id: parentTopicId,
+      assistantId: assistant.id,
+      name: t('thread.title'),
+      type: TopicType.Chat,
+      createdAt: now,
+      updatedAt: now,
+      messages: []
+    }
+  }, [assistant, now, parentTopicId, t])
 
   const focusToEnd = useCallback(() => {
-    const ta = textareaRef.current?.resizableTextArea?.textArea
-    if (!ta) return
-    try {
-      ta.focus()
-      const len = ta.value?.length ?? 0
-      ta.setSelectionRange(len, len)
-    } catch {
-      // ignore
-    }
-  }, [textareaRef])
+    requestAnimationFrame(() => controllerRef.current?.focusToEnd())
+  }, [])
 
-  // Apply initial seeded draft (selection -> typing flow). Don't clobber an existing draft.
+  const handleControllerChange = useCallback(
+    (controller: InputbarController | null) => {
+      controllerRef.current = controller
+      if (!controller) return
+
+      if (typeof draft === 'string') {
+        controller.setText((prev) => (prev ? prev : draft))
+      }
+
+      if (focusComposer) {
+        requestAnimationFrame(() => controller.focusToEnd())
+      }
+    },
+    [draft, focusComposer]
+  )
+
+  // Apply seeded draft updates while preserving existing user edits.
   useEffect(() => {
     if (typeof draft !== 'string') return
-    setText((prev) => (prev ? prev : draft))
-  }, [draft, setText])
+    controllerRef.current?.setText((prev) => (prev ? prev : draft))
+  }, [draft])
 
-  // When opening via selection typing, ensure the caret ends up at the end of the seeded content.
   useEffect(() => {
     if (!focusComposer) return
-    requestAnimationFrame(() => focusToEnd())
+    focusToEnd()
   }, [focusComposer, focusToEnd])
 
   // Buffer keystrokes during the focus transition (so the first characters don't get "lost").
@@ -102,75 +97,45 @@ const ThreadStarterInputbar: FC<Props> = ({
         if (payload.parentTopicId !== parentTopicId) return
         if (payload.parentMessageId !== parentMessageId) return
 
-        setText((prev) => prev + payload.key)
-        requestAnimationFrame(() => focusToEnd())
+        controllerRef.current?.setText((prev) => prev + payload.key)
+        focusToEnd()
       }
     )
     return () => unsubscribe()
-  }, [focusToEnd, parentMessageId, parentTopicId, setText])
+  }, [focusToEnd, parentMessageId, parentTopicId])
 
-  const [isSending, setIsSending] = useState(false)
-  const handleSendMessage = useCallback(async () => {
-    const content = text.trim()
-    if (!content) return
-    if (isSending) return
-
-    try {
-      setIsSending(true)
+  const handleSendText = useCallback(
+    async (content: string) => {
       await onSend(content)
-      setText('')
-      requestAnimationFrame(() => resizeTextArea(true))
-    } catch (error) {
+    },
+    [onSend]
+  )
+
+  const handleSendError = useCallback(
+    (error: unknown) => {
       logger.error('Failed to create thread:', error as Error)
       window.toast?.error?.(t('thread.create_failed'))
-    } finally {
-      setIsSending(false)
-    }
-  }, [isSending, onSend, resizeTextArea, setText, t, text])
+    },
+    [t]
+  )
+
+  if (!assistant || !parentTopic) {
+    return null
+  }
 
   return (
-    <CompactWrapper>
-      <InputbarToolsProvider
-        initialState={initialState}
-        actions={{
-          resizeTextArea: () => {},
-          addNewTopic: () => {},
-          clearTopic: () => {},
-          onNewContext: () => {},
-          onTextChange: () => {},
-          toggleExpanded: () => {}
-        }}>
-        <InputbarCore
-          scope={TopicType.Chat}
-          placeholder={placeholder}
-          text={text}
-          onTextChange={setText}
-          textareaRef={textareaRef}
-          height={customHeight}
-          onHeightChange={setCustomHeight}
-          resizeTextArea={resizeTextArea}
-          focusTextarea={focusTextarea}
-          isLoading={isSending}
-          supportedExts={[]}
-          handleSendMessage={handleSendMessage}
-          leftToolbar={null}
-          rightToolbar={null}
-          topContent={null}
-          autoFocus={Boolean(focusComposer)}
-        />
-      </InputbarToolsProvider>
-    </CompactWrapper>
+    <Inputbar
+      assistant={assistant}
+      setActiveTopic={() => {}}
+      topic={parentTopic}
+      draftCacheKey={draftCacheKey}
+      placeholder={placeholder}
+      autoFocus={Boolean(focusComposer)}
+      onSendText={handleSendText}
+      onSendError={handleSendError}
+      onControllerChange={handleControllerChange}
+    />
   )
 }
-
-const CompactWrapper = styled.div`
-  /* The main inputbar uses generous padding for the chat layout; the sidebar should be tighter. */
-  .inputbar {
-    padding: 0 0 10px 0;
-  }
-  [navbar-position='top'] & .inputbar {
-    padding: 0 0 10px 0;
-  }
-`
 
 export default ThreadStarterInputbar

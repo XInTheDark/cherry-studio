@@ -322,65 +322,70 @@ const MessageThreadsView: FC<{
   )
 
   return (
-    <div>
-      {selectedText?.trim() ? (
-        <SelectedText title={selectedText}>{selectedText}</SelectedText>
-      ) : (
-        <HintText>{t('thread.start')}</HintText>
-      )}
+    <MessageThreadsContainer>
+      <MessageThreadsListArea>
+        <ThreadList>
+          {threads.map((th) => (
+            <ThreadListItem
+              key={th.id}
+              role="button"
+              tabIndex={0}
+              onClick={() => onOpenThread(th.topicId)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault()
+                  onOpenThread(th.topicId)
+                }
+              }}>
+              <ThreadListItemMain>
+                <ThreadPrompt title={th.starterPrompt}>{th.starterPrompt}</ThreadPrompt>
+                <ThreadMeta>{dayjs(th.updatedAt ?? th.createdAt).format('MM/DD HH:mm')}</ThreadMeta>
+              </ThreadListItemMain>
 
-      <ThreadStarterInputbar
-        parentTopicId={parentTopicId}
-        parentMessageId={parentMessageId}
-        placeholder={t('thread.start_placeholder')}
-        focusComposer={focusComposer}
-        draft={draft}
-        onSend={handleCreate}
-      />
+              <ThreadListItemActions>
+                <ThreadDeleteIcon
+                  role="button"
+                  tabIndex={0}
+                  title={t('thread.delete')}
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    confirmDeleteThread(th.topicId)
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault()
+                      e.stopPropagation()
+                      confirmDeleteThread(th.topicId)
+                    }
+                  }}>
+                  <Trash2 size={14} />
+                </ThreadDeleteIcon>
+              </ThreadListItemActions>
+            </ThreadListItem>
+          ))}
+        </ThreadList>
+      </MessageThreadsListArea>
 
       <Divider style={{ margin: '12px 0' }} />
 
-      <ThreadList>
-        {threads.map((th) => (
-          <ThreadListItem
-            key={th.id}
-            role="button"
-            tabIndex={0}
-            onClick={() => onOpenThread(th.topicId)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' || e.key === ' ') {
-                e.preventDefault()
-                onOpenThread(th.topicId)
-              }
-            }}>
-            <ThreadListItemMain>
-              <ThreadPrompt title={th.starterPrompt}>{th.starterPrompt}</ThreadPrompt>
-              <ThreadMeta>{dayjs(th.updatedAt ?? th.createdAt).format('MM/DD HH:mm')}</ThreadMeta>
-            </ThreadListItemMain>
+      <MessageThreadsComposer>
+        {selectedText?.trim() ? (
+          <SelectedText title={selectedText}>{selectedText}</SelectedText>
+        ) : (
+          <HintText>{t('thread.start')}</HintText>
+        )}
 
-            <ThreadListItemActions>
-              <ThreadDeleteIcon
-                role="button"
-                tabIndex={0}
-                title={t('thread.delete')}
-                onClick={(e) => {
-                  e.stopPropagation()
-                  confirmDeleteThread(th.topicId)
-                }}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' || e.key === ' ') {
-                    e.preventDefault()
-                    e.stopPropagation()
-                    confirmDeleteThread(th.topicId)
-                  }
-                }}>
-                <Trash2 size={14} />
-              </ThreadDeleteIcon>
-            </ThreadListItemActions>
-          </ThreadListItem>
-        ))}
-      </ThreadList>
-    </div>
+        <ThreadStarterInputbar
+          assistantId={assistantId}
+          parentTopicId={parentTopicId}
+          parentMessageId={parentMessageId}
+          placeholder={t('thread.start_placeholder')}
+          focusComposer={focusComposer}
+          draft={draft}
+          onSend={handleCreate}
+        />
+      </MessageThreadsComposer>
+    </MessageThreadsContainer>
   )
 }
 
@@ -599,6 +604,23 @@ const SelectedText = styled.div`
   max-height: 80px;
   overflow: hidden;
   text-overflow: ellipsis;
+`
+
+const MessageThreadsContainer = styled.div`
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  flex: 1;
+`
+
+const MessageThreadsListArea = styled.div`
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+`
+
+const MessageThreadsComposer = styled.div`
+  flex-shrink: 0;
 `
 
 const ThreadList = styled.div`

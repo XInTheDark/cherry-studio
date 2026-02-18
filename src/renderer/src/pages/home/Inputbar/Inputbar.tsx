@@ -80,6 +80,17 @@ interface Props {
   // By default, the input draft is stored under a single global key. Thread sidebars
   // render a second input, so allow callers to isolate drafts per thread.
   draftCacheKey?: string
+  // Optional UI/behavior overrides for embedded composers (e.g. thread starter).
+  placeholder?: string
+  autoFocus?: boolean
+  onSendText?: (content: string) => Promise<void>
+  onSendError?: (error: unknown) => void
+  onControllerChange?: (controller: InputbarController | null) => void
+}
+
+export type InputbarController = {
+  setText: (updater: string | ((prev: string) => string)) => void
+  focusToEnd: () => void
 }
 
 type ProviderActionHandlers = {
@@ -103,7 +114,17 @@ type ContextTokenStats = {
   }
 }
 
-const Inputbar: FC<Props> = ({ assistant: initialAssistant, setActiveTopic, topic, draftCacheKey }) => {
+const Inputbar: FC<Props> = ({
+  assistant: initialAssistant,
+  setActiveTopic,
+  topic,
+  draftCacheKey,
+  placeholder,
+  autoFocus,
+  onSendText,
+  onSendError,
+  onControllerChange
+}) => {
   const actionsRef = useRef<ProviderActionHandlers>({
     resizeTextArea: () => {},
     addNewTopic: () => {},
@@ -145,6 +166,11 @@ const Inputbar: FC<Props> = ({ assistant: initialAssistant, setActiveTopic, topi
         topic={topic}
         actionsRef={actionsRef}
         draftCacheKey={draftKey}
+        placeholder={placeholder}
+        autoFocus={autoFocus}
+        onSendText={onSendText}
+        onSendError={onSendError}
+        onControllerChange={onControllerChange}
       />
     </InputbarToolsProvider>
   )
@@ -160,7 +186,12 @@ const InputbarInner: FC<InputbarInnerProps> = ({
   setActiveTopic,
   topic,
   actionsRef,
-  draftCacheKey
+  draftCacheKey,
+  placeholder: customPlaceholder,
+  autoFocus = true,
+  onSendText,
+  onSendError,
+  onControllerChange
 }) => {
   const scope = topic.type ?? TopicType.Chat
   const config = getInputbarConfig(scope)
@@ -189,6 +220,7 @@ const InputbarInner: FC<InputbarInnerProps> = ({
   const { assistant, addTopic, model, setModel, updateAssistant } = useAssistant(initialAssistant.id)
   const { sendMessageShortcut, showInputEstimatedTokens, enableQuickPanelTriggers, keepChatRequestsAliveOnSleep } =
     useSettings()
+  const [isCustomSending, setIsCustomSending] = useState(false)
   const [estimateTokenCount, setEstimateTokenCount] = useState(0)
   const [contextTokens, setContextTokens] = useState<ContextTokenStats>({ current: 0, max: 0 })
 
@@ -257,16 +289,40 @@ const InputbarInner: FC<InputbarInnerProps> = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [assistant.id])
 
-  const placeholderText = enableQuickPanelTriggers
-    ? t('chat.input.placeholder', { key: getSendMessageShortcutLabel(sendMessageShortcut) })
-    : t('chat.input.placeholder_without_triggers', {
-        key: getSendMessageShortcutLabel(sendMessageShortcut),
-        defaultValue: t('chat.input.placeholder', {
-          key: getSendMessageShortcutLabel(sendMessageShortcut)
+  const placeholderText = customPlaceholder
+    ? customPlaceholder
+    : enableQuickPanelTriggers
+      ? t('chat.input.placeholder', { key: getSendMessageShortcutLabel(sendMessageShortcut) })
+      : t('chat.input.placeholder_without_triggers', {
+          key: getSendMessageShortcutLabel(sendMessageShortcut),
+          defaultValue: t('chat.input.placeholder', {
+            key: getSendMessageShortcutLabel(sendMessageShortcut)
+          })
         })
-      })
 
   const sendMessage = useCallback(async () => {
+    if (onSendText) {
+      const content = text.trim()
+      if (!content || isCustomSending) {
+        return
+      }
+
+      try {
+        setIsCustomSending(true)
+        await onSendText(content)
+        setText('')
+        setFiles([])
+        setTimeoutTimer('sendMessage_custom', () => resizeTextArea(true), 0)
+      } catch (error) {
+        logger.warn('Failed to send custom inputbar message:', error as Error)
+        onSendError?.(error)
+      } finally {
+        setIsCustomSending(false)
+      }
+
+      return
+    }
+
     if (checkRateLimit(assistant)) {
       return
     }
@@ -305,7 +361,56 @@ const InputbarInner: FC<InputbarInnerProps> = ({
       logger.warn('Failed to send message:', error as Error)
       parent?.recordException(error as Error)
     }
-  }, [assistant, topic, text, mentionedModels, files, dispatch, setText, setFiles, setTimeoutTimer, resizeTextArea])
+  }, [
+    onSendText,
+    text,
+    isCustomSending,
+    assistant,
+    topic,
+    mentionedModels,
+    files,
+    dispatch,
+    setText,
+    setFiles,
+    setTimeoutTimer,
+    resizeTextArea,
+    onSendError
+  ])
+
+  const focusToEnd = useCallback(() => {
+    const ta = textareaRef.current?.resizableTextArea?.textArea
+    if (!ta) return
+
+    try {
+      ta.focus()
+      const len = ta.value?.length ?? 0
+      ta.setSelectionRange(len, len)
+    } catch {
+      // ignore
+    }
+  }, [textareaRef])
+
+  const setTextRef = useRef(setText)
+  const focusToEndRef = useRef(focusToEnd)
+
+  useEffect(() => {
+    setTextRef.current = setText
+  }, [setText])
+
+  useEffect(() => {
+    focusToEndRef.current = focusToEnd
+  }, [focusToEnd])
+
+  useEffect(() => {
+    if (!onControllerChange) return
+
+    onControllerChange({
+      setText: (updater) => setTextRef.current(updater),
+      focusToEnd: () => focusToEndRef.current()
+    })
+
+    return () => onControllerChange(null)
+  }, [onControllerChange])
 
   const handleCompactConversation = useCallback(async () => {
     const result = await ConversationCompactionService.compactConversation({
@@ -451,15 +556,20 @@ const InputbarInner: FC<InputbarInnerProps> = ({
       EventEmitter.emit(EVENT_NAMES.SHOW_TOPIC_SIDEBAR)
       focusTextarea()
     },
-    { preventDefault: true, enableOnFormTags: true }
+    { preventDefault: true, enableOnFormTags: true, enabled: !onSendText }
   )
 
   useShortcut('clear_topic', clearTopic, {
     preventDefault: true,
-    enableOnFormTags: true
+    enableOnFormTags: true,
+    enabled: !onSendText
   })
 
   useEffect(() => {
+    if (onSendText) {
+      return
+    }
+
     const _setEstimateTokenCount = debounce(setEstimateTokenCount, 100, { leading: false, trailing: true })
     const unsubscribes = [
       EventEmitter.on(EVENT_NAMES.ESTIMATED_TOKEN_COUNT, ({ tokensCount, contextTokens }) => {
@@ -472,7 +582,7 @@ const InputbarInner: FC<InputbarInnerProps> = ({
     return () => {
       unsubscribes.forEach((unsubscribe) => unsubscribe())
     }
-  }, [addNewTopic])
+  }, [addNewTopic, onSendText])
 
   useEffect(() => {
     const debouncedEstimate = debounce((value: string) => {
@@ -487,10 +597,15 @@ const InputbarInner: FC<InputbarInnerProps> = ({
   }, [showInputEstimatedTokens, text])
 
   useEffect(() => {
+    if (!autoFocus) {
+      return
+    }
+
     if (!document.querySelector('.topview-fullscreen-container')) {
       focusTextarea()
     }
   }, [
+    autoFocus,
     topic.id,
     assistant.mcpServers,
     assistant.knowledge_bases,
@@ -573,6 +688,7 @@ const InputbarInner: FC<InputbarInnerProps> = ({
     <InputbarCore
       scope={scope}
       placeholder={placeholderText}
+      autoFocus={autoFocus}
       text={text}
       onTextChange={setText}
       textareaRef={textareaRef}
@@ -580,13 +696,14 @@ const InputbarInner: FC<InputbarInnerProps> = ({
       onHeightChange={setCustomHeight}
       resizeTextArea={resizeTextArea}
       focusTextarea={focusTextarea}
-      isLoading={loading}
+      isLoading={onSendText ? isCustomSending : loading}
       supportedExts={supportedExts}
-      onPause={onPause}
+      onPause={onSendText ? undefined : onPause}
       handleSendMessage={sendMessage}
       leftToolbar={leftToolbar}
       rightToolbar={rightToolbar}
       topContent={topContent}
+      requireTextToSend={Boolean(onSendText)}
     />
   )
 }
