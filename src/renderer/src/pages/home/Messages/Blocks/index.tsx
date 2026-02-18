@@ -6,7 +6,7 @@ import { MessageBlockStatus, MessageBlockType } from '@renderer/types/newMessage
 import { isMainTextBlock, isMessageProcessing, isVideoBlock } from '@renderer/utils/messageUtils/is'
 import { AnimatePresence, motion, type Variants } from 'motion/react'
 import React, { useMemo } from 'react'
-import { useSelector } from 'react-redux'
+import { shallowEqual, useSelector } from 'react-redux'
 import styled from 'styled-components'
 
 import CitationBlock from './CitationBlock'
@@ -124,11 +124,16 @@ export const groupSimilarBlocks = (
 }
 
 const MessageBlockRenderer: React.FC<Props> = ({ blocks, message }) => {
-  // 始终调用useSelector，避免条件调用Hook
-  const blockEntities = useSelector((state: RootState) => messageBlocksSelectors.selectEntities(state))
   const workSequenceAutoCollapse = useSelector((state: RootState) => state.settings.workSequenceAutoCollapse)
-  // 根据blocks类型处理渲染数据
-  const renderedBlocks = blocks.map((blockId) => blockEntities[blockId]).filter(Boolean)
+  // Only subscribe to blocks belonging to this message.
+  // Using shallowEqual prevents rerenders when unrelated blocks update elsewhere.
+  const renderedBlocks = useSelector(
+    (state: RootState) =>
+      blocks
+        .map((blockId) => messageBlocksSelectors.selectById(state, blockId))
+        .filter((block): block is MessageBlock => !!block),
+    shallowEqual
+  )
   const groupedBlocks = useMemo(
     () => groupSimilarBlocks(renderedBlocks, { workSequenceAutoCollapse }),
     [renderedBlocks, workSequenceAutoCollapse]

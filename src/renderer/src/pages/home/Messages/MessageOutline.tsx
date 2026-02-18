@@ -2,11 +2,11 @@ import Scrollbar from '@renderer/components/Scrollbar'
 import type { RootState } from '@renderer/store'
 import { messageBlocksSelectors } from '@renderer/store/messageBlock'
 import type { Message } from '@renderer/types/newMessage'
-import { MessageBlockType } from '@renderer/types/newMessage'
+import { type MainTextMessageBlock, MessageBlockType } from '@renderer/types/newMessage'
 import { scrollIntoView } from '@renderer/utils/dom'
 import type { FC } from 'react'
 import React, { useMemo, useRef } from 'react'
-import { useSelector } from 'react-redux'
+import { shallowEqual, useSelector } from 'react-redux'
 import remarkParse from 'remark-parse'
 import styled from 'styled-components'
 import { unified } from 'unified'
@@ -25,13 +25,15 @@ interface HeadingItem {
 }
 
 const MessageOutline: FC<MessageOutlineProps> = ({ message }) => {
-  const blockEntities = useSelector((state: RootState) => messageBlocksSelectors.selectEntities(state))
+  const mainTextBlocks = useSelector(
+    (state: RootState) =>
+      message.blocks
+        .map((blockId) => messageBlocksSelectors.selectById(state, blockId))
+        .filter((block): block is MainTextMessageBlock => block?.type === MessageBlockType.MAIN_TEXT),
+    shallowEqual
+  )
 
   const headings: HeadingItem[] = useMemo(() => {
-    const mainTextBlocks = message.blocks
-      .map((blockId) => blockEntities[blockId])
-      .filter((b) => b?.type === MessageBlockType.MAIN_TEXT)
-
     if (!mainTextBlocks?.length) return []
 
     const result: HeadingItem[] = []
@@ -62,7 +64,7 @@ const MessageOutline: FC<MessageOutlineProps> = ({ message }) => {
     })
 
     return result
-  }, [message.blocks, blockEntities])
+  }, [mainTextBlocks])
 
   const miniLevel = useMemo(() => {
     return headings.length ? Math.min(...headings.map((heading) => heading.level)) : 1
