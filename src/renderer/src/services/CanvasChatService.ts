@@ -2,7 +2,7 @@ import { loggerService } from '@logger'
 import db from '@renderer/databases'
 import store from '@renderer/store'
 import { cloneMessagesToNewTopicThunk, loadTopicMessagesThunk } from '@renderer/store/thunk/messageThunk'
-import type { Assistant, Topic } from '@renderer/types'
+import type { Assistant, ConversationThreadRecord, Topic } from '@renderer/types'
 import { uuid } from '@renderer/utils'
 
 import { joinFsPath, normalizeFsPath } from './canvasHistory/pathUtils'
@@ -10,6 +10,7 @@ import { joinFsPath, normalizeFsPath } from './canvasHistory/pathUtils'
 const logger = loggerService.withContext('CanvasChatService')
 
 const CANVAS_CHAT_TOPIC_PREFIX = 'canvas__'
+const CANVAS_THREAD_SCOPE = 'canvas' as const
 
 export type CanvasChatEntryV1 = {
   id: string
@@ -18,6 +19,8 @@ export type CanvasChatEntryV1 = {
   name?: string
   createdAt: string
   updatedAt: string
+  isNameManuallyEdited?: boolean
+  lastActiveAt?: string
 }
 
 export type CanvasChatsIndexV1 = {
@@ -68,16 +71,8 @@ function getCanvasChatsDir(appDataPath: string, canvasId: string): string {
   return joinFsPath(normalizeFsPath(appDataPath), 'Data', 'Canvases', canvasId)
 }
 
-function getChatsIndexPath(appDataPath: string, canvasId: string): string {
+function getLegacyChatsIndexPath(appDataPath: string, canvasId: string): string {
   return joinFsPath(getCanvasChatsDir(appDataPath, canvasId), 'chats.json')
-}
-
-async function ensureDir(path: string): Promise<void> {
-  try {
-    await window.api.file.mkdir(path)
-  } catch (error) {
-    logger.debug('Failed to mkdir (ignored):', { path, error: (error as Error)?.message })
-  }
 }
 
 async function safeReadJson<T>(path: string): Promise<T | null> {
@@ -89,25 +84,60 @@ async function safeReadJson<T>(path: string): Promise<T | null> {
   }
 }
 
-async function writeJson(path: string, data: unknown): Promise<void> {
-  await window.api.file.write(path, JSON.stringify(data, null, 2))
-}
-
-async function loadOrCreateChatsIndex(canvasId: string): Promise<CanvasChatsIndexV1> {
-  const appDataPath = await getAppDataPath()
-  const indexPath = getChatsIndexPath(appDataPath, canvasId)
-  const existing = await safeReadJson<CanvasChatsIndexV1>(indexPath)
-  if (existing?.version === 1 && Array.isArray(existing.chats)) {
-    return existing
+function sortByUpdatedDesc(a: ConversationThreadRecord, b: ConversationThreadRecord): number {
+  if (a.updatedAt !== b.updatedAt) {
+    return a.updatedAt < b.updatedAt ? 1 : -1
   }
-  return { version: 1, updatedAt: nowIso(), chats: [] }
+  if (a.createdAt !== b.createdAt) {
+    return a.createdAt < b.createdAt ? 1 : -1
+  }
+  return a.id < b.id ? 1 : -1
 }
 
-async function saveChatsIndex(canvasId: string, index: CanvasChatsIndexV1): Promise<void> {
-  const appDataPath = await getAppDataPath()
-  index.updatedAt = nowIso()
-  await ensureDir(getCanvasChatsDir(appDataPath, canvasId))
-  await writeJson(getChatsIndexPath(appDataPath, canvasId), index)
+function getLastActiveChatId(records: ConversationThreadRecord[]): string | undefined {
+  let winner: ConversationThreadRecord | undefined
+
+  for (const record of records) {
+    if (!record.lastActiveAt) continue
+    if (!winner) {
+      winner = record
+      continue
+    }
+
+    if ((winner.lastActiveAt || '') < record.lastActiveAt) {
+      winner = record
+    }
+  }
+
+  return winner?.id
+}
+
+function toCanvasChatEntry(record: ConversationThreadRecord): CanvasChatEntryV1 {
+  return {
+    id: record.id,
+    topicId: record.topicId,
+    assistantId: record.assistantId,
+    name: record.name,
+    createdAt: record.createdAt,
+    updatedAt: record.updatedAt,
+    isNameManuallyEdited: record.isNameManuallyEdited,
+    lastActiveAt: record.lastActiveAt
+  }
+}
+
+function buildCanvasIndex(records: ConversationThreadRecord[]): CanvasChatsIndexV1 {
+  const sorted = [...records].sort(sortByUpdatedDesc)
+  return {
+    version: 1,
+    updatedAt: sorted[0]?.updatedAt || nowIso(),
+    lastActiveChatId: getLastActiveChatId(sorted),
+    chats: sorted.map(toCanvasChatEntry)
+  }
+}
+
+function normalizeChatName(name: string | undefined): string | undefined {
+  const trimmed = name?.trim() || ''
+  return trimmed.length > 0 ? trimmed : undefined
 }
 
 async function ensureDexieTopicExists(topicId: string): Promise<void> {
@@ -118,6 +148,120 @@ async function ensureDexieTopicExists(topicId: string): Promise<void> {
   } catch (error) {
     logger.warn('Failed to ensure Dexie topic exists (non-fatal):', error as Error)
   }
+}
+
+async function removeTopicData(topicId: string): Promise<void> {
+  try {
+    const topic = await db.topics.get(topicId)
+    if (topic?.messages?.length) {
+      const blockIds = topic.messages.flatMap((message) => message.blocks || [])
+      if (blockIds.length > 0) {
+        await db.message_blocks.bulkDelete(blockIds)
+      }
+    }
+
+    await db.topics.delete(topicId)
+  } catch (error) {
+    logger.warn('Failed to delete topic data for canvas chat (non-fatal):', {
+      topicId,
+      error: (error as Error)?.message
+    })
+  }
+}
+
+const migratedCanvasIds = new Set<string>()
+const migrationLocks = new Map<string, Promise<void>>()
+
+async function migrateLegacyCanvasChatsIfNeeded(canvasId: string): Promise<void> {
+  if (!canvasId) return
+  if (migratedCanvasIds.has(canvasId)) return
+
+  const pending = migrationLocks.get(canvasId)
+  if (pending) {
+    await pending
+    return
+  }
+
+  const task = (async () => {
+    const existingCount = await db.conversation_threads
+      .where('canvasId')
+      .equals(canvasId)
+      .and((record) => record.scope === CANVAS_THREAD_SCOPE)
+      .count()
+
+    if (existingCount > 0) {
+      migratedCanvasIds.add(canvasId)
+      return
+    }
+
+    let appDataPath: string
+    try {
+      appDataPath = await getAppDataPath()
+    } catch {
+      migratedCanvasIds.add(canvasId)
+      return
+    }
+
+    const legacyPath = getLegacyChatsIndexPath(appDataPath, canvasId)
+    const legacy = await safeReadJson<CanvasChatsIndexV1>(legacyPath)
+
+    if (!legacy || legacy.version !== 1 || !Array.isArray(legacy.chats) || legacy.chats.length === 0) {
+      migratedCanvasIds.add(canvasId)
+      return
+    }
+
+    const imported: ConversationThreadRecord[] = []
+
+    for (const chat of legacy.chats) {
+      if (!chat?.id || !chat?.assistantId) continue
+
+      const existing = await db.conversation_threads.get(chat.id)
+      if (existing) continue
+
+      imported.push({
+        id: chat.id,
+        topicId: chat.topicId || buildCanvasChatTopicId(canvasId, chat.id),
+        scope: CANVAS_THREAD_SCOPE,
+        canvasId,
+        assistantId: chat.assistantId,
+        name: normalizeChatName(chat.name),
+        isNameManuallyEdited: chat.isNameManuallyEdited,
+        createdAt: chat.createdAt || nowIso(),
+        updatedAt: chat.updatedAt || chat.createdAt || nowIso(),
+        lastActiveAt: legacy.lastActiveChatId === chat.id ? legacy.updatedAt || chat.updatedAt || nowIso() : undefined
+      })
+    }
+
+    if (imported.length > 0) {
+      await db.conversation_threads.bulkPut(imported)
+      logger.info('Migrated legacy canvas chats from file index', {
+        canvasId,
+        count: imported.length
+      })
+    }
+
+    migratedCanvasIds.add(canvasId)
+  })().finally(() => {
+    migrationLocks.delete(canvasId)
+  })
+
+  migrationLocks.set(canvasId, task)
+  await task
+}
+
+async function listCanvasThreadRecords(canvasId: string): Promise<ConversationThreadRecord[]> {
+  await migrateLegacyCanvasChatsIfNeeded(canvasId)
+
+  const records = await db.conversation_threads.where('canvasId').equals(canvasId).toArray()
+  return records.filter((record) => record.scope === CANVAS_THREAD_SCOPE).sort(sortByUpdatedDesc)
+}
+
+async function getCanvasThreadRecord(canvasId: string, chatId: string): Promise<ConversationThreadRecord | null> {
+  await migrateLegacyCanvasChatsIfNeeded(canvasId)
+  const record = await db.conversation_threads.get(chatId)
+  if (!record) return null
+  if (record.scope !== CANVAS_THREAD_SCOPE || record.canvasId !== canvasId) return null
+  return record
 }
 
 function buildHiddenTopicSkeleton(args: { topicId: string; assistantId: string; name: string }): Topic {
@@ -136,13 +280,49 @@ export const CanvasChatService = {
   buildCanvasChatTopicId,
 
   listChats: async (canvasId: string): Promise<CanvasChatsIndexV1> => {
-    return loadOrCreateChatsIndex(canvasId)
+    const records = await listCanvasThreadRecords(canvasId)
+    return buildCanvasIndex(records)
   },
 
   setLastActiveChat: async ({ canvasId, chatId }: { canvasId: string; chatId: string }): Promise<void> => {
-    const index = await loadOrCreateChatsIndex(canvasId)
-    index.lastActiveChatId = chatId
-    await saveChatsIndex(canvasId, index)
+    const target = await getCanvasThreadRecord(canvasId, chatId)
+    if (!target) return
+
+    await db.conversation_threads.update(chatId, { lastActiveAt: nowIso() })
+  },
+
+  touchChat: async ({ canvasId, chatId }: { canvasId: string; chatId: string }): Promise<void> => {
+    const target = await getCanvasThreadRecord(canvasId, chatId)
+    if (!target) return
+
+    await db.conversation_threads.update(chatId, { updatedAt: nowIso() })
+  },
+
+  renameChat: async ({
+    canvasId,
+    chatId,
+    name,
+    isNameManuallyEdited
+  }: {
+    canvasId: string
+    chatId: string
+    name: string
+    isNameManuallyEdited?: boolean
+  }): Promise<CanvasChatEntryV1 | null> => {
+    const target = await getCanvasThreadRecord(canvasId, chatId)
+    if (!target) return null
+
+    const now = nowIso()
+    const nextName = normalizeChatName(name)
+    await db.conversation_threads.update(chatId, {
+      name: nextName,
+      updatedAt: now,
+      isNameManuallyEdited:
+        typeof isNameManuallyEdited === 'boolean' ? isNameManuallyEdited : (target.isNameManuallyEdited ?? false)
+    })
+
+    const updated = await getCanvasThreadRecord(canvasId, chatId)
+    return updated ? toCanvasChatEntry(updated) : null
   },
 
   createChat: async ({
@@ -154,27 +334,72 @@ export const CanvasChatService = {
     assistantId: string
     name?: string
   }): Promise<CanvasChatEntryV1> => {
-    const index = await loadOrCreateChatsIndex(canvasId)
+    await migrateLegacyCanvasChatsIfNeeded(canvasId)
 
     const chatId = uuid()
     const topicId = buildCanvasChatTopicId(canvasId, chatId)
     const now = nowIso()
 
-    const entry: CanvasChatEntryV1 = {
+    const record: ConversationThreadRecord = {
       id: chatId,
       topicId,
+      scope: CANVAS_THREAD_SCOPE,
+      canvasId,
       assistantId,
-      name,
+      name: normalizeChatName(name),
       createdAt: now,
-      updatedAt: now
+      updatedAt: now,
+      lastActiveAt: now,
+      isNameManuallyEdited: false
     }
 
-    index.chats.push(entry)
-    index.lastActiveChatId = chatId
-    await saveChatsIndex(canvasId, index)
-
+    await db.conversation_threads.add(record)
     await ensureDexieTopicExists(topicId)
-    return entry
+
+    return toCanvasChatEntry(record)
+  },
+
+  deleteChat: async ({
+    canvasId,
+    chatId,
+    removeTopic = true
+  }: {
+    canvasId: string
+    chatId: string
+    removeTopic?: boolean
+  }): Promise<{ index: CanvasChatsIndexV1; activeChatId: string | null }> => {
+    const records = await listCanvasThreadRecords(canvasId)
+    if (records.length <= 1) {
+      throw new Error('Cannot delete the last canvas chat')
+    }
+
+    const target = records.find((record) => record.id === chatId)
+    if (!target) {
+      const nextIndex = buildCanvasIndex(records)
+      return {
+        index: nextIndex,
+        activeChatId: nextIndex.lastActiveChatId || nextIndex.chats[0]?.id || null
+      }
+    }
+
+    await db.conversation_threads.delete(chatId)
+    if (removeTopic) {
+      await removeTopicData(target.topicId)
+    }
+
+    const nextRecords = await listCanvasThreadRecords(canvasId)
+    const nextPreferredActive = getLastActiveChatId(nextRecords) || nextRecords[0]?.id || null
+
+    if (nextPreferredActive) {
+      await db.conversation_threads.update(nextPreferredActive, { lastActiveAt: nowIso() })
+    }
+
+    const nextIndex = await CanvasChatService.listChats(canvasId)
+
+    return {
+      index: nextIndex,
+      activeChatId: nextPreferredActive
+    }
   },
 
   /**
@@ -189,62 +414,71 @@ export const CanvasChatService = {
     sourceCanvasId: string
     newCanvasId: string
   }): Promise<void> => {
-    const sourceIndex = await loadOrCreateChatsIndex(sourceCanvasId)
-    if (sourceIndex.chats.length === 0) {
-      // Keep destination empty; it will lazily create the first chat when opened.
+    const sourceRecords = await listCanvasThreadRecords(sourceCanvasId)
+    if (sourceRecords.length === 0) {
       return
     }
 
+    await migrateLegacyCanvasChatsIfNeeded(newCanvasId)
+
     const dispatch = store.dispatch as any
-    const destIndex: CanvasChatsIndexV1 = { version: 1, updatedAt: nowIso(), chats: [] }
 
-    // Map old chatId -> new chatId for lastActiveChatId.
+    // Map old chatId -> new chatId for lastActiveChat mapping.
     const mappedChatIds = new Map<string, string>()
+    const destRecords: ConversationThreadRecord[] = []
 
-    for (const chat of sourceIndex.chats) {
+    for (const source of sourceRecords) {
       const newChatId = uuid()
-      mappedChatIds.set(chat.id, newChatId)
+      mappedChatIds.set(source.id, newChatId)
 
       const newTopicId = buildCanvasChatTopicId(newCanvasId, newChatId)
       const now = nowIso()
 
-      destIndex.chats.push({
+      destRecords.push({
         id: newChatId,
         topicId: newTopicId,
-        assistantId: chat.assistantId,
-        name: chat.name,
+        scope: CANVAS_THREAD_SCOPE,
+        canvasId: newCanvasId,
+        assistantId: source.assistantId,
+        name: source.name,
+        isNameManuallyEdited: source.isNameManuallyEdited,
         createdAt: now,
         updatedAt: now
       })
 
-      // Ensure both topics exist and are loaded into store before cloning.
       await ensureDexieTopicExists(newTopicId)
 
       try {
         // Ensure source messages/blocks are present in redux state so the clone thunk can reuse them.
-        await dispatch(loadTopicMessagesThunk(chat.topicId, true) as any)
+        await dispatch(loadTopicMessagesThunk(source.topicId, true) as any)
 
         const newTopic: Topic = buildHiddenTopicSkeleton({
           topicId: newTopicId,
-          assistantId: chat.assistantId,
-          name: chat.name || 'Canvas Chat'
+          assistantId: source.assistantId,
+          name: source.name || 'Canvas Chat'
         })
 
         // Clone *all* messages (branchPointIndex > len => clones full).
-        await dispatch(cloneMessagesToNewTopicThunk(chat.topicId, Number.MAX_SAFE_INTEGER, newTopic) as any)
+        await dispatch(cloneMessagesToNewTopicThunk(source.topicId, Number.MAX_SAFE_INTEGER, newTopic) as any)
       } catch (error) {
         // Non-fatal: keep metadata + empty topic.
         logger.warn('Failed to duplicate canvas chat topic (non-fatal):', {
-          sourceTopicId: chat.topicId,
+          sourceTopicId: source.topicId,
           newTopicId,
           error: (error as Error)?.message
         })
       }
     }
 
-    const sourceLast = sourceIndex.lastActiveChatId
-    destIndex.lastActiveChatId = sourceLast ? mappedChatIds.get(sourceLast) : destIndex.chats[0]?.id
-    await saveChatsIndex(newCanvasId, destIndex)
+    if (destRecords.length > 0) {
+      await db.conversation_threads.bulkPut(destRecords)
+
+      const sourceActiveChatId = getLastActiveChatId(sourceRecords) || sourceRecords[0]?.id
+      const mappedActiveChatId = sourceActiveChatId ? mappedChatIds.get(sourceActiveChatId) : destRecords[0]?.id
+      if (mappedActiveChatId) {
+        await db.conversation_threads.update(mappedActiveChatId, { lastActiveAt: nowIso() })
+      }
+    }
   },
 
   /**
@@ -260,28 +494,30 @@ export const CanvasChatService = {
     if (!defaultAssistantId) {
       throw new Error('Missing defaultAssistantId for canvas chat')
     }
-    const index = await loadOrCreateChatsIndex(canvasId)
+
+    const index = await CanvasChatService.listChats(canvasId)
     if (index.chats.length === 0) {
       const created = await CanvasChatService.createChat({
         canvasId,
         assistantId: defaultAssistantId,
         name: undefined
       })
-      const nextIndex = await loadOrCreateChatsIndex(canvasId)
+      const nextIndex = await CanvasChatService.listChats(canvasId)
       return { index: nextIndex, activeChat: created }
     }
 
-    const activeId = index.lastActiveChatId ?? index.chats[0]?.id
-    const active = index.chats.find((c) => c.id === activeId) ?? index.chats[0]
+    const activeId = index.lastActiveChatId || index.chats[0]?.id
+    const active = index.chats.find((chat) => chat.id === activeId) || index.chats[0]
     if (!active) {
       const created = await CanvasChatService.createChat({
         canvasId,
         assistantId: defaultAssistantId,
         name: undefined
       })
-      const nextIndex = await loadOrCreateChatsIndex(canvasId)
+      const nextIndex = await CanvasChatService.listChats(canvasId)
       return { index: nextIndex, activeChat: created }
     }
+
     return { index, activeChat: active }
   },
 

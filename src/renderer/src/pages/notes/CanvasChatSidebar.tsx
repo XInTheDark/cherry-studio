@@ -1,16 +1,24 @@
 import { loggerService } from '@logger'
+import { CopyIcon, DeleteIcon, EditIcon } from '@renderer/components/Icons'
+import PromptPopup from '@renderer/components/Popups/PromptPopup'
+import db from '@renderer/databases'
 import { useAssistant } from '@renderer/hooks/useAssistant'
+import { fetchMessagesSummary } from '@renderer/services/ApiService'
 import CanvasChatService, {
   type CanvasChatEntryV1,
-  type CanvasChatsIndexV1
+  type CanvasChatsIndexV1,
+  parseCanvasChatTopicId
 } from '@renderer/services/CanvasChatService'
 import CanvasHistoryService from '@renderer/services/CanvasHistoryService'
+import { EVENT_NAMES, EventEmitter } from '@renderer/services/EventService'
 import { useAppDispatch, useAppSelector } from '@renderer/store'
-import { loadTopicMessagesThunk } from '@renderer/store/thunk/messageThunk'
+import { clearTopicMessagesThunk, loadTopicMessagesThunk } from '@renderer/store/thunk/messageThunk'
 import type { Topic } from '@renderer/types'
-import { Button, Divider, Empty, Select, Tooltip, Typography } from 'antd'
+import { copyTopicAsJson, copyTopicAsMarkdown, copyTopicAsPlainText } from '@renderer/utils/copy'
+import type { MenuProps } from 'antd'
+import { Button, Divider, Dropdown, Empty, Select, Tooltip, Typography } from 'antd'
 import dayjs from 'dayjs'
-import { PanelLeftClose, PanelLeftOpen, Plus, X } from 'lucide-react'
+import { BrushCleaning, PanelLeftClose, PanelLeftOpen, Plus, Sparkles, X } from 'lucide-react'
 import type { FC } from 'react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -44,6 +52,9 @@ const CanvasChatSidebar: FC<Props> = ({ open, notesPath, filePath, width = 380, 
   const [index, setIndex] = useState<CanvasChatsIndexV1 | null>(null)
   const [activeChatId, setActiveChatId] = useState<string | null>(null)
   const [isChatListVisible, setIsChatListVisible] = useState(true)
+
+  const autoRenameLocksRef = useRef<Set<string>>(new Set())
+
   const shouldStackChatList = panelWidth < 620 || (index?.chats?.length ?? 0) <= 1
 
   const activeChat: CanvasChatEntryV1 | null = useMemo(() => {
@@ -60,6 +71,22 @@ const CanvasChatSidebar: FC<Props> = ({ open, notesPath, filePath, width = 380, 
         value: a.id
       })),
     [assistants]
+  )
+
+  const getChatTitle = useCallback((chat: CanvasChatEntryV1) => {
+    return chat.name?.trim() || CanvasChatService.getAssistantName(chat.assistantId)
+  }, [])
+
+  const buildChatTopic = useCallback(
+    (chat: CanvasChatEntryV1): Topic => ({
+      id: chat.topicId,
+      assistantId: chat.assistantId,
+      name: getChatTitle(chat),
+      createdAt: chat.createdAt,
+      updatedAt: chat.updatedAt,
+      messages: []
+    }),
+    [getChatTitle]
   )
 
   const load = useCallback(async () => {
@@ -108,6 +135,243 @@ const CanvasChatSidebar: FC<Props> = ({ open, notesPath, filePath, width = 380, 
     const next = await CanvasChatService.listChats(canvasId)
     setIndex(next)
   }, [canvasId])
+
+  const handleAutoRenameChat = useCallback(
+    async (chat: CanvasChatEntryV1) => {
+      const assistant = assistants.find((a) => a.id === chat.assistantId)
+      if (!assistant) return
+
+      try {
+        await dispatch(loadTopicMessagesThunk(chat.topicId, true) as any)
+        const topic = await db.topics.get(chat.topicId)
+        const messages = topic?.messages || []
+
+        if (messages.length === 0) {
+          return
+        }
+
+        const summaryText = await fetchMessagesSummary({ messages, assistant })
+        const nextName = summaryText?.trim()
+        if (!nextName) return
+
+        await CanvasChatService.renameChat({
+          canvasId,
+          chatId: chat.id,
+          name: nextName,
+          isNameManuallyEdited: false
+        })
+        await refreshIndex()
+      } catch (error) {
+        logger.warn('Failed to auto rename canvas chat:', error as Error)
+      }
+    },
+    [assistants, canvasId, dispatch, refreshIndex]
+  )
+
+  const handleRenameChat = useCallback(
+    async (chat: CanvasChatEntryV1) => {
+      const nextName = await PromptPopup.show({
+        title: t('common.rename'),
+        message: '',
+        defaultValue: getChatTitle(chat)
+      })
+
+      if (nextName === null) return
+
+      try {
+        await CanvasChatService.renameChat({
+          canvasId,
+          chatId: chat.id,
+          name: nextName,
+          isNameManuallyEdited: true
+        })
+        await refreshIndex()
+      } catch (error) {
+        logger.error('Failed to rename canvas chat:', error as Error)
+        window.toast?.error?.(t('common.errors.validation'))
+      }
+    },
+    [canvasId, getChatTitle, refreshIndex, t]
+  )
+
+  const handleClearChatMessages = useCallback(
+    async (chat: CanvasChatEntryV1) => {
+      try {
+        await dispatch(clearTopicMessagesThunk(chat.topicId) as any)
+        await CanvasChatService.touchChat({ canvasId, chatId: chat.id })
+        await refreshIndex()
+      } catch (error) {
+        logger.error('Failed to clear canvas chat messages:', error as Error)
+        window.toast?.error?.(t('common.delete_failed'))
+      }
+    },
+    [canvasId, dispatch, refreshIndex, t]
+  )
+
+  const performDeleteChat = useCallback(
+    async (chat: CanvasChatEntryV1) => {
+      if (!canvasId) return
+
+      try {
+        const result = await CanvasChatService.deleteChat({ canvasId, chatId: chat.id, removeTopic: true })
+        setIndex(result.index)
+        setActiveChatId(result.activeChatId)
+      } catch (error) {
+        logger.error('Failed to delete canvas chat:', error as Error)
+        window.toast?.error?.(t('common.delete_failed'))
+      }
+    },
+    [canvasId, t]
+  )
+
+  const handleDeleteChat = useCallback(
+    (chat: CanvasChatEntryV1) => {
+      window.modal.confirm({
+        title: t('common.delete'),
+        content: t('common.delete_confirm'),
+        centered: true,
+        onOk: async () => performDeleteChat(chat)
+      })
+    },
+    [performDeleteChat, t]
+  )
+
+  const handleCopyChatAsJson = useCallback(
+    async (chat: CanvasChatEntryV1) => {
+      await copyTopicAsJson(buildChatTopic(chat))
+    },
+    [buildChatTopic]
+  )
+
+  const handleCopyChatAsMarkdown = useCallback(
+    async (chat: CanvasChatEntryV1) => {
+      await copyTopicAsMarkdown(buildChatTopic(chat))
+    },
+    [buildChatTopic]
+  )
+
+  const handleCopyChatAsPlainText = useCallback(
+    async (chat: CanvasChatEntryV1) => {
+      await copyTopicAsPlainText(buildChatTopic(chat))
+    },
+    [buildChatTopic]
+  )
+
+  const buildChatMenuItems = useCallback(
+    (chat: CanvasChatEntryV1): MenuProps['items'] => [
+      {
+        label: t('chat.topics.auto_rename'),
+        key: 'auto-rename',
+        icon: <Sparkles size={14} />,
+        onClick: () => {
+          void handleAutoRenameChat(chat)
+        }
+      },
+      {
+        label: t('common.rename'),
+        key: 'rename',
+        icon: <EditIcon size={14} />,
+        onClick: () => {
+          void handleRenameChat(chat)
+        }
+      },
+      {
+        label: t('chat.topics.copy.title'),
+        key: 'copy',
+        icon: <CopyIcon size={14} />,
+        children: [
+          {
+            label: t('chat.topics.copy.json'),
+            key: 'copy-json',
+            onClick: () => {
+              void handleCopyChatAsJson(chat)
+            }
+          },
+          {
+            label: t('chat.topics.copy.md'),
+            key: 'copy-md',
+            onClick: () => {
+              void handleCopyChatAsMarkdown(chat)
+            }
+          },
+          {
+            label: t('chat.topics.copy.plain_text'),
+            key: 'copy-plain-text',
+            onClick: () => {
+              void handleCopyChatAsPlainText(chat)
+            }
+          }
+        ]
+      },
+      {
+        label: t('chat.topics.clear.title'),
+        key: 'clear',
+        icon: <BrushCleaning size={14} />,
+        onClick: () => {
+          void handleClearChatMessages(chat)
+        }
+      },
+      { type: 'divider' },
+      {
+        label: t('common.delete'),
+        key: 'delete',
+        danger: true,
+        disabled: (index?.chats.length ?? 0) <= 1,
+        icon: <DeleteIcon size={14} className="lucide-custom" />,
+        onClick: () => {
+          handleDeleteChat(chat)
+        }
+      }
+    ],
+    [
+      handleAutoRenameChat,
+      handleClearChatMessages,
+      handleCopyChatAsJson,
+      handleCopyChatAsMarkdown,
+      handleCopyChatAsPlainText,
+      handleDeleteChat,
+      handleRenameChat,
+      index?.chats.length,
+      t
+    ]
+  )
+
+  // Keep chat recency up to date and auto-rename unnamed chats after first successful response.
+  useEffect(() => {
+    if (!canvasId) return
+
+    const unsubscribe = EventEmitter.on(
+      EVENT_NAMES.MESSAGE_COMPLETE,
+      ({ topicId, status }: { topicId?: string; status?: string }) => {
+        if (status !== 'success' || !topicId) return
+
+        const parsed = parseCanvasChatTopicId(topicId)
+        if (!parsed || parsed.canvasId !== canvasId) return
+
+        void CanvasChatService.touchChat({ canvasId, chatId: parsed.chatId })
+          .then(() => refreshIndex())
+          .catch((error) => {
+            logger.debug('Failed to touch canvas chat on message complete (ignored):', error as Error)
+          })
+
+        const chat = index?.chats.find((entry) => entry.id === parsed.chatId)
+        if (!chat) return
+        if (chat.isNameManuallyEdited) return
+        if (chat.name?.trim()) return
+
+        if (autoRenameLocksRef.current.has(chat.id)) return
+        autoRenameLocksRef.current.add(chat.id)
+
+        void handleAutoRenameChat(chat).finally(() => {
+          autoRenameLocksRef.current.delete(chat.id)
+        })
+      }
+    )
+
+    return () => {
+      unsubscribe()
+    }
+  }, [canvasId, handleAutoRenameChat, index?.chats, refreshIndex])
 
   const handleNewChat = useCallback(
     async (assistantId: string) => {
@@ -226,30 +490,34 @@ const CanvasChatSidebar: FC<Props> = ({ open, notesPath, filePath, width = 380, 
               {!index?.chats?.length ? (
                 <Empty description={t('notes.chat.empty')} image={Empty.PRESENTED_IMAGE_SIMPLE} />
               ) : (
-                index.chats.map((c) => {
-                  const isActive = c.id === activeChat?.id
-                  const title = c.name?.trim() || CanvasChatService.getAssistantName(c.assistantId)
-                  const time = dayjs(c.updatedAt ?? c.createdAt).format('MM/DD HH:mm')
+                index.chats.map((chat) => {
+                  const isActive = chat.id === activeChat?.id
+                  const title = getChatTitle(chat)
+                  const assistantName = CanvasChatService.getAssistantName(chat.assistantId)
+                  const time = dayjs(chat.updatedAt ?? chat.createdAt).format('MM/DD HH:mm')
+                  const meta = title === assistantName ? time : `${assistantName} · ${time}`
+
                   return (
-                    <ChatListItem
-                      key={c.id}
-                      role="button"
-                      tabIndex={0}
-                      $active={isActive}
-                      onClick={() => setActiveChatId(c.id)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter' || e.key === ' ') {
-                          e.preventDefault()
-                          setActiveChatId(c.id)
-                        }
-                      }}>
-                      <Typography.Text style={{ display: 'block' }} ellipsis={{ tooltip: title }}>
-                        {title}
-                      </Typography.Text>
-                      <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-                        {time}
-                      </Typography.Text>
-                    </ChatListItem>
+                    <Dropdown
+                      key={chat.id}
+                      menu={{ items: buildChatMenuItems(chat) }}
+                      trigger={['contextMenu']}
+                      popupRender={(menu) => <div onPointerDown={(e) => e.stopPropagation()}>{menu}</div>}>
+                      <ChatListItem
+                        role="button"
+                        tabIndex={0}
+                        $active={isActive}
+                        onClick={() => setActiveChatId(chat.id)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault()
+                            setActiveChatId(chat.id)
+                          }
+                        }}>
+                        <ChatListItemTitle ellipsis={{ tooltip: title }}>{title}</ChatListItemTitle>
+                        <ChatListItemMeta>{meta}</ChatListItemMeta>
+                      </ChatListItem>
+                    </Dropdown>
                   )
                 })
               )}
@@ -381,7 +649,7 @@ const ToolbarRow = styled.div`
 
 const ChatLayout = styled.div<{ $direction: 'row' | 'column' }>`
   display: flex;
-  gap: 10px;
+  gap: 8px;
   min-height: 0;
   flex: 1;
   min-width: 0;
@@ -389,27 +657,45 @@ const ChatLayout = styled.div<{ $direction: 'row' | 'column' }>`
 `
 
 const ChatList = styled.div<{ $variant: 'side' | 'top' }>`
-  flex: ${({ $variant }) => ($variant === 'side' ? '0 0 200px' : '0 0 auto')};
+  flex: ${({ $variant }) => ($variant === 'side' ? '0 0 220px' : '0 0 auto')};
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 4px;
   overflow-y: auto;
   overflow-x: hidden;
   padding-right: ${({ $variant }) => ($variant === 'side' ? '4px' : '0')};
   padding-bottom: ${({ $variant }) => ($variant === 'top' ? '4px' : '0')};
-  max-height: ${({ $variant }) => ($variant === 'top' ? '180px' : 'none')};
+  max-height: ${({ $variant }) => ($variant === 'top' ? '200px' : 'none')};
 `
 
 const ChatListItem = styled.div<{ $active: boolean }>`
-  border: 1px solid ${({ $active }) => ($active ? 'var(--color-primary)' : 'var(--color-border-soft)')};
-  background: ${({ $active }) => ($active ? 'var(--color-primary-soft)' : 'var(--color-background-soft)')};
-  border-radius: 10px;
-  padding: 8px 10px;
+  padding: 6px 10px;
+  border-radius: var(--list-item-border-radius);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
   cursor: pointer;
+  background-color: ${({ $active }) => ($active ? 'var(--color-list-item)' : 'transparent')};
+  box-shadow: ${({ $active }) => ($active ? '0 1px 2px 0 rgba(0, 0, 0, 0.05)' : 'none')};
+
   &:hover {
-    border-color: var(--color-border);
+    background-color: ${({ $active }) => ($active ? 'var(--color-list-item)' : 'var(--color-list-item-hover)')};
+    transition: background-color 0.1s;
   }
+`
+
+const ChatListItemTitle = styled(Typography.Text)`
+  font-size: 13px;
+  line-height: 1.25;
+`
+
+const ChatListItemMeta = styled(Typography.Text)`
+  font-size: 12px;
+  color: var(--color-text-3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 `
 
 const ChatView = styled.div`
