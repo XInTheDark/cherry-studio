@@ -11,6 +11,7 @@ import {
   splitFileExt,
   toNotesRelativePath
 } from './canvasHistory/pathUtils'
+import { EVENT_NAMES, EventEmitter } from './EventService'
 
 const logger = loggerService.withContext('CanvasHistoryService')
 
@@ -303,6 +304,20 @@ export const CanvasHistoryService = {
       historyIndex.versions.push(entry)
       await saveHistoryIndex(notesPath, canvasId, historyIndex)
       await touchMappingUpdatedAt(notesPath, relPath)
+      void EventEmitter.emit(EVENT_NAMES.CANVAS_VERSION_COMMITTED, {
+        notesPath: normalizeFsPath(notesPath),
+        filePath: normalizeFsPath(filePath),
+        canvasId,
+        versionId: entry.id,
+        actor,
+        reason
+      }).catch((error) => {
+        logger.debug('Failed to emit canvas version commit event (ignored):', {
+          error: (error as Error)?.message,
+          canvasId,
+          versionId: entry.id
+        })
+      })
 
       return { created: true as const, canvasId, version: entry }
     })

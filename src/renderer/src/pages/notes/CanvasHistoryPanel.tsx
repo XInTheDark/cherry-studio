@@ -1,5 +1,7 @@
 import { loggerService } from '@logger'
 import CanvasHistoryService, { type CanvasVersionEntryV1 } from '@renderer/services/CanvasHistoryService'
+import { EVENT_NAMES, EventEmitter } from '@renderer/services/EventService'
+import { normalizePathValue } from '@renderer/services/NotesTreeService'
 import { Button, Checkbox, Empty, Input, List, Modal, Space, Tag, Typography } from 'antd'
 import dayjs from 'dayjs'
 import { createTwoFilesPatch } from 'diff'
@@ -46,6 +48,24 @@ const CanvasHistoryPanel: FC<Props> = ({ notesPath, filePath }) => {
   useEffect(() => {
     void loadVersions()
   }, [loadVersions])
+
+  useEffect(() => {
+    const normalizedNotesPath = normalizePathValue(notesPath)
+    const normalizedFilePath = normalizePathValue(filePath)
+    const unsubscribe = EventEmitter.on(
+      EVENT_NAMES.CANVAS_VERSION_COMMITTED,
+      ({ notesPath: changedNotesPath, filePath: changedFilePath }: { notesPath?: string; filePath?: string }) => {
+        if (!changedFilePath) return
+        if (changedNotesPath && normalizePathValue(changedNotesPath) !== normalizedNotesPath) return
+        if (normalizePathValue(changedFilePath) !== normalizedFilePath) return
+        void loadVersions()
+      }
+    )
+
+    return () => {
+      unsubscribe()
+    }
+  }, [filePath, loadVersions, notesPath])
 
   const sorted = useMemo(() => {
     // Latest first.

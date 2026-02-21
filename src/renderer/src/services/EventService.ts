@@ -38,5 +38,9 @@ export const EVENT_NAMES = {
   // payload: { parentTopicId: string, parentMessageId: string, key: string }
   THREAD_STARTER_APPEND_DRAFT: 'THREAD_STARTER_APPEND_DRAFT',
   THREAD_HIGHLIGHT_HOVER: 'THREAD_HIGHLIGHT_HOVER', // payload: { prompt: string, rect: DOMRect }
-  THREAD_HIGHLIGHT_LEAVE: 'THREAD_HIGHLIGHT_LEAVE' // payload: void
+  THREAD_HIGHLIGHT_LEAVE: 'THREAD_HIGHLIGHT_LEAVE', // payload: void
+
+  // Canvas version history updates
+  // payload: { notesPath: string, filePath: string, canvasId: string, versionId: string, actor: 'human'|'assistant'|'system', reason?: string }
+  CANVAS_VERSION_COMMITTED: 'CANVAS_VERSION_COMMITTED'
 }

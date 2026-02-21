@@ -1018,6 +1018,25 @@ const NotesPage: FC = () => {
     }
   }, [activeNode?.id, activeFilePath, notesTree, dispatch, invalidateFileContent])
 
+  // Ensure canvas edits produced by assistant tools are reflected immediately in the active editor.
+  useEffect(() => {
+    const unsubscribe = EventEmitter.on(EVENT_NAMES.CANVAS_VERSION_COMMITTED, ({ filePath }: { filePath?: string }) => {
+      if (!filePath) return
+
+      const activePath = activeFilePathRef.current
+      if (!activePath) return
+
+      const normalizedFilePath = normalizePathValue(filePath)
+      if (normalizePathValue(activePath) !== normalizedFilePath) return
+
+      invalidateFileContentRef.current?.(normalizedFilePath)
+    })
+
+    return () => {
+      unsubscribe()
+    }
+  }, [])
+
   return (
     <Container id="notes-page">
       <Navbar>

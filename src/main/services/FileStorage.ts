@@ -1676,6 +1676,7 @@ class FileStorage {
 
       this.watcher
         .on('add', (filePath: string) => handleChange('add', filePath))
+        .on('change', (filePath: string) => handleChange('change', filePath))
         .on('unlink', (filePath: string) => handleChange('unlink', filePath))
         .on('addDir', (dirPath: string) => handleChange('addDir', dirPath))
         .on('unlinkDir', (dirPath: string) => handleChange('unlinkDir', dirPath))
