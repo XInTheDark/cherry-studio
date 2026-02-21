@@ -1,3 +1,4 @@
+import ConversationThreadService from '@renderer/services/ConversationThreadService'
 import type { AgentSessionEntity, ListAgentSessionsResponse, UpdateSessionForm } from '@renderer/types'
 import type { UpdateAgentBaseOptions, UpdateAgentSessionFunction } from '@renderer/types/agent'
 import { getErrorMessage } from '@renderer/utils/error'
@@ -26,6 +27,7 @@ export const useUpdateSession = (agentId: string | null) => {
           (prev) => prev?.map((session) => (session.id === result.id ? result : session)) ?? []
         )
         mutate(itemKey, result)
+        await ConversationThreadService.upsertSessionThread({ agentId, session: result })
         if (options?.showSuccessToast ?? true) {
           window.toast.success(t('common.update_success'))
         }

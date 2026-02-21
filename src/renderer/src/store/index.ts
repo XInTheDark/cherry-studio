@@ -24,6 +24,7 @@ import storeSyncService from '../services/StoreSyncService'
 import assistants from './assistants'
 import backup from './backup'
 import codeTools from './codeTools'
+import conversationThreadSyncMiddleware from './conversationThreadSyncMiddleware'
 import copilot from './copilot'
 import inputToolsReducer from './inputTools'
 import knowledge from './knowledge'
@@ -113,7 +114,9 @@ const store = configureStore({
       serializableCheck: {
         ignoredActions: [FLUSH, REHYDRATE, PAUSE, PERSIST, PURGE, REGISTER]
       }
-    }).concat(storeSyncService.createMiddleware())
+    })
+      .concat(conversationThreadSyncMiddleware)
+      .concat(storeSyncService.createMiddleware())
   },
   devTools: true
 })

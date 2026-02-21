@@ -1,4 +1,5 @@
 export type ConversationThreadScope = 'home' | 'canvas' | 'session'
+export type ConversationThreadTopicType = 'chat' | 'session'
 
 /**
  * Unified thread metadata record.
@@ -11,9 +12,11 @@ export type ConversationThreadRecord = {
   topicId: string
   scope: ConversationThreadScope
   assistantId: string
+  topicType?: ConversationThreadTopicType
   createdAt: string
   updatedAt: string
   name?: string
+  pinned?: boolean
   isNameManuallyEdited?: boolean
 
   // Canvas-scoped metadata

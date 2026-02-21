@@ -1,3 +1,4 @@
+import ConversationThreadService from '@renderer/services/ConversationThreadService'
 import { useAppDispatch } from '@renderer/store'
 import { setActiveAgentId, setActiveSessionIdAction } from '@renderer/store/runtime'
 import type { AddAgentForm, CreateAgentResponse } from '@renderer/types'
@@ -81,6 +82,7 @@ export const useAgents = () => {
           }
         }
         mutate((prev) => prev?.filter((a) => a.id !== id) ?? [])
+        await ConversationThreadService.removeSessionThreadsByAgentId(id)
         window.toast.success(t('common.delete_success'))
       } catch (error) {
         window.toast.error(formatErrorMessageWithPrefix(error, t('agent.delete.error.failed')))

@@ -1,3 +1,4 @@
+import ConversationThreadService from '@renderer/services/ConversationThreadService'
 import { useAppDispatch } from '@renderer/store'
 import { loadTopicMessagesThunk } from '@renderer/store/thunk/messageThunk'
 import { buildAgentSessionTopicId } from '@renderer/utils/agentSession'
@@ -33,6 +34,11 @@ export const useSession = (agentId: string | null, sessionId: string | null) => 
       dispatch(loadTopicMessagesThunk(sessionTopicId))
     }
   }, [dispatch, sessionId, sessionTopicId])
+
+  useEffect(() => {
+    if (!agentId || !data) return
+    void ConversationThreadService.upsertSessionThread({ agentId, session: data })
+  }, [agentId, data])
 
   return {
     session: data,
