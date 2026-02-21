@@ -86,6 +86,8 @@ const NotesPage: FC = () => {
   const pendingScrollRef = useRef<{ lineNumber: number; lineContent?: string } | null>(null)
   const [isCanvasChatOpen, setIsCanvasChatOpen] = useState(false)
   const closedForFileRef = useRef<string | null>(null)
+  const [workspaceWidth, setWorkspaceWidth] = useState(280)
+  const workspaceResizingRef = useRef<{ startX: number; startWidth: number; pointerId: number } | null>(null)
 
   const activeFilePathRef = useRef<string | undefined>(activeFilePath)
   const currentContentRef = useRef(currentContent)
@@ -1024,14 +1026,15 @@ const NotesPage: FC = () => {
       <ContentContainer id="content-container">
         <AnimatePresence initial={false}>
           {showWorkspace && (
-            <motion.div
+            <WorkspacePanel
               initial={{ width: 0, opacity: 0 }}
-              animate={{ width: 250, opacity: 1 }}
+              animate={{ width: workspaceWidth, opacity: 1 }}
               exit={{ width: 0, opacity: 0 }}
               transition={{ duration: 0.3, ease: 'easeInOut' }}
               style={{ overflow: 'hidden' }}>
               <NotesSidebar
                 notesTree={notesTree}
+                width={workspaceWidth}
                 selectedFolderId={selectedFolderId}
                 onSelectNode={handleSelectNode}
                 onCreateFolder={handleCreateFolder}
@@ -1044,7 +1047,51 @@ const NotesPage: FC = () => {
                 onSortNodes={handleSortNodes}
                 onUploadFiles={handleUploadFiles}
               />
-            </motion.div>
+              <WorkspaceResizeHandle
+                onPointerDown={(e) => {
+                  workspaceResizingRef.current = {
+                    startX: e.clientX,
+                    startWidth: workspaceWidth,
+                    pointerId: e.pointerId
+                  }
+                  try {
+                    ;(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)
+                  } catch {
+                    // ignore
+                  }
+                  document.body.style.userSelect = 'none'
+                }}
+                onPointerMove={(e) => {
+                  const state = workspaceResizingRef.current
+                  if (!state || state.pointerId !== e.pointerId) return
+                  const delta = e.clientX - state.startX
+                  const next = Math.max(220, Math.min(420, state.startWidth + delta))
+                  setWorkspaceWidth(next)
+                }}
+                onPointerUp={(e) => {
+                  const state = workspaceResizingRef.current
+                  if (!state || state.pointerId !== e.pointerId) return
+                  workspaceResizingRef.current = null
+                  document.body.style.userSelect = ''
+                  try {
+                    ;(e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId)
+                  } catch {
+                    // ignore
+                  }
+                }}
+                onPointerCancel={(e) => {
+                  const state = workspaceResizingRef.current
+                  if (!state || state.pointerId !== e.pointerId) return
+                  workspaceResizingRef.current = null
+                  document.body.style.userSelect = ''
+                  try {
+                    ;(e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId)
+                  } catch {
+                    // ignore
+                  }
+                }}
+              />
+            </WorkspacePanel>
           )}
         </AnimatePresence>
         <EditorWrapper>
@@ -1098,6 +1145,15 @@ const Container = styled.div`
   display: flex;
   flex-direction: column;
   width: 100%;
+  min-width: 0;
+
+  [navbar-position='left'] & {
+    max-width: calc(100vw - var(--sidebar-width));
+  }
+
+  [navbar-position='top'] & {
+    max-width: 100vw;
+  }
 `
 
 const ContentContainer = styled.div`
@@ -1105,6 +1161,9 @@ const ContentContainer = styled.div`
   flex: 1;
   flex-direction: row;
   min-height: 0;
+  min-width: 0;
+  width: 100%;
+  overflow: hidden;
 `
 
 const EditorWrapper = styled.div`
@@ -1116,6 +1175,22 @@ const EditorWrapper = styled.div`
   overflow: hidden;
   min-height: 0;
   min-width: 0;
+`
+
+const WorkspacePanel = styled(motion.div)`
+  position: relative;
+  flex: 0 0 auto;
+`
+
+const WorkspaceResizeHandle = styled.div`
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 8px;
+  cursor: col-resize;
+  z-index: 10;
+  touch-action: none;
 `
 
 export default NotesPage

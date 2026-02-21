@@ -40,6 +40,7 @@ interface NotesSidebarProps {
   onUploadFiles: (files: File[]) => void
   notesTree: NotesTreeNode[]
   selectedFolderId?: string | null
+  width?: number
 }
 
 const NotesSidebar: FC<NotesSidebarProps> = ({
@@ -54,7 +55,8 @@ const NotesSidebar: FC<NotesSidebarProps> = ({
   onSortNodes,
   onUploadFiles,
   notesTree,
-  selectedFolderId
+  selectedFolderId,
+  width = 250
 }) => {
   const { t } = useTranslation()
   const { activeNode } = useActiveNode(notesTree)
@@ -349,6 +351,7 @@ const NotesSidebar: FC<NotesSidebarProps> = ({
             <NotesSearchContext value={searchValue}>
               <NotesUIContext value={{ openDropdownKey }}>
                 <SidebarContainer
+                  $width={width}
                   onDragOver={(e) => {
                     e.preventDefault()
                     if (!draggedNodeId) {
@@ -442,9 +445,9 @@ const NotesSidebar: FC<NotesSidebarProps> = ({
   )
 }
 
-export const SidebarContainer = styled.div`
-  width: 250px;
-  min-width: 250px;
+export const SidebarContainer = styled.div<{ $width: number }>`
+  width: ${({ $width }) => `${$width}px`};
+  min-width: ${({ $width }) => `${$width}px`};
   height: calc(100vh - var(--navbar-height));
   background-color: var(--color-background);
   border-right: 0.5px solid var(--color-border);

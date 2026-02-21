@@ -37,7 +37,6 @@ const CanvasChatSidebar: FC<Props> = ({ open, notesPath, filePath, width = 380, 
 
   const [panelWidth, setPanelWidth] = useState(width)
   const resizingRef = useRef<{ startX: number; startWidth: number; pointerId: number } | null>(null)
-  const isNarrowLayout = panelWidth < 520
 
   const [loading, setLoading] = useState(false)
   const [creatingChat, setCreatingChat] = useState(false)
@@ -45,6 +44,7 @@ const CanvasChatSidebar: FC<Props> = ({ open, notesPath, filePath, width = 380, 
   const [index, setIndex] = useState<CanvasChatsIndexV1 | null>(null)
   const [activeChatId, setActiveChatId] = useState<string | null>(null)
   const [isChatListVisible, setIsChatListVisible] = useState(true)
+  const shouldStackChatList = panelWidth < 620 || (index?.chats?.length ?? 0) <= 1
 
   const activeChat: CanvasChatEntryV1 | null = useMemo(() => {
     if (!index) return null
@@ -220,9 +220,9 @@ const CanvasChatSidebar: FC<Props> = ({ open, notesPath, filePath, width = 380, 
           </Tooltip>
         </ToolbarRow>
 
-        <ChatLayout $direction={isNarrowLayout ? 'column' : 'row'}>
+        <ChatLayout $direction={shouldStackChatList ? 'column' : 'row'}>
           {isChatListVisible && (
-            <ChatList $variant={isNarrowLayout ? 'top' : 'side'}>
+            <ChatList $variant={shouldStackChatList ? 'top' : 'side'}>
               {!index?.chats?.length ? (
                 <Empty description={t('notes.chat.empty')} image={Empty.PRESENTED_IMAGE_SIMPLE} />
               ) : (
@@ -389,7 +389,7 @@ const ChatLayout = styled.div<{ $direction: 'row' | 'column' }>`
 `
 
 const ChatList = styled.div<{ $variant: 'side' | 'top' }>`
-  flex: ${({ $variant }) => ($variant === 'side' ? '0 0 160px' : '0 0 auto')};
+  flex: ${({ $variant }) => ($variant === 'side' ? '0 0 200px' : '0 0 auto')};
   min-width: 0;
   display: flex;
   flex-direction: column;
@@ -398,7 +398,7 @@ const ChatList = styled.div<{ $variant: 'side' | 'top' }>`
   overflow-x: hidden;
   padding-right: ${({ $variant }) => ($variant === 'side' ? '4px' : '0')};
   padding-bottom: ${({ $variant }) => ($variant === 'top' ? '4px' : '0')};
-  max-height: ${({ $variant }) => ($variant === 'top' ? '150px' : 'none')};
+  max-height: ${({ $variant }) => ($variant === 'top' ? '180px' : 'none')};
 `
 
 const ChatListItem = styled.div<{ $active: boolean }>`
