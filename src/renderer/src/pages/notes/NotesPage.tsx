@@ -39,6 +39,7 @@ import {
   setSortType,
   setStarredPaths
 } from '@renderer/store/note'
+import type { CanvasCommentAnchor } from '@renderer/types'
 import type { NotesSortType, NotesTreeNode } from '@renderer/types/note'
 import type { FileChangeEvent } from '@shared/config/types'
 import { Button, Input, message } from 'antd'
@@ -58,6 +59,7 @@ const logger = loggerService.withContext('NotesPage')
 const CANVAS_COMMENT_HIGHLIGHT_NAME = 'canvas-comments'
 
 type EditorSelectionSnapshot = {
+  source: 'code' | 'rich'
   text: string
   startOffset?: number
   endOffset?: number
@@ -66,8 +68,7 @@ type EditorSelectionSnapshot = {
 
 type CommentHighlightRange = {
   id: string
-  start: number
-  end: number
+  anchor: CanvasCommentAnchor
   content: string
 }
 
@@ -136,6 +137,45 @@ function createTextRangeFromOffsets(root: HTMLElement, start: number, end: numbe
   }
 }
 
+function linearizeRootText(root: HTMLElement): string {
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT)
+  let result = ''
+  let node = walker.nextNode() as Text | null
+  while (node) {
+    result += node.nodeValue ?? ''
+    node = walker.nextNode() as Text | null
+  }
+  return result
+}
+
+function getRootTextOffsetsFromDomRange(root: HTMLElement, range: Range): { start: number; end: number } | null {
+  if (!(range.startContainer instanceof Text) || !(range.endContainer instanceof Text)) {
+    return null
+  }
+
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT)
+  let cursor = 0
+  let start = -1
+  let end = -1
+
+  let node = walker.nextNode() as Text | null
+  while (node) {
+    const len = node.nodeValue?.length ?? 0
+    if (node === range.startContainer) {
+      start = cursor + range.startOffset
+    }
+    if (node === range.endContainer) {
+      end = cursor + range.endOffset
+      break
+    }
+    cursor += len
+    node = walker.nextNode() as Text | null
+  }
+
+  if (start < 0 || end <= start) return null
+  return { start, end }
+}
+
 const NotesPage: FC = () => {
   const editorRef = useRef<RichEditorRef>(null)
   const codeEditorRef = useRef<CodeEditorHandles>(null)
@@ -196,6 +236,7 @@ const NotesPage: FC = () => {
     open: boolean
     left: number
     top: number
+    source: 'code' | 'rich'
     selectedText: string
     startOffset?: number
     endOffset?: number
@@ -204,6 +245,7 @@ const NotesPage: FC = () => {
     open: false,
     left: 0,
     top: 0,
+    source: 'code',
     selectedText: '',
     startOffset: undefined,
     endOffset: undefined,
@@ -305,6 +347,7 @@ const NotesPage: FC = () => {
     if (codeSelection?.text?.trim()) {
       const rect = getDomSelectionRect()
       return {
+        source: 'code',
         text: codeSelection.text,
         startOffset: codeSelection.startOffset,
         endOffset: codeSelection.endOffset,
@@ -315,8 +358,18 @@ const NotesPage: FC = () => {
     const richSelection = editorRef.current?.getSelection?.()
     if (richSelection?.text?.trim()) {
       const rect = getDomSelectionRect()
+      let offsets: { start: number; end: number } | null = null
+      const domSelection = window.getSelection()
+      const range = domSelection && domSelection.rangeCount > 0 ? domSelection.getRangeAt(0) : null
+      const root = getCanvasEditorRoot()
+      if (range && root?.contains(range.startContainer) && root.contains(range.endContainer)) {
+        offsets = getRootTextOffsetsFromDomRange(root, range)
+      }
       return {
+        source: 'rich',
         text: richSelection.text,
+        startOffset: offsets?.start,
+        endOffset: offsets?.end,
         rect
       }
     }
@@ -325,7 +378,7 @@ const NotesPage: FC = () => {
   }, [getDomSelectionRect])
 
   const refreshCommentHighlights = useCallback(
-    async (markdownContent?: string, filePath?: string) => {
+    async (_markdownContent?: string, filePath?: string) => {
       if (!notesPath) {
         setActiveCanvasId('')
         setCommentHighlightRanges([])
@@ -342,25 +395,16 @@ const NotesPage: FC = () => {
       try {
         const { canvasId } = await CanvasHistoryService.getCanvasId({ notesPath, filePath: targetFilePath })
         setActiveCanvasId(canvasId)
-        let latestMarkdown: string | undefined = markdownContent
-        if (typeof latestMarkdown !== 'string') {
-          try {
-            latestMarkdown = await window.api.fs.readText(targetFilePath)
-          } catch {
-            latestMarkdown = currentMarkdownRef.current ?? ''
-          }
-        }
-        const resolvedAnchors = await CanvasCommentService.resolveUnresolvedAnchors({
-          canvasId,
-          markdownContent: latestMarkdown || ''
-        })
+        const comments = await CanvasCommentService.listComments(canvasId)
         setCommentHighlightRanges(
-          resolvedAnchors.map((item) => ({
-            id: item.comment.id,
-            start: item.start,
-            end: item.end,
-            content: item.comment.content
-          }))
+          comments.comments
+            .filter((item) => item.status !== 'resolved')
+            .map((item) => ({
+              id: item.id,
+              anchor: item.anchor,
+              content: item.content
+            }))
+            .sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
         )
       } catch (error) {
         logger.error('Failed to refresh canvas comment highlights:', error as Error)
@@ -369,6 +413,57 @@ const NotesPage: FC = () => {
     },
     [activeFilePath, notesPath]
   )
+
+  const refreshHighlightProjection = useCallback(() => {
+    const root = getCanvasEditorRoot()
+    clearCanvasCommentHighlights()
+    commentDomRangesRef.current = []
+
+    if (!root || commentHighlightRanges.length === 0) {
+      setCommentHoverTooltip((prev) => (prev.open ? { ...prev, open: false } : prev))
+      return
+    }
+
+    const renderedText = linearizeRootText(root)
+    if (!renderedText.trim()) {
+      setCommentHoverTooltip((prev) => (prev.open ? { ...prev, open: false } : prev))
+      return
+    }
+
+    const ranges: Range[] = []
+    const hoverRanges: Array<{ id: string; content: string; range: Range }> = []
+
+    for (const item of commentHighlightRanges) {
+      const offsets = CanvasCommentService.resolveAnchorOffsets(renderedText, item.anchor)
+      if (!offsets) continue
+
+      const range = createTextRangeFromOffsets(root, offsets.start, offsets.end)
+      if (!range || !range.toString().trim()) {
+        continue
+      }
+
+      ranges.push(range)
+      hoverRanges.push({ id: item.id, content: item.content, range })
+    }
+
+    commentDomRangesRef.current = hoverRanges
+
+    if (ranges.length === 0) {
+      setCommentHoverTooltip((prev) => (prev.open ? { ...prev, open: false } : prev))
+      return
+    }
+
+    if (typeof CSS === 'undefined' || !('highlights' in CSS)) {
+      return
+    }
+
+    try {
+      const highlight = new Highlight(...ranges)
+      CSS.highlights.set(CANVAS_COMMENT_HIGHLIGHT_NAME, highlight)
+    } catch (error) {
+      logger.debug('Failed to apply canvas comment highlights (ignored):', error as Error)
+    }
+  }, [commentHighlightRanges])
 
   const refreshTree = useCallback(async () => {
     if (!notesPath) {
@@ -1224,6 +1319,7 @@ const NotesPage: FC = () => {
     setCommentComposer((prev) => ({
       ...prev,
       open: false,
+      source: 'code',
       draft: '',
       selectedText: '',
       startOffset: undefined,
@@ -1258,6 +1354,7 @@ const NotesPage: FC = () => {
         open: true,
         left,
         top,
+        source: selection.source,
         selectedText: selection.text,
         startOffset: selection.startOffset,
         endOffset: selection.endOffset,
@@ -1309,7 +1406,11 @@ const NotesPage: FC = () => {
     }
 
     try {
-      if (typeof commentComposer.startOffset === 'number' && typeof commentComposer.endOffset === 'number') {
+      if (
+        commentComposer.source === 'code' &&
+        typeof commentComposer.startOffset === 'number' &&
+        typeof commentComposer.endOffset === 'number'
+      ) {
         await CanvasCommentService.addCommentByOffsets({
           canvasId,
           markdownContent: getCurrentMarkdownContent(),
@@ -1319,6 +1420,36 @@ const NotesPage: FC = () => {
           type: 'none',
           createdBy: 'human'
         })
+      } else if (
+        commentComposer.source === 'rich' &&
+        typeof commentComposer.startOffset === 'number' &&
+        typeof commentComposer.endOffset === 'number'
+      ) {
+        const root = getCanvasEditorRoot()
+        const renderedText = root ? linearizeRootText(root) : ''
+        const anchor = CanvasCommentService.buildAnchorFromOffsets(
+          renderedText,
+          commentComposer.startOffset,
+          commentComposer.endOffset
+        )
+        if (anchor) {
+          await CanvasCommentService.addComment({
+            canvasId,
+            comment: trimmed,
+            type: 'none',
+            anchor,
+            createdBy: 'human'
+          })
+        } else {
+          await CanvasCommentService.addCommentByPattern({
+            notesPath,
+            canvasId,
+            pattern: commentComposer.selectedText,
+            comment: trimmed,
+            type: 'none',
+            createdBy: 'human'
+          })
+        }
       } else {
         await CanvasCommentService.addCommentByPattern({
           notesPath,
@@ -1572,44 +1703,12 @@ const NotesPage: FC = () => {
   }, [refreshCommentHighlights])
 
   useEffect(() => {
-    const root = getCanvasEditorRoot()
-
-    clearCanvasCommentHighlights()
-    commentDomRangesRef.current = []
-
-    if (!root || commentHighlightRanges.length === 0) {
-      setCommentHoverTooltip((prev) => (prev.open ? { ...prev, open: false } : prev))
-      return
-    }
-
-    const ranges: Range[] = []
-    const hoverRanges: Array<{ id: string; content: string; range: Range }> = []
-    for (const item of commentHighlightRanges) {
-      const range = createTextRangeFromOffsets(root, item.start, item.end)
-      if (range) {
-        ranges.push(range)
-        hoverRanges.push({ id: item.id, content: item.content, range })
-      }
-    }
-    commentDomRangesRef.current = hoverRanges
-
-    if (ranges.length > 0) {
-      if (typeof CSS === 'undefined' || !('highlights' in CSS)) {
-        return
-      }
-      try {
-        const highlight = new Highlight(...ranges)
-        CSS.highlights.set(CANVAS_COMMENT_HIGHLIGHT_NAME, highlight)
-      } catch (error) {
-        logger.debug('Failed to apply canvas comment highlights (ignored):', error as Error)
-      }
-    }
-
+    refreshHighlightProjection()
     return () => {
       commentDomRangesRef.current = []
       clearCanvasCommentHighlights()
     }
-  }, [commentHighlightRanges, currentContent])
+  }, [currentContent, refreshHighlightProjection])
 
   useEffect(() => {
     const root = getCanvasEditorRoot()
