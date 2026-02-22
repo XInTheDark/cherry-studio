@@ -12,7 +12,9 @@ const canvasTool = defineTool({
   key: 'canvas',
   label: (t) => t('chat.input.canvas.label'),
   visibleInScopes: [TopicType.Chat, 'mini-window'],
-  render: ({ assistant }) => <CanvasButton assistantId={assistant.id} />
+  render: ({ assistant, quickPanelController }) => (
+    <CanvasButton assistantId={assistant.id} quickPanelController={quickPanelController} />
+  )
 })
 
 registerTool(canvasTool)

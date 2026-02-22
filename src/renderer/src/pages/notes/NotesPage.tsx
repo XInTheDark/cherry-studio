@@ -64,6 +64,24 @@ type EditorSelectionSnapshot = {
   rect?: DOMRect
 }
 
+type CommentHighlightRange = {
+  id: string
+  start: number
+  end: number
+  content: string
+}
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(Math.max(value, min), max)
+}
+
+function getCanvasEditorRoot(): HTMLElement | null {
+  return (
+    (document.querySelector('#notes-page .notes-rich-editor .ProseMirror') as HTMLElement | null) ||
+    (document.querySelector('#notes-page .cm-content') as HTMLElement | null)
+  )
+}
+
 function clearCanvasCommentHighlights() {
   if (typeof CSS === 'undefined' || !('highlights' in CSS)) {
     return
@@ -149,9 +167,48 @@ const NotesPage: FC = () => {
   const pendingScrollRef = useRef<{ lineNumber: number; lineContent?: string } | null>(null)
   const [isCanvasChatOpen, setIsCanvasChatOpen] = useState(false)
   const [activeCanvasId, setActiveCanvasId] = useState<string>('')
-  const [commentHighlightRanges, setCommentHighlightRanges] = useState<
-    Array<{ id: string; start: number; end: number }>
-  >([])
+  const [commentHighlightRanges, setCommentHighlightRanges] = useState<CommentHighlightRange[]>([])
+  const commentDomRangesRef = useRef<Array<{ id: string; content: string; range: Range }>>([])
+  const [commentHoverTooltip, setCommentHoverTooltip] = useState<{
+    open: boolean
+    left: number
+    top: number
+    content: string
+  }>({
+    open: false,
+    left: 0,
+    top: 0,
+    content: ''
+  })
+  const [selectionContextMenu, setSelectionContextMenu] = useState<{
+    open: boolean
+    left: number
+    top: number
+    selection: EditorSelectionSnapshot | null
+  }>({
+    open: false,
+    left: 0,
+    top: 0,
+    selection: null
+  })
+  const selectionContextMenuRef = useRef<HTMLDivElement | null>(null)
+  const [commentComposer, setCommentComposer] = useState<{
+    open: boolean
+    left: number
+    top: number
+    selectedText: string
+    startOffset?: number
+    endOffset?: number
+    draft: string
+  }>({
+    open: false,
+    left: 0,
+    top: 0,
+    selectedText: '',
+    startOffset: undefined,
+    endOffset: undefined,
+    draft: ''
+  })
   const [inlinePrompt, setInlinePrompt] = useState<{
     open: boolean
     left: number
@@ -173,6 +230,7 @@ const NotesPage: FC = () => {
   const [workspaceWidth, setWorkspaceWidth] = useState(280)
   const workspaceResizingRef = useRef<{ startX: number; startWidth: number; pointerId: number } | null>(null)
   const inlinePromptInputRef = useRef<HTMLTextAreaElement | null>(null)
+  const commentComposerInputRef = useRef<HTMLTextAreaElement | null>(null)
 
   const activeFilePathRef = useRef<string | undefined>(activeFilePath)
   const currentContentRef = useRef(currentContent)
@@ -233,27 +291,30 @@ const NotesPage: FC = () => {
     return currentMarkdownRef.current ?? ''
   }, [])
 
+  const getDomSelectionRect = useCallback((): DOMRect | undefined => {
+    const domSelection = window.getSelection()
+    if (!domSelection || domSelection.rangeCount <= 0) return undefined
+    const range = domSelection.getRangeAt(0)
+    const rect = range.getBoundingClientRect()
+    if (!rect || (rect.width <= 0 && rect.height <= 0)) return undefined
+    return rect
+  }, [])
+
   const getCurrentSelection = useCallback((): EditorSelectionSnapshot | null => {
     const codeSelection = codeEditorRef.current?.getSelection?.()
     if (codeSelection?.text?.trim()) {
+      const rect = getDomSelectionRect()
       return {
         text: codeSelection.text,
         startOffset: codeSelection.startOffset,
-        endOffset: codeSelection.endOffset
+        endOffset: codeSelection.endOffset,
+        rect
       }
     }
 
     const richSelection = editorRef.current?.getSelection?.()
     if (richSelection?.text?.trim()) {
-      let rect: DOMRect | undefined
-      const domSelection = window.getSelection()
-      if (domSelection && domSelection.rangeCount > 0) {
-        const range = domSelection.getRangeAt(0)
-        const candidate = range.getBoundingClientRect()
-        if (candidate && (candidate.width > 0 || candidate.height > 0)) {
-          rect = candidate
-        }
-      }
+      const rect = getDomSelectionRect()
       return {
         text: richSelection.text,
         rect
@@ -261,7 +322,7 @@ const NotesPage: FC = () => {
     }
 
     return null
-  }, [])
+  }, [getDomSelectionRect])
 
   const refreshCommentHighlights = useCallback(
     async (markdownContent?: string, filePath?: string) => {
@@ -281,12 +342,25 @@ const NotesPage: FC = () => {
       try {
         const { canvasId } = await CanvasHistoryService.getCanvasId({ notesPath, filePath: targetFilePath })
         setActiveCanvasId(canvasId)
+        let latestMarkdown: string | undefined = markdownContent
+        if (typeof latestMarkdown !== 'string') {
+          try {
+            latestMarkdown = await window.api.fs.readText(targetFilePath)
+          } catch {
+            latestMarkdown = currentMarkdownRef.current ?? ''
+          }
+        }
         const resolvedAnchors = await CanvasCommentService.resolveUnresolvedAnchors({
           canvasId,
-          markdownContent: markdownContent ?? currentMarkdownRef.current ?? ''
+          markdownContent: latestMarkdown || ''
         })
         setCommentHighlightRanges(
-          resolvedAnchors.map((item) => ({ id: item.comment.id, start: item.start, end: item.end }))
+          resolvedAnchors.map((item) => ({
+            id: item.comment.id,
+            start: item.start,
+            end: item.end,
+            content: item.comment.content
+          }))
         )
       } catch (error) {
         logger.error('Failed to refresh canvas comment highlights:', error as Error)
@@ -1142,6 +1216,136 @@ const NotesPage: FC = () => {
     }
   }, [currentContent, settings.defaultEditMode])
 
+  const closeSelectionContextMenu = useCallback(() => {
+    setSelectionContextMenu((prev) => (prev.open ? { ...prev, open: false, selection: null } : prev))
+  }, [])
+
+  const closeCommentComposer = useCallback(() => {
+    setCommentComposer((prev) => ({
+      ...prev,
+      open: false,
+      draft: '',
+      selectedText: '',
+      startOffset: undefined,
+      endOffset: undefined
+    }))
+  }, [])
+
+  const openCommentComposer = useCallback(
+    (selection: EditorSelectionSnapshot, anchor?: { left?: number; top?: number }) => {
+      if (!selection.text?.trim()) {
+        window.toast?.warning?.(t('notes.comments.select_text_first'))
+        return
+      }
+
+      const width = 340
+      const height = 220
+      const margin = 10
+      const fallbackLeft = anchor?.left ?? window.innerWidth / 2
+      const fallbackTop = anchor?.top ?? window.innerHeight / 2
+      let left = clamp(fallbackLeft + 12, margin, window.innerWidth - width - margin)
+      let top = clamp(fallbackTop, margin, window.innerHeight - height - margin)
+
+      if (selection.rect) {
+        const rightSideLeft = selection.rect.right + 12
+        const leftSideLeft = selection.rect.left - width - 12
+        left = rightSideLeft + width + margin <= window.innerWidth ? rightSideLeft : leftSideLeft
+        left = clamp(left, margin, window.innerWidth - width - margin)
+        top = clamp(selection.rect.top, margin, window.innerHeight - height - margin)
+      }
+
+      setCommentComposer({
+        open: true,
+        left,
+        top,
+        selectedText: selection.text,
+        startOffset: selection.startOffset,
+        endOffset: selection.endOffset,
+        draft: ''
+      })
+      closeSelectionContextMenu()
+    },
+    [closeSelectionContextMenu, t]
+  )
+
+  const requestCommentComposerFromCurrentSelection = useCallback(
+    (anchor?: { left?: number; top?: number }) => {
+      const selection = getCurrentSelection()
+      if (!selection?.text?.trim()) {
+        window.toast?.warning?.(t('notes.comments.select_text_first'))
+        return
+      }
+      openCommentComposer(selection, anchor)
+    },
+    [getCurrentSelection, openCommentComposer, t]
+  )
+
+  const submitCommentComposer = useCallback(async () => {
+    if (!commentComposer.open) return
+    const trimmed = commentComposer.draft.trim()
+    if (!trimmed) return
+    if (!notesPath) {
+      window.toast?.warning?.(t('notes.chat.no_active_canvas'))
+      return
+    }
+
+    let canvasId = activeCanvasId
+    if (!canvasId && activeFilePathRef.current) {
+      try {
+        const resolved = await CanvasHistoryService.getCanvasId({
+          notesPath,
+          filePath: activeFilePathRef.current
+        })
+        canvasId = resolved.canvasId
+        setActiveCanvasId(canvasId)
+      } catch {
+        canvasId = ''
+      }
+    }
+
+    if (!canvasId) {
+      window.toast?.warning?.(t('notes.chat.no_active_canvas'))
+      return
+    }
+
+    try {
+      if (typeof commentComposer.startOffset === 'number' && typeof commentComposer.endOffset === 'number') {
+        await CanvasCommentService.addCommentByOffsets({
+          canvasId,
+          markdownContent: getCurrentMarkdownContent(),
+          startOffset: commentComposer.startOffset,
+          endOffset: commentComposer.endOffset,
+          comment: trimmed,
+          type: 'none',
+          createdBy: 'human'
+        })
+      } else {
+        await CanvasCommentService.addCommentByPattern({
+          notesPath,
+          canvasId,
+          pattern: commentComposer.selectedText,
+          comment: trimmed,
+          type: 'none',
+          createdBy: 'human'
+        })
+      }
+      window.toast?.success?.(t('notes.comments.add_success'))
+      closeCommentComposer()
+      void refreshCommentHighlights(undefined, activeFilePathRef.current)
+    } catch (error) {
+      logger.error('Failed to add human canvas comment:', error as Error)
+      window.toast?.error?.(t('notes.comments.add_failed'))
+    }
+  }, [
+    activeCanvasId,
+    closeCommentComposer,
+    commentComposer,
+    getCurrentMarkdownContent,
+    notesPath,
+    refreshCommentHighlights,
+    t
+  ])
+
   const closeInlinePrompt = useCallback(() => {
     setInlinePrompt((prev) => ({ ...prev, open: false, draft: '' }))
   }, [])
@@ -1184,9 +1388,69 @@ const NotesPage: FC = () => {
   }, [inlinePrompt.open])
 
   useEffect(() => {
+    if (!commentComposer.open) return
+    setTimeout(() => commentComposerInputRef.current?.focus(), 0)
+  }, [commentComposer.open])
+
+  useEffect(() => {
+    const onContextMenu = (e: MouseEvent) => {
+      if (!activeFilePathRef.current) return
+      const target = e.target as Node | null
+      const element = target instanceof Element ? target : target?.parentElement
+      if (!element) return
+
+      const insideEditor = element.closest(
+        '#notes-page .notes-rich-editor .ProseMirror, #notes-page .cm-editor, #notes-page .cm-content'
+      )
+      if (!insideEditor) return
+
+      const selection = getCurrentSelection()
+      if (!selection?.text?.trim()) {
+        closeSelectionContextMenu()
+        return
+      }
+
+      e.preventDefault()
+      e.stopPropagation()
+      setSelectionContextMenu({
+        open: true,
+        left: clamp(e.clientX, 10, window.innerWidth - 220),
+        top: clamp(e.clientY, 10, window.innerHeight - 120),
+        selection
+      })
+    }
+
+    window.addEventListener('contextmenu', onContextMenu, true)
+    return () => {
+      window.removeEventListener('contextmenu', onContextMenu, true)
+    }
+  }, [closeSelectionContextMenu, getCurrentSelection])
+
+  useEffect(() => {
+    const onPointerDown = (e: PointerEvent) => {
+      if (!selectionContextMenu.open) return
+      const target = e.target as Node | null
+      if (selectionContextMenuRef.current && target && selectionContextMenuRef.current.contains(target)) {
+        return
+      }
+      closeSelectionContextMenu()
+    }
+
+    const onWindowBlur = () => closeSelectionContextMenu()
+    window.addEventListener('pointerdown', onPointerDown, true)
+    window.addEventListener('blur', onWindowBlur)
+    return () => {
+      window.removeEventListener('pointerdown', onPointerDown, true)
+      window.removeEventListener('blur', onWindowBlur)
+    }
+  }, [closeSelectionContextMenu, selectionContextMenu.open])
+
+  useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
-      const isModK = (e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k'
-      if (!isModK) return
+      const isMod = e.metaKey || e.ctrlKey
+      const isModK = isMod && e.key.toLowerCase() === 'k'
+      const isModShiftM = isMod && e.shiftKey && e.key.toLowerCase() === 'm'
+      if (!isModK && !isModShiftM) return
       if (!activeFilePathRef.current) return
 
       const selection = getCurrentSelection()
@@ -1195,16 +1459,20 @@ const NotesPage: FC = () => {
       e.preventDefault()
       e.stopPropagation()
 
-      const margin = 10
-      const fallbackLeft = Math.max(margin, Math.min(window.innerWidth - 360 - margin, window.innerWidth / 2 - 160))
-      const fallbackTop = Math.max(margin, Math.min(window.innerHeight - 220 - margin, window.innerHeight / 2 - 80))
-      const left = selection.rect
-        ? Math.max(margin, Math.min(window.innerWidth - 360 - margin, selection.rect.left))
-        : fallbackLeft
-      const top = selection.rect
-        ? Math.max(margin, Math.min(window.innerHeight - 220 - margin, selection.rect.bottom + 8))
-        : fallbackTop
+      if (isModShiftM) {
+        requestCommentComposerFromCurrentSelection()
+        return
+      }
 
+      const margin = 10
+      const left = selection.rect
+        ? clamp(selection.rect.left, margin, window.innerWidth - 360 - margin)
+        : clamp(window.innerWidth / 2 - 160, margin, window.innerWidth - 360 - margin)
+      const top = selection.rect
+        ? clamp(selection.rect.bottom + 8, margin, window.innerHeight - 220 - margin)
+        : clamp(window.innerHeight / 2 - 80, margin, window.innerHeight - 220 - margin)
+
+      closeSelectionContextMenu()
       setInlinePrompt({
         open: true,
         left,
@@ -1224,11 +1492,13 @@ const NotesPage: FC = () => {
     return () => {
       window.removeEventListener('keydown', onKeyDown, true)
     }
-  }, [getCurrentSelection, isCanvasChatOpen])
+  }, [closeSelectionContextMenu, getCurrentSelection, isCanvasChatOpen, requestCommentComposerFromCurrentSelection])
 
   useEffect(() => {
     setInlinePrompt((prev) => (prev.open ? { ...prev, open: false, draft: '' } : prev))
-  }, [activeFilePath])
+    closeCommentComposer()
+    closeSelectionContextMenu()
+  }, [activeFilePath, closeCommentComposer, closeSelectionContextMenu])
 
   useEffect(() => {
     const unsubscribe = EventEmitter.on(EVENT_NAMES.OPEN_CANVAS, ({ filePath }: { filePath?: string }) => {
@@ -1293,33 +1563,35 @@ const NotesPage: FC = () => {
   }, [activeFilePath, currentContent, refreshCommentHighlights])
 
   useEffect(() => {
-    const unsubscribe = EventEmitter.on(EVENT_NAMES.CANVAS_COMMENTS_UPDATED, ({ canvasId }: { canvasId?: string }) => {
-      if (!canvasId || canvasId !== activeCanvasId) return
+    const unsubscribe = EventEmitter.on(EVENT_NAMES.CANVAS_COMMENTS_UPDATED, () => {
       void refreshCommentHighlights(currentMarkdownRef.current, activeFilePathRef.current)
     })
     return () => {
       unsubscribe()
     }
-  }, [activeCanvasId, refreshCommentHighlights])
+  }, [refreshCommentHighlights])
 
   useEffect(() => {
-    const root =
-      (document.querySelector('#notes-page .notes-rich-editor .ProseMirror') as HTMLElement | null) ||
-      (document.querySelector('#notes-page .cm-content') as HTMLElement | null)
+    const root = getCanvasEditorRoot()
 
     clearCanvasCommentHighlights()
+    commentDomRangesRef.current = []
 
     if (!root || commentHighlightRanges.length === 0) {
+      setCommentHoverTooltip((prev) => (prev.open ? { ...prev, open: false } : prev))
       return
     }
 
     const ranges: Range[] = []
+    const hoverRanges: Array<{ id: string; content: string; range: Range }> = []
     for (const item of commentHighlightRanges) {
       const range = createTextRangeFromOffsets(root, item.start, item.end)
       if (range) {
         ranges.push(range)
+        hoverRanges.push({ id: item.id, content: item.content, range })
       }
     }
+    commentDomRangesRef.current = hoverRanges
 
     if (ranges.length > 0) {
       if (typeof CSS === 'undefined' || !('highlights' in CSS)) {
@@ -1334,9 +1606,55 @@ const NotesPage: FC = () => {
     }
 
     return () => {
+      commentDomRangesRef.current = []
       clearCanvasCommentHighlights()
     }
   }, [commentHighlightRanges, currentContent])
+
+  useEffect(() => {
+    const root = getCanvasEditorRoot()
+    if (!root || commentHighlightRanges.length === 0) {
+      setCommentHoverTooltip((prev) => (prev.open ? { ...prev, open: false } : prev))
+      return
+    }
+
+    const onMouseMove = (e: MouseEvent) => {
+      const x = e.clientX
+      const y = e.clientY
+      let hitContent: string | null = null
+
+      for (const item of commentDomRangesRef.current) {
+        const rects = Array.from(item.range.getClientRects())
+        if (rects.some((rect) => x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom)) {
+          hitContent = item.content
+          break
+        }
+      }
+
+      if (!hitContent) {
+        setCommentHoverTooltip((prev) => (prev.open ? { ...prev, open: false } : prev))
+        return
+      }
+
+      setCommentHoverTooltip({
+        open: true,
+        left: clamp(x + 12, 10, window.innerWidth - 360),
+        top: clamp(y + 12, 10, window.innerHeight - 120),
+        content: hitContent
+      })
+    }
+
+    const onMouseLeave = () => {
+      setCommentHoverTooltip((prev) => (prev.open ? { ...prev, open: false } : prev))
+    }
+
+    root.addEventListener('mousemove', onMouseMove)
+    root.addEventListener('mouseleave', onMouseLeave)
+    return () => {
+      root.removeEventListener('mousemove', onMouseMove)
+      root.removeEventListener('mouseleave', onMouseLeave)
+    }
+  }, [commentHighlightRanges])
 
   // Ensure canvas edits produced by assistant tools are reflected immediately in the active editor.
   useEffect(() => {
@@ -1468,21 +1786,74 @@ const NotesPage: FC = () => {
             notesPath={notesPath}
             filePath={activeFilePath}
             width={380}
-            getCurrentSelection={() => {
-              const selection = getCurrentSelection()
-              if (!selection) return null
-              return {
-                text: selection.text,
-                startOffset: selection.startOffset,
-                endOffset: selection.endOffset
-              }
-            }}
-            getCurrentMarkdown={getCurrentMarkdownContent}
+            onRequestAddComment={() => requestCommentComposerFromCurrentSelection()}
             onClose={() => {
               setIsCanvasChatOpen(false)
               closedForFileRef.current = activeFilePath
             }}
           />
+        )}
+        {selectionContextMenu.open && selectionContextMenu.selection && (
+          <SelectionContextMenuCard
+            ref={selectionContextMenuRef}
+            style={{ left: selectionContextMenu.left, top: selectionContextMenu.top }}>
+            <SelectionContextMenuItem
+              size="small"
+              type="text"
+              onClick={() => {
+                if (!selectionContextMenu.selection) return
+                openCommentComposer(selectionContextMenu.selection, {
+                  left: selectionContextMenu.left,
+                  top: selectionContextMenu.top
+                })
+              }}>
+              {t('notes.comments.add')}
+              <SelectionContextMenuHint>
+                {navigator.platform.includes('Mac') ? '⌘⇧M' : 'Ctrl+Shift+M'}
+              </SelectionContextMenuHint>
+            </SelectionContextMenuItem>
+          </SelectionContextMenuCard>
+        )}
+        {commentComposer.open && (
+          <InlinePromptCard style={{ left: commentComposer.left, top: commentComposer.top }}>
+            <InlinePromptTitle>{t('notes.comments.add')}</InlinePromptTitle>
+            <InlinePromptSelection title={commentComposer.selectedText}>
+              {commentComposer.selectedText}
+            </InlinePromptSelection>
+            <Input.TextArea
+              ref={commentComposerInputRef}
+              value={commentComposer.draft}
+              autoSize={{ minRows: 2, maxRows: 6 }}
+              placeholder={t('notes.comments.add_prompt')}
+              onChange={(e) => {
+                const value = e.target.value
+                setCommentComposer((prev) => ({ ...prev, draft: value }))
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Escape') {
+                  e.preventDefault()
+                  closeCommentComposer()
+                  return
+                }
+                if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+                  e.preventDefault()
+                  void submitCommentComposer()
+                }
+              }}
+            />
+            <InlinePromptActions>
+              <Button size="small" onClick={closeCommentComposer}>
+                {t('common.cancel')}
+              </Button>
+              <Button
+                size="small"
+                type="primary"
+                disabled={!commentComposer.draft.trim()}
+                onClick={() => void submitCommentComposer()}>
+                {t('common.save')}
+              </Button>
+            </InlinePromptActions>
+          </InlinePromptCard>
         )}
         {inlinePrompt.open && (
           <InlinePromptCard style={{ left: inlinePrompt.left, top: inlinePrompt.top }}>
@@ -1522,6 +1893,11 @@ const NotesPage: FC = () => {
               </Button>
             </InlinePromptActions>
           </InlinePromptCard>
+        )}
+        {commentHoverTooltip.open && (
+          <CommentHoverTooltip style={{ left: commentHoverTooltip.left, top: commentHoverTooltip.top }}>
+            {commentHoverTooltip.content}
+          </CommentHoverTooltip>
         )}
       </ContentContainer>
     </Container>
@@ -1615,6 +1991,45 @@ const InlinePromptActions = styled.div`
   display: flex;
   justify-content: flex-end;
   gap: 8px;
+`
+
+const SelectionContextMenuCard = styled.div`
+  position: fixed;
+  z-index: 9999;
+  min-width: 180px;
+  border: 1px solid var(--color-border-soft);
+  border-radius: 10px;
+  background: var(--color-background);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.14);
+  padding: 4px;
+`
+
+const SelectionContextMenuItem = styled(Button)`
+  width: 100%;
+  justify-content: space-between;
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+`
+
+const SelectionContextMenuHint = styled.span`
+  color: var(--color-text-3);
+  font-size: 11px;
+`
+
+const CommentHoverTooltip = styled.div`
+  position: fixed;
+  z-index: 9997;
+  max-width: 320px;
+  pointer-events: none;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--color-border-soft);
+  background: var(--color-background);
+  color: var(--color-text);
+  font-size: 12px;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.12);
+  white-space: pre-wrap;
 `
 
 export default NotesPage

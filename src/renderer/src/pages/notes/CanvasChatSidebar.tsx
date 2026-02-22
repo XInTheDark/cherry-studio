@@ -47,19 +47,10 @@ type Props = {
   filePath: string
   width?: number
   onClose: () => void
-  getCurrentSelection?: () => { text: string; startOffset?: number; endOffset?: number } | null
-  getCurrentMarkdown?: () => string
+  onRequestAddComment?: () => void
 }
 
-const CanvasChatSidebar: FC<Props> = ({
-  open,
-  notesPath,
-  filePath,
-  width = 380,
-  onClose,
-  getCurrentSelection,
-  getCurrentMarkdown
-}) => {
+const CanvasChatSidebar: FC<Props> = ({ open, notesPath, filePath, width = 380, onClose, onRequestAddComment }) => {
   const { t } = useTranslation()
   const dispatch = useAppDispatch()
   const assistants = useAppSelector((s) => s.assistants.assistants)
@@ -79,6 +70,17 @@ const CanvasChatSidebar: FC<Props> = ({
   const [commentsLoading, setCommentsLoading] = useState(false)
 
   const autoRenameLocksRef = useRef<Set<string>>(new Set())
+  const assistantsRef = useRef(assistants)
+  const defaultAssistantIdRef = useRef(defaultAssistantId)
+  const loadSeqRef = useRef(0)
+
+  useEffect(() => {
+    assistantsRef.current = assistants
+  }, [assistants])
+
+  useEffect(() => {
+    defaultAssistantIdRef.current = defaultAssistantId
+  }, [defaultAssistantId])
 
   const shouldStackChatList = panelWidth < 620 || (index?.chats?.length ?? 0) <= 1
 
@@ -117,14 +119,15 @@ const CanvasChatSidebar: FC<Props> = ({
   const load = useCallback(async () => {
     if (!open || !notesPath || !filePath) return
 
+    const seq = loadSeqRef.current + 1
+    loadSeqRef.current = seq
     setLoading(true)
-    setIndex(null)
-    setActiveChatId(null)
     try {
       const { canvasId } = await CanvasHistoryService.getCanvasId({ notesPath, filePath })
+      if (loadSeqRef.current !== seq) return
       setCanvasId(canvasId)
 
-      const preferredAssistantId = defaultAssistantId || assistants[0]?.id
+      const preferredAssistantId = defaultAssistantIdRef.current || assistantsRef.current[0]?.id
       if (!preferredAssistantId) {
         throw new Error('No assistants available for canvas chat')
       }
@@ -133,15 +136,18 @@ const CanvasChatSidebar: FC<Props> = ({
         canvasId,
         defaultAssistantId: preferredAssistantId
       })
+      if (loadSeqRef.current !== seq) return
       setIndex(index)
       setActiveChatId(activeChat.id)
     } catch (error) {
       logger.error('Failed to load canvas chats:', error as Error)
       window.toast?.error?.(t('notes.chat.load_failed'))
     } finally {
-      setLoading(false)
+      if (loadSeqRef.current === seq) {
+        setLoading(false)
+      }
     }
-  }, [assistants, defaultAssistantId, filePath, notesPath, open, t])
+  }, [filePath, notesPath, open, t])
 
   useEffect(() => {
     void load()
@@ -490,57 +496,6 @@ const CanvasChatSidebar: FC<Props> = ({
     [canvasId, refreshIndex, t]
   )
 
-  const handleAddHumanComment = useCallback(async () => {
-    if (!canvasId) return
-    const selection = getCurrentSelection?.()
-    if (!selection?.text?.trim()) {
-      window.toast?.warning?.(t('notes.comments.select_text_first'))
-      return
-    }
-
-    const commentText = await PromptPopup.show({
-      title: t('notes.comments.add'),
-      message: t('notes.comments.add_prompt')
-    })
-    if (commentText === null) return
-    const trimmed = commentText.trim()
-    if (!trimmed) return
-
-    try {
-      if (
-        typeof selection.startOffset === 'number' &&
-        typeof selection.endOffset === 'number' &&
-        typeof getCurrentMarkdown === 'function'
-      ) {
-        const markdown = getCurrentMarkdown()
-        await CanvasCommentService.addCommentByOffsets({
-          canvasId,
-          markdownContent: markdown,
-          startOffset: selection.startOffset,
-          endOffset: selection.endOffset,
-          comment: trimmed,
-          type: 'none',
-          createdBy: 'human'
-        })
-      } else {
-        await CanvasCommentService.addCommentByPattern({
-          notesPath,
-          canvasId,
-          pattern: selection.text,
-          comment: trimmed,
-          type: 'none',
-          createdBy: 'human'
-        })
-      }
-
-      await refreshComments()
-      window.toast?.success?.(t('notes.comments.add_success'))
-    } catch (error) {
-      logger.error('Failed to add human canvas comment:', error as Error)
-      window.toast?.error?.(t('notes.comments.add_failed'))
-    }
-  }, [canvasId, getCurrentMarkdown, getCurrentSelection, notesPath, refreshComments, t])
-
   const handleReplyComment = useCallback(
     async (comment: CanvasCommentEntry) => {
       if (!canvasId) return
@@ -714,7 +669,7 @@ const CanvasChatSidebar: FC<Props> = ({
                 icon={<Plus size={16} />}
                 disabled={!canvasId || commentsLoading}
                 onClick={() => {
-                  void handleAddHumanComment()
+                  onRequestAddComment?.()
                 }}>
                 {t('notes.comments.add')}
               </Button>

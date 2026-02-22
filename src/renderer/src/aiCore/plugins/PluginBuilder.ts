@@ -41,9 +41,14 @@ export function buildPlugins(
 
   // 2b. Canvas tools (Canvas chat always enables; normal chat requires toggle).
   // Allow function-calling models to use tools even if the assistant isn't in tool-use mode.
+  const hasSpecificCanvasSelection =
+    middlewareConfig.assistant.canvasToolMode === 'specific' &&
+    (middlewareConfig.assistant.canvasToolSelectedCanvasIds?.length || 0) > 0
   const hasCanvasContext =
     Boolean(middlewareConfig.topicId) &&
-    (middlewareConfig.topicId?.startsWith('canvas__') || middlewareConfig.assistant.enableCanvas === true)
+    (middlewareConfig.topicId?.startsWith('canvas__') ||
+      middlewareConfig.assistant.enableCanvas === true ||
+      hasSpecificCanvasSelection)
   const canInvokeCanvasTools =
     hasCanvasContext &&
     (middlewareConfig.isPromptToolUse ||

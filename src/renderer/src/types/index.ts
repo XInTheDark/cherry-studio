@@ -49,6 +49,10 @@ export type Assistant = {
   enableWebSearch?: boolean
   /** enableCanvas enables Canvas edit tools in normal chats (Canvas chat sidebar always enables tools). */
   enableCanvas?: boolean
+  /** Normal-chat canvas tool mode: automatic target inference or explicit selected canvases. */
+  canvasToolMode?: 'automatic' | 'specific'
+  /** Explicitly selected canvas IDs used when canvasToolMode is 'specific'. */
+  canvasToolSelectedCanvasIds?: string[]
   webSearchProviderId?: WebSearchProvider['id']
   // enableUrlContext 是 Gemini/Anthropic 的特有功能
   enableUrlContext?: boolean

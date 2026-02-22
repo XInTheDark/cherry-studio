@@ -28,6 +28,9 @@ import {
 const logger = loggerService.withContext('CanvasOrchestrationPlugin')
 
 const CANVAS_CONTEXT_MARKER = '[[CANVAS_CONTEXT]]'
+const CANVAS_SELECTED_CONTEXT_MARKER = '[[CANVAS_SELECTED_CONTEXT]]'
+const MAX_SELECTED_CANVAS_COUNT = 5
+const MAX_SELECTED_CANVAS_CHARS = 6000
 
 function buildCanvasContextMessage(args: {
   canvasId: string
@@ -61,6 +64,56 @@ function buildCanvasContextMessage(args: {
   ].join('\n')
 }
 
+function truncateForPrompt(value: string, maxChars: number): { text: string; truncated: boolean } {
+  if (value.length <= maxChars) {
+    return { text: value, truncated: false }
+  }
+  return { text: `${value.slice(0, maxChars)}\n\n...[truncated]`, truncated: true }
+}
+
+function buildSelectedCanvasContextMessage(args: {
+  canvases: Array<{
+    canvasId: string
+    relPath: string
+    markdown: string
+    unresolvedComments: Array<{ id: string; type: string; comment: string; anchorPreview: string; replyCount: number }>
+    truncated: boolean
+  }>
+}): string {
+  const sections = args.canvases.map((canvas, idx) => {
+    const comments =
+      canvas.unresolvedComments.length === 0
+        ? '- (none)'
+        : canvas.unresolvedComments
+            .map((item) => {
+              const summary = item.comment.replace(/\s+/g, ' ').slice(0, 160)
+              return `- id=${item.id} type=${item.type} replies=${item.replyCount}: ${summary}`
+            })
+            .join('\n')
+
+    const truncatedHint = canvas.truncated ? '\n(Note: markdown was truncated for prompt budget.)' : ''
+
+    return [
+      `### ${idx + 1}. ${canvas.relPath}`,
+      `canvasId: ${canvas.canvasId}`,
+      '```markdown',
+      canvas.markdown,
+      '```',
+      truncatedHint,
+      'Open comments:',
+      comments
+    ]
+      .filter(Boolean)
+      .join('\n')
+  })
+
+  return [
+    CANVAS_SELECTED_CONTEXT_MARKER,
+    'The user selected specific canvases for this chat. Prefer these canvases when resolving references.',
+    ...sections
+  ].join('\n\n')
+}
+
 export const canvasOrchestrationPlugin = (assistant: Assistant, topicId: string) => {
   return definePlugin({
     name: 'canvas-orchestration',
@@ -75,7 +128,12 @@ export const canvasOrchestrationPlugin = (assistant: Assistant, topicId: string)
         const parsedCanvasChat = parseCanvasChatTopicId(topicId)
         const isCanvasChat = Boolean(parsedCanvasChat)
 
-        const enabledForNormalChat = assistant.enableCanvas === true
+        const selectedCanvasIds = Array.isArray(assistant.canvasToolSelectedCanvasIds)
+          ? assistant.canvasToolSelectedCanvasIds.filter(Boolean)
+          : []
+        const hasSpecificCanvasSelection =
+          !isCanvasChat && assistant.canvasToolMode === 'specific' && selectedCanvasIds.length > 0
+        const enabledForNormalChat = assistant.enableCanvas === true || hasSpecificCanvasSelection
         if (!isCanvasChat && !enabledForNormalChat) {
           return params
         }
@@ -87,6 +145,7 @@ export const canvasOrchestrationPlugin = (assistant: Assistant, topicId: string)
 
         // Compute the default canvas target for this request.
         let defaultTarget: { canvasId: string; filePath: string } | null = null
+        const selectedTargets: Array<{ canvasId: string; filePath: string; relPath: string }> = []
 
         if (isCanvasChat && parsedCanvasChat) {
           const resolved = await CanvasHistoryService.resolveFilePathForCanvasId({
@@ -102,15 +161,39 @@ export const canvasOrchestrationPlugin = (assistant: Assistant, topicId: string)
             })
           }
         } else {
+          if (hasSpecificCanvasSelection) {
+            const preferredCanvasIds = selectedCanvasIds.slice(0, MAX_SELECTED_CANVAS_COUNT)
+            for (const canvasId of preferredCanvasIds) {
+              const resolved = await CanvasHistoryService.resolveFilePathForCanvasId({
+                notesPath,
+                canvasId
+              })
+              if (!resolved?.filePath) continue
+              selectedTargets.push({
+                canvasId,
+                filePath: resolved.filePath,
+                relPath: resolved.relPath
+              })
+            }
+            if (selectedTargets[0]) {
+              defaultTarget = {
+                canvasId: selectedTargets[0].canvasId,
+                filePath: selectedTargets[0].filePath
+              }
+            }
+          }
+
           // Normal chat: prefer persistent topic -> activeCanvasId mapping.
-          const mappedCanvasId = await CanvasTopicMappingService.getActiveCanvasId(topicId)
-          if (mappedCanvasId) {
-            const resolved = await CanvasHistoryService.resolveFilePathForCanvasId({
-              notesPath,
-              canvasId: mappedCanvasId
-            })
-            if (resolved?.filePath) {
-              defaultTarget = { canvasId: mappedCanvasId, filePath: resolved.filePath }
+          if (!defaultTarget) {
+            const mappedCanvasId = await CanvasTopicMappingService.getActiveCanvasId(topicId)
+            if (mappedCanvasId) {
+              const resolved = await CanvasHistoryService.resolveFilePathForCanvasId({
+                notesPath,
+                canvasId: mappedCanvasId
+              })
+              if (resolved?.filePath) {
+                defaultTarget = { canvasId: mappedCanvasId, filePath: resolved.filePath }
+              }
             }
           }
 
@@ -128,46 +211,113 @@ export const canvasOrchestrationPlugin = (assistant: Assistant, topicId: string)
           }
         }
 
-        // Inject the latest canvas markdown + unresolved comments for each canvas-enabled request.
-        if (defaultTarget) {
-          try {
-            const resolved = await CanvasHistoryService.resolveFilePathForCanvasId({
-              notesPath,
-              canvasId: defaultTarget.canvasId
-            })
-            const relPath = resolved?.relPath || defaultTarget.filePath
-            const markdown = await window.api.fs.readText(defaultTarget.filePath)
-            const commentsIndex = await CanvasCommentService.listComments(defaultTarget.canvasId)
-            const unresolved = commentsIndex.comments
-              .filter((item) => item.status !== 'resolved')
-              .map((item) => ({
-                id: item.id,
-                type: item.type,
-                comment: item.content,
-                anchorPreview: item.anchorPreview,
-                replyCount: item.replies.length
-              }))
+        // Inject latest canvas context (default target + explicitly selected canvases when applicable).
+        try {
+          const existingMessages = Array.isArray(params.messages) ? params.messages : []
+          const injectedMessages: Array<{ role: 'system'; content: string }> = []
 
-            const contextMessage = buildCanvasContextMessage({
-              canvasId: defaultTarget.canvasId,
-              relPath,
-              markdown,
-              unresolvedComments: unresolved
-            })
-
-            const existingMessages = Array.isArray(params.messages) ? params.messages : []
-            const alreadyInjected = existingMessages.some(
+          if (defaultTarget) {
+            const alreadyInjectedDefault = existingMessages.some(
               (msg: any) =>
                 msg?.role === 'system' &&
                 typeof msg?.content === 'string' &&
                 msg.content.includes(CANVAS_CONTEXT_MARKER)
             )
-            if (!alreadyInjected) {
-              params.messages = [{ role: 'system', content: contextMessage }, ...existingMessages]
+            if (!alreadyInjectedDefault) {
+              const resolved = await CanvasHistoryService.resolveFilePathForCanvasId({
+                notesPath,
+                canvasId: defaultTarget.canvasId
+              })
+              const relPath = resolved?.relPath || defaultTarget.filePath
+              const markdown = await window.api.fs.readText(defaultTarget.filePath)
+              const commentsIndex = await CanvasCommentService.listComments(defaultTarget.canvasId)
+              const unresolved = commentsIndex.comments
+                .filter((item) => item.status !== 'resolved')
+                .map((item) => ({
+                  id: item.id,
+                  type: item.type,
+                  comment: item.content,
+                  anchorPreview: item.anchorPreview,
+                  replyCount: item.replies.length
+                }))
+
+              const contextMessage = buildCanvasContextMessage({
+                canvasId: defaultTarget.canvasId,
+                relPath,
+                markdown,
+                unresolvedComments: unresolved
+              })
+              injectedMessages.push({ role: 'system', content: contextMessage })
             }
-          } catch (error) {
-            logger.warn('Failed to inject canvas context (continuing without injection):', error as Error)
           }
+
+          if (selectedTargets.length > 0) {
+            const alreadyInjectedSelected = existingMessages.some(
+              (msg: any) =>
+                msg?.role === 'system' &&
+                typeof msg?.content === 'string' &&
+                msg.content.includes(CANVAS_SELECTED_CONTEXT_MARKER)
+            )
+
+            if (!alreadyInjectedSelected) {
+              const selectedPayload: Array<{
+                canvasId: string
+                relPath: string
+                markdown: string
+                unresolvedComments: Array<{
+                  id: string
+                  type: string
+                  comment: string
+                  anchorPreview: string
+                  replyCount: number
+                }>
+                truncated: boolean
+              }> = []
+              for (const target of selectedTargets.slice(0, MAX_SELECTED_CANVAS_COUNT)) {
+                try {
+                  const markdownRaw = await window.api.fs.readText(target.filePath)
+                  const truncated = truncateForPrompt(markdownRaw, MAX_SELECTED_CANVAS_CHARS)
+                  const commentsIndex = await CanvasCommentService.listComments(target.canvasId)
+                  const unresolved = commentsIndex.comments
+                    .filter((item) => item.status !== 'resolved')
+                    .map((item) => ({
+                      id: item.id,
+                      type: item.type,
+                      comment: item.content,
+                      anchorPreview: item.anchorPreview,
+                      replyCount: item.replies.length
+                    }))
+                  selectedPayload.push({
+                    canvasId: target.canvasId,
+                    relPath: target.relPath,
+                    markdown: truncated.text,
+                    unresolvedComments: unresolved,
+                    truncated: truncated.truncated
+                  })
+                } catch (error) {
+                  logger.debug('Failed to load selected canvas context (ignored):', {
+                    canvasId: target.canvasId,
+                    error: (error as Error)?.message
+                  })
+                }
+              }
+
+              if (selectedPayload.length > 0) {
+                injectedMessages.push({
+                  role: 'system',
+                  content: buildSelectedCanvasContextMessage({
+                    canvases: selectedPayload
+                  })
+                })
+              }
+            }
+          }
+
+          if (injectedMessages.length > 0) {
+            params.messages = [...injectedMessages, ...existingMessages]
+          }
+        } catch (error) {
+          logger.warn('Failed to inject canvas context (continuing without injection):', error as Error)
         }
 
         // Inject tools. Names must start with builtin_ to be rendered as builtin tool blocks.
@@ -211,7 +361,9 @@ export const canvasOrchestrationPlugin = (assistant: Assistant, topicId: string)
           topicId,
           isCanvasChat,
           enabledForNormalChat,
-          hasDefaultTarget: !!defaultTarget
+          hasDefaultTarget: !!defaultTarget,
+          hasSpecificCanvasSelection,
+          selectedCanvasCount: selectedTargets.length
         })
 
         return params
