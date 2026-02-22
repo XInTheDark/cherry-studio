@@ -42,5 +42,17 @@ export const EVENT_NAMES = {
 
   // Canvas version history updates
   // payload: { notesPath: string, filePath: string, canvasId: string, versionId: string, actor: 'human'|'assistant'|'system', reason?: string }
-  CANVAS_VERSION_COMMITTED: 'CANVAS_VERSION_COMMITTED'
+  CANVAS_VERSION_COMMITTED: 'CANVAS_VERSION_COMMITTED',
+
+  // Canvas comments updates
+  // payload: { canvasId: string, commentId: string, action: 'add'|'reply'|'resolve'|'reopen' }
+  CANVAS_COMMENTS_UPDATED: 'CANVAS_COMMENTS_UPDATED',
+
+  // Request navigation/opening a canvas from other surfaces (e.g. chat tool card)
+  // payload: { filePath: string, canvasId?: string }
+  OPEN_CANVAS: 'OPEN_CANVAS',
+
+  // Send a user prompt into the active canvas chat topic for a canvas sidebar instance.
+  // payload: { canvasId: string, content: string }
+  CANVAS_CHAT_SEND_PROMPT: 'CANVAS_CHAT_SEND_PROMPT'
 }

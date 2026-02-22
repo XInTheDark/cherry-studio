@@ -1,6 +1,9 @@
 import db from '@renderer/databases'
 import i18n from '@renderer/i18n'
 import { fetchMessagesSummary } from '@renderer/services/ApiService'
+import { parseCanvasChatTopicId } from '@renderer/services/CanvasChatService'
+import { basenameFsPath } from '@renderer/services/canvasHistory/pathUtils'
+import CanvasHistoryService from '@renderer/services/CanvasHistoryService'
 import { EVENT_NAMES, EventEmitter } from '@renderer/services/EventService'
 import { deleteMessageFiles } from '@renderer/services/MessagesService'
 import { isThreadTopicId, parseThreadTopicId } from '@renderer/services/ThreadService'
@@ -95,6 +98,25 @@ export async function getTopicById(topicId: string) {
       const parent = topics.find((t) => t.id === ref.parentTopicId)
       if (parent) {
         name = `${i18n.t('thread.title')} · ${parent.name}`
+      }
+    }
+  }
+
+  const canvasRef = parseCanvasChatTopicId(topicId)
+  if (canvasRef) {
+    name = i18n.t('notes.chat.topic_name')
+    const notesPath = store.getState().note.notesPath
+    if (notesPath) {
+      try {
+        const resolved = await CanvasHistoryService.resolveFilePathForCanvasId({
+          notesPath,
+          canvasId: canvasRef.canvasId
+        })
+        if (resolved?.filePath) {
+          name = `${i18n.t('notes.chat.topic_name')} · ${basenameFsPath(resolved.filePath)}`
+        }
+      } catch {
+        // ignore fallback naming
       }
     }
   }

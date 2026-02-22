@@ -1,3 +1,5 @@
+import type { CanvasChatOrigin } from './canvas'
+
 export type ConversationThreadScope = 'home' | 'canvas' | 'session'
 export type ConversationThreadTopicType = 'chat' | 'session'
 
@@ -22,4 +24,5 @@ export type ConversationThreadRecord = {
   // Canvas-scoped metadata
   canvasId?: string
   lastActiveAt?: string
+  origin?: CanvasChatOrigin
 }

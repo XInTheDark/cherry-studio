@@ -1037,6 +1037,7 @@
       },
       "copy": {
         "image": "Als Bild kopieren",
+        "json": "[to be translated]:Copy as JSON (full conversation)",
         "md": "Als Markdown kopieren",
         "plain_text": "Als reinen Text kopieren (Markdown entfernen)",
         "title": "Kopieren"
@@ -1914,6 +1915,11 @@
     "branch": {
       "error": "Branch erstellen fehlgeschlagen"
     },
+    "canvas": {
+      "add_comment": "[to be translated]:Canvas: Add Comment",
+      "canvas": "[to be translated]:Canvas",
+      "open": "[to be translated]:Open Canvas"
+    },
     "chat": {
       "completion": {
         "paused": "Sitzung gestoppt"
@@ -2336,12 +2342,31 @@
       "new_chat": "[to be translated]:New chat",
       "no_active_canvas": "[to be translated]:Select a canvas to open chat",
       "no_active_chat": "[to be translated]:Select a chat",
+      "origin_main": "[to be translated]:Main chat",
+      "origin_thread": "[to be translated]:Thread",
       "select_assistant": "[to be translated]:Select assistant",
+      "send_failed": "[to be translated]:Failed to send message to canvas chat",
       "show_list": "[to be translated]:Show chat list",
       "title": "[to be translated]:Canvas Chat",
       "topic_name": "[to be translated]:Canvas Chat"
     },
     "collapse": "Einklappen",
+    "comments": {
+      "add": "[to be translated]:Add comment",
+      "add_failed": "[to be translated]:Failed to add comment",
+      "add_prompt": "[to be translated]:Comment",
+      "add_success": "[to be translated]:Comment added",
+      "empty": "[to be translated]:No comments yet",
+      "load_failed": "[to be translated]:Failed to load canvas comments",
+      "reopen": "[to be translated]:Reopen",
+      "reply": "[to be translated]:Reply",
+      "reply_failed": "[to be translated]:Failed to reply to comment",
+      "resolve": "[to be translated]:Resolve",
+      "resolve_failed": "[to be translated]:Failed to update comment status",
+      "resolved": "[to be translated]:Resolved",
+      "select_text_first": "[to be translated]:Select text in the canvas before adding a comment",
+      "title": "[to be translated]:Comments"
+    },
     "content_placeholder": "Bitte Notizinhalt eingeben...",
     "copyContent": "Inhalt kopieren",
     "crossPlatformRestoreWarning": "Plattformübergreifende Konfiguration wiederhergestellt, aber das Notizenverzeichnis ist leer. Bitte kopieren Sie Ihre Notizdateien nach: {{path}}",
@@ -2386,6 +2411,10 @@
       "restore_success": "[to be translated]:Restored successfully",
       "size": "[to be translated]:Size: {{gzip}} B (compressed), {{raw}} B (raw)",
       "title": "[to be translated]:History"
+    },
+    "inline_prompt": {
+      "placeholder": "[to be translated]:Ask AI to revise, explain, or expand this selection…",
+      "title": "[to be translated]:Ask AI about selection"
     },
     "new_folder": "Neuer Ordner",
     "new_note": "Neue Notiz",

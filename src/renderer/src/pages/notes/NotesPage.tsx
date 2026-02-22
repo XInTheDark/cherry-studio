@@ -5,6 +5,7 @@ import type { RichEditorRef } from '@renderer/components/RichEditor/types'
 import { useActiveNode, useFileContent, useFileContentSync } from '@renderer/hooks/useNotesQuery'
 import { useNotesSettings } from '@renderer/hooks/useNotesSettings'
 import { useShowWorkspace } from '@renderer/hooks/useShowWorkspace'
+import CanvasCommentService from '@renderer/services/CanvasCommentService'
 import CanvasHistoryService from '@renderer/services/CanvasHistoryService'
 import { EVENT_NAMES, EventEmitter } from '@renderer/services/EventService'
 import {
@@ -40,7 +41,7 @@ import {
 } from '@renderer/store/note'
 import type { NotesSortType, NotesTreeNode } from '@renderer/types/note'
 import type { FileChangeEvent } from '@shared/config/types'
-import { message } from 'antd'
+import { Button, Input, message } from 'antd'
 import { debounce } from 'lodash'
 import { AnimatePresence, motion } from 'motion/react'
 import type { FC } from 'react'
@@ -54,6 +55,68 @@ import NotesEditor from './NotesEditor'
 import NotesSidebar from './NotesSidebar'
 
 const logger = loggerService.withContext('NotesPage')
+const CANVAS_COMMENT_HIGHLIGHT_NAME = 'canvas-comments'
+
+type EditorSelectionSnapshot = {
+  text: string
+  startOffset?: number
+  endOffset?: number
+  rect?: DOMRect
+}
+
+function clearCanvasCommentHighlights() {
+  if (typeof CSS === 'undefined' || !('highlights' in CSS)) {
+    return
+  }
+  try {
+    CSS.highlights.delete(CANVAS_COMMENT_HIGHLIGHT_NAME)
+  } catch {
+    // ignore
+  }
+}
+
+function createTextRangeFromOffsets(root: HTMLElement, start: number, end: number): Range | null {
+  if (start < 0 || end <= start) return null
+
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT)
+  let currentOffset = 0
+  let startNode: Text | null = null
+  let startNodeOffset = 0
+  let endNode: Text | null = null
+  let endNodeOffset = 0
+
+  let node = walker.nextNode() as Text | null
+  while (node) {
+    const len = node.nodeValue?.length ?? 0
+    const nextOffset = currentOffset + len
+
+    if (!startNode && start >= currentOffset && start <= nextOffset) {
+      startNode = node
+      startNodeOffset = start - currentOffset
+    }
+
+    if (!endNode && end >= currentOffset && end <= nextOffset) {
+      endNode = node
+      endNodeOffset = end - currentOffset
+      break
+    }
+
+    currentOffset = nextOffset
+    node = walker.nextNode() as Text | null
+  }
+
+  if (!startNode || !endNode) return null
+
+  try {
+    const range = new Range()
+    range.setStart(startNode, Math.max(0, startNodeOffset))
+    range.setEnd(endNode, Math.max(0, endNodeOffset))
+    return range
+  } catch (error) {
+    logger.debug('Failed to build highlight range from offsets (ignored):', error as Error)
+    return null
+  }
+}
 
 const NotesPage: FC = () => {
   const editorRef = useRef<RichEditorRef>(null)
@@ -85,12 +148,35 @@ const NotesPage: FC = () => {
   const isCreatingNoteRef = useRef(false)
   const pendingScrollRef = useRef<{ lineNumber: number; lineContent?: string } | null>(null)
   const [isCanvasChatOpen, setIsCanvasChatOpen] = useState(false)
+  const [activeCanvasId, setActiveCanvasId] = useState<string>('')
+  const [commentHighlightRanges, setCommentHighlightRanges] = useState<
+    Array<{ id: string; start: number; end: number }>
+  >([])
+  const [inlinePrompt, setInlinePrompt] = useState<{
+    open: boolean
+    left: number
+    top: number
+    selectedText: string
+    startOffset?: number
+    endOffset?: number
+    draft: string
+  }>({
+    open: false,
+    left: 0,
+    top: 0,
+    selectedText: '',
+    startOffset: undefined,
+    endOffset: undefined,
+    draft: ''
+  })
   const closedForFileRef = useRef<string | null>(null)
   const [workspaceWidth, setWorkspaceWidth] = useState(280)
   const workspaceResizingRef = useRef<{ startX: number; startWidth: number; pointerId: number } | null>(null)
+  const inlinePromptInputRef = useRef<HTMLTextAreaElement | null>(null)
 
   const activeFilePathRef = useRef<string | undefined>(activeFilePath)
   const currentContentRef = useRef(currentContent)
+  const currentMarkdownRef = useRef(currentContent)
 
   const updateStarredPaths = useCallback(
     (updater: (paths: string[]) => string[]) => {
@@ -141,6 +227,73 @@ const NotesPage: FC = () => {
       })
     },
     [starredSet, expandedSet]
+  )
+
+  const getCurrentMarkdownContent = useCallback((): string => {
+    return currentMarkdownRef.current ?? ''
+  }, [])
+
+  const getCurrentSelection = useCallback((): EditorSelectionSnapshot | null => {
+    const codeSelection = codeEditorRef.current?.getSelection?.()
+    if (codeSelection?.text?.trim()) {
+      return {
+        text: codeSelection.text,
+        startOffset: codeSelection.startOffset,
+        endOffset: codeSelection.endOffset
+      }
+    }
+
+    const richSelection = editorRef.current?.getSelection?.()
+    if (richSelection?.text?.trim()) {
+      let rect: DOMRect | undefined
+      const domSelection = window.getSelection()
+      if (domSelection && domSelection.rangeCount > 0) {
+        const range = domSelection.getRangeAt(0)
+        const candidate = range.getBoundingClientRect()
+        if (candidate && (candidate.width > 0 || candidate.height > 0)) {
+          rect = candidate
+        }
+      }
+      return {
+        text: richSelection.text,
+        rect
+      }
+    }
+
+    return null
+  }, [])
+
+  const refreshCommentHighlights = useCallback(
+    async (markdownContent?: string, filePath?: string) => {
+      if (!notesPath) {
+        setActiveCanvasId('')
+        setCommentHighlightRanges([])
+        return
+      }
+
+      const targetFilePath = filePath || activeFilePath
+      if (!targetFilePath) {
+        setActiveCanvasId('')
+        setCommentHighlightRanges([])
+        return
+      }
+
+      try {
+        const { canvasId } = await CanvasHistoryService.getCanvasId({ notesPath, filePath: targetFilePath })
+        setActiveCanvasId(canvasId)
+        const resolvedAnchors = await CanvasCommentService.resolveUnresolvedAnchors({
+          canvasId,
+          markdownContent: markdownContent ?? currentMarkdownRef.current ?? ''
+        })
+        setCommentHighlightRanges(
+          resolvedAnchors.map((item) => ({ id: item.comment.id, start: item.start, end: item.end }))
+        )
+      } catch (error) {
+        logger.error('Failed to refresh canvas comment highlights:', error as Error)
+        setCommentHighlightRanges([])
+      }
+    },
+    [activeFilePath, notesPath]
   )
 
   const refreshTree = useCallback(async () => {
@@ -252,10 +405,19 @@ const NotesPage: FC = () => {
     [commitCanvasVersion]
   )
 
+  const debouncedCommentHighlightRefresh = useMemo(
+    () =>
+      debounce((content: string, filePath: string | undefined) => {
+        void refreshCommentHighlights(content, filePath)
+      }, 300),
+    [refreshCommentHighlights]
+  )
+
   const saveCurrentNoteRef = useRef(saveCurrentNote)
   const commitCanvasVersionRef = useRef(commitCanvasVersion)
   const debouncedSaveRef = useRef(debouncedSave)
   const debouncedHistoryCommitRef = useRef(debouncedHistoryCommit)
+  const debouncedCommentHighlightRefreshRef = useRef(debouncedCommentHighlightRefresh)
   const invalidateFileContentRef = useRef(invalidateFileContent)
   const refreshTreeRef = useRef(refreshTree)
 
@@ -264,11 +426,13 @@ const NotesPage: FC = () => {
       // 记录最新内容和文件路径，用于兜底保存
       lastContentRef.current = newMarkdown
       lastFilePathRef.current = activeFilePath
+      currentMarkdownRef.current = newMarkdown
       // 捕获当前文件路径，避免在防抖执行时文件路径已改变的竞态条件
       debouncedSave(newMarkdown, activeFilePath)
       debouncedHistoryCommit(newMarkdown, activeFilePath)
+      debouncedCommentHighlightRefresh(newMarkdown, activeFilePath)
     },
-    [debouncedSave, debouncedHistoryCommit, activeFilePath]
+    [debouncedCommentHighlightRefresh, debouncedSave, debouncedHistoryCommit, activeFilePath]
   )
 
   useEffect(() => {
@@ -277,6 +441,7 @@ const NotesPage: FC = () => {
 
   useEffect(() => {
     currentContentRef.current = currentContent
+    currentMarkdownRef.current = currentContent
   }, [currentContent])
 
   useEffect(() => {
@@ -294,6 +459,10 @@ const NotesPage: FC = () => {
   useEffect(() => {
     debouncedHistoryCommitRef.current = debouncedHistoryCommit
   }, [debouncedHistoryCommit])
+
+  useEffect(() => {
+    debouncedCommentHighlightRefreshRef.current = debouncedCommentHighlightRefresh
+  }, [debouncedCommentHighlightRefresh])
 
   useEffect(() => {
     invalidateFileContentRef.current = invalidateFileContent
@@ -477,6 +646,7 @@ const NotesPage: FC = () => {
       // 清理防抖函数
       debouncedSaveRef.current?.cancel()
       debouncedHistoryCommitRef.current?.cancel()
+      debouncedCommentHighlightRefreshRef.current?.cancel()
     }
   }, [dispatch, notesPath])
 
@@ -543,6 +713,7 @@ const NotesPage: FC = () => {
       // 取消防抖保存并清理状态
       debouncedSave.cancel()
       debouncedHistoryCommit.cancel()
+      debouncedCommentHighlightRefresh.cancel()
       lastContentRef.current = ''
       lastFilePathRef.current = undefined
     }
@@ -971,6 +1142,105 @@ const NotesPage: FC = () => {
     }
   }, [currentContent, settings.defaultEditMode])
 
+  const closeInlinePrompt = useCallback(() => {
+    setInlinePrompt((prev) => ({ ...prev, open: false, draft: '' }))
+  }, [])
+
+  const sendInlinePrompt = useCallback(async () => {
+    if (!inlinePrompt.open) return
+    const prompt = inlinePrompt.draft.trim()
+    if (!prompt) return
+    if (!activeCanvasId) {
+      window.toast?.warning?.(t('notes.chat.no_active_canvas'))
+      return
+    }
+
+    const selectionMeta =
+      typeof inlinePrompt.startOffset === 'number' && typeof inlinePrompt.endOffset === 'number'
+        ? `Selection offsets: ${inlinePrompt.startOffset}-${inlinePrompt.endOffset}\n`
+        : ''
+
+    const content = [
+      'Selection context from canvas editor:',
+      '```text',
+      inlinePrompt.selectedText,
+      '```',
+      selectionMeta,
+      prompt
+    ]
+      .filter(Boolean)
+      .join('\n')
+
+    await EventEmitter.emit(EVENT_NAMES.CANVAS_CHAT_SEND_PROMPT, {
+      canvasId: activeCanvasId,
+      content
+    })
+    closeInlinePrompt()
+  }, [activeCanvasId, closeInlinePrompt, inlinePrompt, t])
+
+  useEffect(() => {
+    if (!inlinePrompt.open) return
+    setTimeout(() => inlinePromptInputRef.current?.focus(), 0)
+  }, [inlinePrompt.open])
+
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      const isModK = (e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k'
+      if (!isModK) return
+      if (!activeFilePathRef.current) return
+
+      const selection = getCurrentSelection()
+      if (!selection?.text?.trim()) return
+
+      e.preventDefault()
+      e.stopPropagation()
+
+      const margin = 10
+      const fallbackLeft = Math.max(margin, Math.min(window.innerWidth - 360 - margin, window.innerWidth / 2 - 160))
+      const fallbackTop = Math.max(margin, Math.min(window.innerHeight - 220 - margin, window.innerHeight / 2 - 80))
+      const left = selection.rect
+        ? Math.max(margin, Math.min(window.innerWidth - 360 - margin, selection.rect.left))
+        : fallbackLeft
+      const top = selection.rect
+        ? Math.max(margin, Math.min(window.innerHeight - 220 - margin, selection.rect.bottom + 8))
+        : fallbackTop
+
+      setInlinePrompt({
+        open: true,
+        left,
+        top,
+        selectedText: selection.text,
+        startOffset: selection.startOffset,
+        endOffset: selection.endOffset,
+        draft: ''
+      })
+
+      if (!isCanvasChatOpen) {
+        setIsCanvasChatOpen(true)
+      }
+    }
+
+    window.addEventListener('keydown', onKeyDown, true)
+    return () => {
+      window.removeEventListener('keydown', onKeyDown, true)
+    }
+  }, [getCurrentSelection, isCanvasChatOpen])
+
+  useEffect(() => {
+    setInlinePrompt((prev) => (prev.open ? { ...prev, open: false, draft: '' } : prev))
+  }, [activeFilePath])
+
+  useEffect(() => {
+    const unsubscribe = EventEmitter.on(EVENT_NAMES.OPEN_CANVAS, ({ filePath }: { filePath?: string }) => {
+      if (!filePath) return
+      dispatch(setActiveFilePath(filePath))
+      invalidateFileContent(filePath)
+    })
+    return () => {
+      unsubscribe()
+    }
+  }, [dispatch, invalidateFileContent])
+
   // Listen for external requests to locate a specific line in a note
   useEffect(() => {
     const handleLocateNoteLine = ({
@@ -1017,6 +1287,56 @@ const NotesPage: FC = () => {
       unsubscribe()
     }
   }, [activeNode?.id, activeFilePath, notesTree, dispatch, invalidateFileContent])
+
+  useEffect(() => {
+    void refreshCommentHighlights(currentMarkdownRef.current, activeFilePath)
+  }, [activeFilePath, currentContent, refreshCommentHighlights])
+
+  useEffect(() => {
+    const unsubscribe = EventEmitter.on(EVENT_NAMES.CANVAS_COMMENTS_UPDATED, ({ canvasId }: { canvasId?: string }) => {
+      if (!canvasId || canvasId !== activeCanvasId) return
+      void refreshCommentHighlights(currentMarkdownRef.current, activeFilePathRef.current)
+    })
+    return () => {
+      unsubscribe()
+    }
+  }, [activeCanvasId, refreshCommentHighlights])
+
+  useEffect(() => {
+    const root =
+      (document.querySelector('#notes-page .notes-rich-editor .ProseMirror') as HTMLElement | null) ||
+      (document.querySelector('#notes-page .cm-content') as HTMLElement | null)
+
+    clearCanvasCommentHighlights()
+
+    if (!root || commentHighlightRanges.length === 0) {
+      return
+    }
+
+    const ranges: Range[] = []
+    for (const item of commentHighlightRanges) {
+      const range = createTextRangeFromOffsets(root, item.start, item.end)
+      if (range) {
+        ranges.push(range)
+      }
+    }
+
+    if (ranges.length > 0) {
+      if (typeof CSS === 'undefined' || !('highlights' in CSS)) {
+        return
+      }
+      try {
+        const highlight = new Highlight(...ranges)
+        CSS.highlights.set(CANVAS_COMMENT_HIGHLIGHT_NAME, highlight)
+      } catch (error) {
+        logger.debug('Failed to apply canvas comment highlights (ignored):', error as Error)
+      }
+    }
+
+    return () => {
+      clearCanvasCommentHighlights()
+    }
+  }, [commentHighlightRanges, currentContent])
 
   // Ensure canvas edits produced by assistant tools are reflected immediately in the active editor.
   useEffect(() => {
@@ -1148,11 +1468,60 @@ const NotesPage: FC = () => {
             notesPath={notesPath}
             filePath={activeFilePath}
             width={380}
+            getCurrentSelection={() => {
+              const selection = getCurrentSelection()
+              if (!selection) return null
+              return {
+                text: selection.text,
+                startOffset: selection.startOffset,
+                endOffset: selection.endOffset
+              }
+            }}
+            getCurrentMarkdown={getCurrentMarkdownContent}
             onClose={() => {
               setIsCanvasChatOpen(false)
               closedForFileRef.current = activeFilePath
             }}
           />
+        )}
+        {inlinePrompt.open && (
+          <InlinePromptCard style={{ left: inlinePrompt.left, top: inlinePrompt.top }}>
+            <InlinePromptTitle>{t('notes.inline_prompt.title')}</InlinePromptTitle>
+            <InlinePromptSelection title={inlinePrompt.selectedText}>{inlinePrompt.selectedText}</InlinePromptSelection>
+            <Input.TextArea
+              ref={inlinePromptInputRef}
+              value={inlinePrompt.draft}
+              autoSize={{ minRows: 2, maxRows: 6 }}
+              placeholder={t('notes.inline_prompt.placeholder')}
+              onChange={(e) => {
+                const value = e.target.value
+                setInlinePrompt((prev) => ({ ...prev, draft: value }))
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Escape') {
+                  e.preventDefault()
+                  closeInlinePrompt()
+                  return
+                }
+                if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+                  e.preventDefault()
+                  void sendInlinePrompt()
+                }
+              }}
+            />
+            <InlinePromptActions>
+              <Button size="small" onClick={closeInlinePrompt}>
+                {t('common.cancel')}
+              </Button>
+              <Button
+                size="small"
+                type="primary"
+                disabled={!inlinePrompt.draft.trim()}
+                onClick={() => void sendInlinePrompt()}>
+                {t('common.send')}
+              </Button>
+            </InlinePromptActions>
+          </InlinePromptCard>
         )}
       </ContentContainer>
     </Container>
@@ -1210,6 +1579,42 @@ const WorkspaceResizeHandle = styled.div`
   cursor: col-resize;
   z-index: 10;
   touch-action: none;
+`
+
+const InlinePromptCard = styled.div`
+  position: fixed;
+  z-index: 9998;
+  width: 340px;
+  border: 1px solid var(--color-border-soft);
+  border-radius: 10px;
+  background: var(--color-background);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.14);
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+`
+
+const InlinePromptTitle = styled.div`
+  font-weight: 600;
+  color: var(--color-text);
+`
+
+const InlinePromptSelection = styled.div`
+  font-size: 12px;
+  color: var(--color-text-3);
+  background: var(--color-background-soft);
+  border-radius: 8px;
+  padding: 8px;
+  max-height: 70px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+`
+
+const InlinePromptActions = styled.div`
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
 `
 
 export default NotesPage

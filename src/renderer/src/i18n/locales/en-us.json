@@ -1915,6 +1915,11 @@
     "branch": {
       "error": "Branch creation failed"
     },
+    "canvas": {
+      "add_comment": "Canvas: Add Comment",
+      "canvas": "Canvas",
+      "open": "Open Canvas"
+    },
     "chat": {
       "completion": {
         "paused": "Chat completion paused"
@@ -2337,12 +2342,31 @@
       "new_chat": "New chat",
       "no_active_canvas": "Select a canvas to open chat",
       "no_active_chat": "Select a chat",
+      "origin_main": "Main chat",
+      "origin_thread": "Thread",
       "select_assistant": "Select assistant",
+      "send_failed": "Failed to send message to canvas chat",
       "show_list": "Show chat list",
       "title": "Canvas Chat",
       "topic_name": "Canvas Chat"
     },
     "collapse": "Collapse",
+    "comments": {
+      "add": "Add comment",
+      "add_failed": "Failed to add comment",
+      "add_prompt": "Comment",
+      "add_success": "Comment added",
+      "empty": "No comments yet",
+      "load_failed": "Failed to load canvas comments",
+      "reopen": "Reopen",
+      "reply": "Reply",
+      "reply_failed": "Failed to reply to comment",
+      "resolve": "Resolve",
+      "resolve_failed": "Failed to update comment status",
+      "resolved": "Resolved",
+      "select_text_first": "Select text in the canvas before adding a comment",
+      "title": "Comments"
+    },
     "content_placeholder": "Please enter the canvas content...",
     "copyContent": "Copy Content",
     "crossPlatformRestoreWarning": "Cross-platform configuration restored, but canvases directory is empty. Please copy your canvas files to: {{path}}",
@@ -2387,6 +2411,10 @@
       "restore_success": "Restored successfully",
       "size": "Size: {{gzip}} B (compressed), {{raw}} B (raw)",
       "title": "History"
+    },
+    "inline_prompt": {
+      "placeholder": "Ask AI to revise, explain, or expand this selection…",
+      "title": "Ask AI about selection"
     },
     "new_folder": "New Folder",
     "new_note": "Create a new canvas",

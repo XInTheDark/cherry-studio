@@ -1,4 +1,5 @@
 import type {
+  CanvasAddCommentToolOutput,
   CanvasAppendToolOutput,
   CanvasCreateToolOutput,
   CanvasListToolOutput,
@@ -6,11 +7,15 @@ import type {
   CanvasReplaceToolOutput
 } from '@renderer/aiCore/tools/CanvasTools'
 import Spinner from '@renderer/components/Spinner'
+import { EVENT_NAMES, EventEmitter } from '@renderer/services/EventService'
+import { useAppDispatch } from '@renderer/store'
+import { setActiveFilePath } from '@renderer/store/note'
 import type { NormalToolResponse } from '@renderer/types'
-import { Collapse, Typography } from 'antd'
+import { Button, Collapse, Typography } from 'antd'
 import { FileText } from 'lucide-react'
 import { useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
+import { useNavigate } from 'react-router-dom'
 import styled from 'styled-components'
 
 const { Text } = Typography
@@ -45,6 +50,8 @@ function renderDiffPatch(patch: string) {
 
 export const MessageCanvasTool = ({ toolResponse }: { toolResponse: NormalToolResponse }) => {
   const { t } = useTranslation()
+  const dispatch = useAppDispatch()
+  const navigate = useNavigate()
   const name = toolResponse.tool.name
   const shortName = name.startsWith('builtin_') ? name.slice('builtin_'.length) : name
 
@@ -60,6 +67,8 @@ export const MessageCanvasTool = ({ toolResponse }: { toolResponse: NormalToolRe
         return t('message.canvas.replace', 'Canvas: Replace')
       case 'canvas_append':
         return t('message.canvas.append', 'Canvas: Append')
+      case 'canvas_add_comment':
+        return t('message.canvas.add_comment', 'Canvas: Add Comment')
       default:
         return t('message.canvas.title', 'Canvas')
     }
@@ -85,6 +94,7 @@ export const MessageCanvasTool = ({ toolResponse }: { toolResponse: NormalToolRe
     | CanvasCreateToolOutput
     | CanvasReplaceToolOutput
     | CanvasAppendToolOutput
+    | CanvasAddCommentToolOutput
     | any
 
   const filePath: string | undefined = output?.filePath
@@ -92,10 +102,24 @@ export const MessageCanvasTool = ({ toolResponse }: { toolResponse: NormalToolRe
   const changed: boolean | undefined = output?.changed
   const diffPatch: string | undefined = output?.diffPatch
   const versionId: string | null | undefined = output?.versionId
+  const isCreateTool = shortName === 'canvas_create'
+  const createPreview: string | undefined = output?.preview
+  const createTitle: string | undefined = output?.title
+  const createOpenFilePath: string | undefined = output?.openAction?.filePath || output?.filePath
 
   const subtitle = relPath || filePath || ''
 
   const hasDetails = Boolean(diffPatch) || Boolean(output?.canvases) || Boolean(output?.content) || Boolean(versionId)
+
+  const openCanvas = () => {
+    if (!createOpenFilePath) return
+    dispatch(setActiveFilePath(createOpenFilePath))
+    navigate('/notes')
+    void EventEmitter.emit(EVENT_NAMES.OPEN_CANVAS, {
+      filePath: createOpenFilePath,
+      canvasId: output?.canvasId
+    })
+  }
 
   return (
     <Container>
@@ -109,6 +133,16 @@ export const MessageCanvasTool = ({ toolResponse }: { toolResponse: NormalToolRe
             : ''}
         </Text>
       </TitleRow>
+
+      {isCreateTool && createOpenFilePath && (
+        <CreateCard>
+          <CreateCardTitle>{createTitle || relPath || t('message.canvas.canvas', 'Canvas')}</CreateCardTitle>
+          {createPreview ? <CreateCardPreview>{createPreview}</CreateCardPreview> : null}
+          <Button size="small" type="primary" onClick={openCanvas}>
+            {t('message.canvas.open', 'Open Canvas')}
+          </Button>
+        </CreateCard>
+      )}
 
       {hasDetails && (
         <Collapse
@@ -181,4 +215,29 @@ const DiffBlock = styled.div`
   max-height: 240px;
   font-size: 12px;
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;
+`
+
+const CreateCard = styled.div`
+  border: 1px solid var(--color-border-soft);
+  border-radius: 10px;
+  background: var(--color-background-soft);
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+`
+
+const CreateCardTitle = styled.div`
+  font-weight: 600;
+  color: var(--color-text);
+`
+
+const CreateCardPreview = styled.div`
+  font-size: 12px;
+  color: var(--color-text-2);
+  white-space: pre-wrap;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 4;
+  -webkit-box-orient: vertical;
 `

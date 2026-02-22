@@ -539,6 +539,14 @@ const RichEditor = ({
           logger.error('Failed in scrollToLine:', error as Error)
         }
       },
+      getSelection: () => {
+        if (!editor) return null
+        const selection = editor.state.selection
+        if (!selection || selection.empty) return null
+        const text = editor.state.doc.textBetween(selection.from, selection.to, '\n', '\n')
+        if (!text.trim()) return null
+        return { text }
+      },
       // Dynamic command management
       registerCommand,
       registerToolbarCommand,

@@ -33,6 +33,7 @@ const ChooseTool = (toolResponse: NormalToolResponse): React.ReactNode | null =>
       case 'canvas_create':
       case 'canvas_replace':
       case 'canvas_append':
+      case 'canvas_add_comment':
         return <MessageCanvasTool toolResponse={toolResponse} />
       case 'web_search':
       case 'web_search_preview':

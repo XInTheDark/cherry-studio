@@ -2,7 +2,7 @@ import { loggerService } from '@logger'
 import db from '@renderer/databases'
 import store from '@renderer/store'
 import { cloneMessagesToNewTopicThunk, loadTopicMessagesThunk } from '@renderer/store/thunk/messageThunk'
-import type { Assistant, ConversationThreadRecord, Topic } from '@renderer/types'
+import type { Assistant, CanvasChatOrigin, ConversationThreadRecord, Topic } from '@renderer/types'
 import { uuid } from '@renderer/utils'
 
 import { joinFsPath, normalizeFsPath } from './canvasHistory/pathUtils'
@@ -16,6 +16,7 @@ export type CanvasChatEntryV1 = {
   id: string
   topicId: string
   assistantId: string
+  origin?: CanvasChatOrigin
   name?: string
   createdAt: string
   updatedAt: string
@@ -117,6 +118,7 @@ function toCanvasChatEntry(record: ConversationThreadRecord): CanvasChatEntryV1 
     id: record.id,
     topicId: record.topicId,
     assistantId: record.assistantId,
+    origin: record.origin,
     name: record.name,
     createdAt: record.createdAt,
     updatedAt: record.updatedAt,
@@ -224,6 +226,7 @@ async function migrateLegacyCanvasChatsIfNeeded(canvasId: string): Promise<void>
         scope: CANVAS_THREAD_SCOPE,
         canvasId,
         assistantId: chat.assistantId,
+        origin: chat.topicId && !isCanvasChatTopicId(chat.topicId) ? 'main-chat' : 'canvas',
         name: normalizeChatName(chat.name),
         isNameManuallyEdited: chat.isNameManuallyEdited,
         createdAt: chat.createdAt || nowIso(),
@@ -298,6 +301,25 @@ export const CanvasChatService = {
     await db.conversation_threads.update(chatId, { updatedAt: nowIso() })
   },
 
+  touchChatByTopicId: async ({ canvasId, topicId }: { canvasId: string; topicId: string }): Promise<void> => {
+    if (!canvasId || !topicId) return
+
+    await migrateLegacyCanvasChatsIfNeeded(canvasId)
+
+    const target = await db.conversation_threads
+      .where('topicId')
+      .equals(topicId)
+      .and((record) => record.scope === CANVAS_THREAD_SCOPE && record.canvasId === canvasId)
+      .first()
+    if (!target) return
+
+    const now = nowIso()
+    await db.conversation_threads.update(target.id, {
+      updatedAt: now,
+      lastActiveAt: now
+    })
+  },
+
   renameChat: async ({
     canvasId,
     chatId,
@@ -345,6 +367,7 @@ export const CanvasChatService = {
       topicId,
       scope: CANVAS_THREAD_SCOPE,
       canvasId,
+      origin: 'canvas',
       assistantId,
       name: normalizeChatName(name),
       createdAt: now,
@@ -356,6 +379,67 @@ export const CanvasChatService = {
     await db.conversation_threads.add(record)
     await ensureDexieTopicExists(topicId)
 
+    return toCanvasChatEntry(record)
+  },
+
+  associateTopicWithCanvas: async ({
+    canvasId,
+    topicId,
+    assistantId,
+    name,
+    origin = 'main-chat'
+  }: {
+    canvasId: string
+    topicId: string
+    assistantId: string
+    name?: string
+    origin?: CanvasChatOrigin
+  }): Promise<CanvasChatEntryV1> => {
+    if (!canvasId || !topicId || !assistantId) {
+      throw new Error('Missing canvas/topic/assistant for association')
+    }
+
+    await migrateLegacyCanvasChatsIfNeeded(canvasId)
+
+    const existing = await db.conversation_threads
+      .where('topicId')
+      .equals(topicId)
+      .and((record) => record.scope === CANVAS_THREAD_SCOPE && record.canvasId === canvasId)
+      .first()
+
+    const now = nowIso()
+    if (existing) {
+      await db.conversation_threads.update(existing.id, {
+        assistantId,
+        name: normalizeChatName(name) || existing.name,
+        origin,
+        updatedAt: now,
+        lastActiveAt: now
+      })
+      const next = await db.conversation_threads.get(existing.id)
+      if (!next) {
+        throw new Error('Failed to read updated canvas-topic association')
+      }
+      await ensureDexieTopicExists(topicId)
+      return toCanvasChatEntry(next)
+    }
+
+    const record: ConversationThreadRecord = {
+      id: uuid(),
+      topicId,
+      scope: CANVAS_THREAD_SCOPE,
+      canvasId,
+      origin,
+      assistantId,
+      name: normalizeChatName(name),
+      createdAt: now,
+      updatedAt: now,
+      lastActiveAt: now,
+      isNameManuallyEdited: false
+    }
+
+    await db.conversation_threads.add(record)
+    await ensureDexieTopicExists(topicId)
     return toCanvasChatEntry(record)
   },
 
@@ -383,7 +467,7 @@ export const CanvasChatService = {
     }
 
     await db.conversation_threads.delete(chatId)
-    if (removeTopic) {
+    if (removeTopic && target.origin !== 'main-chat' && target.origin !== 'thread') {
       await removeTopicData(target.topicId)
     }
 
@@ -415,7 +499,10 @@ export const CanvasChatService = {
     newCanvasId: string
   }): Promise<void> => {
     const sourceRecords = await listCanvasThreadRecords(sourceCanvasId)
-    if (sourceRecords.length === 0) {
+    const duplicatedSource = sourceRecords.filter(
+      (source) => source.origin !== 'main-chat' && source.origin !== 'thread'
+    )
+    if (duplicatedSource.length === 0) {
       return
     }
 
@@ -427,7 +514,7 @@ export const CanvasChatService = {
     const mappedChatIds = new Map<string, string>()
     const destRecords: ConversationThreadRecord[] = []
 
-    for (const source of sourceRecords) {
+    for (const source of duplicatedSource) {
       const newChatId = uuid()
       mappedChatIds.set(source.id, newChatId)
 
@@ -439,6 +526,7 @@ export const CanvasChatService = {
         topicId: newTopicId,
         scope: CANVAS_THREAD_SCOPE,
         canvasId: newCanvasId,
+        origin: 'canvas',
         assistantId: source.assistantId,
         name: source.name,
         isNameManuallyEdited: source.isNameManuallyEdited,
@@ -473,7 +561,7 @@ export const CanvasChatService = {
     if (destRecords.length > 0) {
       await db.conversation_threads.bulkPut(destRecords)
 
-      const sourceActiveChatId = getLastActiveChatId(sourceRecords) || sourceRecords[0]?.id
+      const sourceActiveChatId = getLastActiveChatId(duplicatedSource) || duplicatedSource[0]?.id
       const mappedActiveChatId = sourceActiveChatId ? mappedChatIds.get(sourceActiveChatId) : destRecords[0]?.id
       if (mappedActiveChatId) {
         await db.conversation_threads.update(mappedActiveChatId, { lastActiveAt: nowIso() })

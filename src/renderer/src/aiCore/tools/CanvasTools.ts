@@ -1,4 +1,5 @@
 import { loggerService } from '@logger'
+import CanvasCommentService from '@renderer/services/CanvasCommentService'
 import {
   basenameFsPath,
   joinFsPath,
@@ -7,6 +8,7 @@ import {
 } from '@renderer/services/canvasHistory/pathUtils'
 import CanvasHistoryService from '@renderer/services/CanvasHistoryService'
 import store from '@renderer/store'
+import type { CanvasCommentType } from '@renderer/types'
 import { type InferToolInput, type InferToolOutput, tool } from 'ai'
 import * as z from 'zod'
 
@@ -189,7 +191,7 @@ export const canvasListTool = (args: { notesPath: string }) => {
 export const canvasCreateTool = (args: {
   notesPath: string
   defaultFolderRelPath?: string
-  onCreated?: (created: { canvasId: string; filePath: string }) => void
+  onCreated?: (created: { canvasId: string; filePath: string; relPath: string }) => Promise<void> | void
 }) => {
   const { notesPath, defaultFolderRelPath = 'From Chat', onCreated } = args
   return tool({
@@ -224,14 +226,24 @@ export const canvasCreateTool = (args: {
         force: true
       })
 
-      onCreated?.({ canvasId, filePath })
+      const relPath = toNotesRelativePath(notesPath, filePath)
+      if (onCreated) {
+        await onCreated({ canvasId, filePath, relPath: relPath || '' })
+      }
 
       return {
         created: true,
         canvasId,
         filePath,
-        relPath: toNotesRelativePath(notesPath, filePath),
-        title: safeTitle
+        relPath,
+        title: safeTitle,
+        preview: nextContent.slice(0, 300),
+        openAction: {
+          type: 'open_canvas',
+          canvasId,
+          filePath,
+          relPath
+        }
       }
     }
   })
@@ -348,6 +360,48 @@ export const canvasReplaceTool = (args: {
   })
 }
 
+export const canvasAddCommentTool = (args: {
+  notesPath: string
+  defaultTarget?: { canvasId: string; filePath: string } | null
+}) => {
+  const { notesPath, defaultTarget } = args
+  return tool({
+    name: 'builtin_canvas_add_comment',
+    description:
+      'Add a review comment to a Canvas by anchoring to an exact unique text snippet. If the snippet appears multiple times, this tool errors so the caller can provide a more specific snippet.',
+    inputSchema: z.object({
+      target: CanvasTargetSchema,
+      pattern: z.string().describe('Exact unique snippet to anchor the comment'),
+      comment: z.string().describe('Comment text to attach to that snippet'),
+      type: z.enum(['important', 'suggestion', 'question', 'none']).optional().describe('Comment type (default none)'),
+      reason: z.string().optional().describe('Optional reason/context for the tool call')
+    }),
+    execute: async ({ target, pattern, comment, type, reason }) => {
+      const resolved = await resolveCanvasTarget({ notesPath, target, defaultTarget })
+
+      const created = await CanvasCommentService.addCommentByPattern({
+        notesPath: resolved.notesPath,
+        canvasId: resolved.canvasId,
+        pattern,
+        comment,
+        type: (type as CanvasCommentType | undefined) || 'none',
+        createdBy: 'assistant'
+      })
+
+      return {
+        canvasId: resolved.canvasId,
+        filePath: resolved.filePath,
+        relPath: resolved.relPath,
+        commentId: created.id,
+        status: created.status,
+        type: created.type,
+        anchorPreview: created.anchorPreview,
+        summary: reason?.trim() || `Added ${created.type} comment`
+      }
+    }
+  })
+}
+
 export type CanvasReadToolInput = InferToolInput<ReturnType<typeof canvasReadTool>>
 export type CanvasReadToolOutput = InferToolOutput<ReturnType<typeof canvasReadTool>>
 export type CanvasListToolInput = InferToolInput<ReturnType<typeof canvasListTool>>
@@ -358,3 +412,5 @@ export type CanvasAppendToolInput = InferToolInput<ReturnType<typeof canvasAppen
 export type CanvasAppendToolOutput = InferToolOutput<ReturnType<typeof canvasAppendTool>>
 export type CanvasReplaceToolInput = InferToolInput<ReturnType<typeof canvasReplaceTool>>
 export type CanvasReplaceToolOutput = InferToolOutput<ReturnType<typeof canvasReplaceTool>>
+export type CanvasAddCommentToolInput = InferToolInput<ReturnType<typeof canvasAddCommentTool>>
+export type CanvasAddCommentToolOutput = InferToolOutput<ReturnType<typeof canvasAddCommentTool>>

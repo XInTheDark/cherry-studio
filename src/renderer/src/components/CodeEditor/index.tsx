@@ -14,6 +14,7 @@ const External = Annotation.define<boolean>()
 export interface CodeEditorHandles {
   save?: () => void
   scrollToLine?: (lineNumber: number, options?: { highlight?: boolean }) => void
+  getSelection?: () => { text: string; startOffset: number; endOffset: number } | null
 }
 
 export interface CodeEditorProps {
@@ -187,7 +188,25 @@ const CodeEditor = ({
 
   useImperativeHandle(ref, () => ({
     save: handleSave,
-    scrollToLine
+    scrollToLine,
+    getSelection: () => {
+      const view = editorViewRef.current
+      if (!view) return null
+
+      const selection = view.state.selection.main
+      if (selection.empty) return null
+
+      const from = selection.from
+      const to = selection.to
+      const text = view.state.sliceDoc(from, to)
+      if (!text.trim()) return null
+
+      return {
+        text,
+        startOffset: from,
+        endOffset: to
+      }
+    }
   }))
 
   return (
