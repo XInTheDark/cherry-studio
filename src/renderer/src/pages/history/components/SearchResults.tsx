@@ -1,14 +1,24 @@
 import { LoadingIcon } from '@renderer/components/Icons'
 import db from '@renderer/databases'
 import useScrollPosition from '@renderer/hooks/useScrollPosition'
+import {
+  applyHistorySearchPostProcessing,
+  deriveExactPhraseNeedle,
+  getHighlightTargets,
+  type HistorySearchDateRange,
+  historySearchEngine,
+  type HistorySearchRoleFilter,
+  type HistorySearchSortBy,
+  normalizeSearchString
+} from '@renderer/pages/history/search'
 import { isThreadTopicId, parseThreadTopicId } from '@renderer/services/ThreadService'
 import { selectTopicsMap } from '@renderer/store/assistants'
 import type { Topic } from '@renderer/types'
-import { type Message, MessageBlockType } from '@renderer/types/newMessage'
-import { List, Spin, Typography } from 'antd'
+import { type Message, type MessageBlock, MessageBlockType } from '@renderer/types/newMessage'
+import { List, Select, Spin, Switch, Typography } from 'antd'
 import { useLiveQuery } from 'dexie-react-hooks'
 import type { FC } from 'react'
-import { memo, useCallback, useEffect, useRef, useState } from 'react'
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useSelector } from 'react-redux'
 import styled from 'styled-components'
@@ -20,6 +30,10 @@ type SearchResult = {
   topic: Topic
   content: string
   snippet: string
+  score: number
+  role: Message['role']
+  createdAtMs: number
+  searchableContent: string
 }
 
 interface Props extends React.HTMLAttributes<HTMLDivElement> {
@@ -180,17 +194,67 @@ const buildSearchSnippet = (text: string, terms: string[]) => {
   return outputLines.join('\n')
 }
 
+const isMainTextBlock = (block: MessageBlock): block is Extract<MessageBlock, { type: MessageBlockType.MAIN_TEXT }> =>
+  block.type === MessageBlockType.MAIN_TEXT
+
+const resolveTopicForMessage = (
+  message: Message,
+  storeTopicsMap: Map<string, Topic>,
+  t: (key: string) => string
+): Topic | undefined => {
+  const topicFromStore = storeTopicsMap.get(message.topicId)
+  if (topicFromStore) {
+    return topicFromStore
+  }
+
+  // Hidden thread topics won't exist in the assistant store map.
+  if (!isThreadTopicId(message.topicId)) {
+    return undefined
+  }
+  const ref = parseThreadTopicId(message.topicId)
+  const parentTopic = ref ? storeTopicsMap.get(ref.parentTopicId) : undefined
+  const label = parentTopic ? `${t('thread.title')} · ${parentTopic.name}` : t('thread.title')
+
+  return {
+    id: message.topicId,
+    assistantId: message.assistantId,
+    name: label,
+    createdAt: message.createdAt,
+    updatedAt: message.updatedAt ?? message.createdAt,
+    messages: []
+  } satisfies Topic
+}
+
+const SORT_OPTIONS: Array<{ label: string; value: HistorySearchSortBy }> = [
+  { label: 'Sort: Relevance', value: 'relevance' },
+  { label: 'Sort: Newest', value: 'newest' },
+  { label: 'Sort: Oldest', value: 'oldest' }
+]
+
+const ROLE_OPTIONS: Array<{ label: string; value: HistorySearchRoleFilter }> = [
+  { label: 'Role: All', value: 'all' },
+  { label: 'Role: User', value: 'user' },
+  { label: 'Role: Assistant', value: 'assistant' }
+]
+
+const DATE_RANGE_OPTIONS: Array<{ label: string; value: HistorySearchDateRange }> = [
+  { label: 'Date: All', value: 'all' },
+  { label: 'Date: 24h', value: '24h' },
+  { label: 'Date: 7d', value: '7d' },
+  { label: 'Date: 30d', value: '30d' }
+]
+
 const SearchResults: FC<Props> = ({ keywords, onMessageClick, onTopicClick, ...props }) => {
   const { handleScroll, containerRef } = useScrollPosition('SearchResults')
   const observerRef = useRef<MutationObserver | null>(null)
   const { t } = useTranslation()
 
-  const [searchTerms, setSearchTerms] = useState<string[]>(
-    keywords
-      .toLowerCase()
-      .split(' ')
-      .filter((term) => term.length > 0)
-  )
+  const [searchTerms, setSearchTerms] = useState<string[]>([])
+  const [exactPhraseNeedle, setExactPhraseNeedle] = useState('')
+  const [sortBy, setSortBy] = useState<HistorySearchSortBy>('relevance')
+  const [roleFilter, setRoleFilter] = useState<HistorySearchRoleFilter>('all')
+  const [dateRange, setDateRange] = useState<HistorySearchDateRange>('all')
+  const [exactPhraseOnly, setExactPhraseOnly] = useState(false)
 
   const topics = useLiveQuery(() => db.topics.toArray(), [])
   // FIXME: db 中没有 topic.name 等信息，只能从 store 获取
@@ -207,60 +271,70 @@ const SearchResults: FC<Props> = ({ keywords, onMessageClick, onTopicClick, ...p
     if (keywords.length === 0) {
       setSearchStats({ count: 0, time: 0 })
       setSearchTerms([])
+      setExactPhraseNeedle('')
       setIsLoading(false)
       return
     }
 
     const startTime = performance.now()
-    const newSearchTerms = keywords
-      .toLowerCase()
-      .split(/\s+/)
-      .filter((term) => term.length > 0)
-    const searchRegexes = newSearchTerms.map((term) => new RegExp(escapeRegex(term), 'i'))
+    const allBlocks = await db.message_blocks.toArray()
+    const mainTextBlocks = allBlocks.filter(isMainTextBlock)
+    const blocksById = new Map(mainTextBlocks.map((block) => [block.id, block]))
+    const searchableTextByBlockId = new Map(
+      mainTextBlocks.map((block) => [block.id, stripMarkdownFormatting(block.content)])
+    )
 
-    const blocks = (await db.message_blocks.toArray())
-      .filter((block) => block.type === MessageBlockType.MAIN_TEXT)
-      .filter((block) => {
-        const searchableContent = stripMarkdownFormatting(block.content)
-        return searchRegexes.some((regex) => regex.test(searchableContent))
-      })
+    const messages = topics?.flatMap((topic) => topic.messages) ?? []
+    const messagesById = new Map(messages.map((message) => [message.id, message]))
 
-    const messages = topics?.flatMap((topic) => topic.messages)
+    const { hits, parsedQuery } = await historySearchEngine.search({
+      query: keywords,
+      documents: mainTextBlocks.map((block) => ({
+        id: block.id,
+        content: searchableTextByBlockId.get(block.id) ?? '',
+        createdAt: block.createdAt,
+        updatedAt: block.updatedAt
+      }))
+    })
 
-    const results = await Promise.all(
-      blocks.map(async (block) => {
-        const message = messages?.find((message) => message.id === block.messageId)
-        if (message) {
-          const topic =
-            storeTopicsMap.get(message.topicId) ??
-            (() => {
-              // Hidden thread topics won't exist in the assistant store map.
-              if (!isThreadTopicId(message.topicId)) return undefined
-              const ref = parseThreadTopicId(message.topicId)
-              const parentTopic = ref ? storeTopicsMap.get(ref.parentTopicId) : undefined
-              const label = parentTopic ? `${t('thread.title')} · ${parentTopic.name}` : t('thread.title')
-              return {
-                id: message.topicId,
-                assistantId: message.assistantId,
-                name: label,
-                createdAt: message.createdAt,
-                updatedAt: message.updatedAt ?? message.createdAt,
-                messages: []
-              } as Topic
-            })()
+    const derivedNeedle = deriveExactPhraseNeedle(parsedQuery.normalized, parsedQuery.phrases, parsedQuery.terms)
+    const highlightTargets = Array.from(
+      new Set([
+        ...getHighlightTargets(parsedQuery),
+        ...(derivedNeedle.length > 0 && derivedNeedle.includes(' ') ? [derivedNeedle] : [])
+      ])
+    )
 
-          if (topic) {
-            return {
-              message,
-              topic,
-              content: block.content,
-              snippet: buildSearchSnippet(block.content, newSearchTerms)
-            }
-          }
+    const results = hits
+      .map((hit) => {
+        const block = blocksById.get(hit.documentId)
+        if (!block) {
+          return null
         }
-        return null
+
+        const message = messagesById.get(block.messageId)
+        if (!message) {
+          return null
+        }
+
+        const topic = resolveTopicForMessage(message, storeTopicsMap, t)
+        if (!topic) {
+          return null
+        }
+        const searchableText = searchableTextByBlockId.get(block.id) ?? ''
+
+        return {
+          message,
+          topic,
+          content: block.content,
+          snippet: buildSearchSnippet(block.content, highlightTargets),
+          score: hit.score,
+          role: message.role,
+          createdAtMs: new Date(message.createdAt).getTime(),
+          searchableContent: normalizeSearchString(searchableText)
+        }
       })
-    ).then((results) => results.filter(Boolean) as SearchResult[])
+      .filter((result): result is SearchResult => result !== null)
 
     const endTime = performance.now()
     setSearchResults(results)
@@ -268,12 +342,36 @@ const SearchResults: FC<Props> = ({ keywords, onMessageClick, onTopicClick, ...p
       count: results.length,
       time: (endTime - startTime) / 1000
     })
-    setSearchTerms(newSearchTerms)
+    setSearchTerms(highlightTargets)
+    setExactPhraseNeedle(derivedNeedle)
     setIsLoading(false)
   }, [keywords, storeTopicsMap, t, topics])
 
+  const visibleResults = useMemo(
+    () =>
+      applyHistorySearchPostProcessing(searchResults, {
+        sortBy,
+        roleFilter,
+        dateRange,
+        exactPhraseOnly,
+        exactPhraseNeedle: normalizeSearchString(exactPhraseNeedle)
+      }),
+    [dateRange, exactPhraseNeedle, exactPhraseOnly, roleFilter, searchResults, sortBy]
+  )
+
+  const highlightCandidates = useMemo(
+    () =>
+      Array.from(
+        new Set([
+          ...searchTerms,
+          ...(exactPhraseOnly && exactPhraseNeedle.length > 0 ? [normalizeSearchString(exactPhraseNeedle)] : [])
+        ])
+      ),
+    [exactPhraseNeedle, exactPhraseOnly, searchTerms]
+  )
+
   const highlightText = (text: string) => {
-    const uniqueTerms = Array.from(new Set(searchTerms.filter((term) => term.length > 0)))
+    const uniqueTerms = highlightCandidates.filter((term) => term.length > 0)
     if (uniqueTerms.length === 0) {
       return <span dangerouslySetInnerHTML={{ __html: text }} />
     }
@@ -309,14 +407,46 @@ const SearchResults: FC<Props> = ({ keywords, onMessageClick, onTopicClick, ...p
   return (
     <Container ref={containerRef} {...props} onScroll={handleScroll}>
       <Spin spinning={isLoading} indicator={<LoadingIcon color="var(--color-text-2)" />}>
+        <FilterRow>
+          <Select
+            size="small"
+            value={sortBy}
+            onChange={(value: HistorySearchSortBy) => setSortBy(value)}
+            options={SORT_OPTIONS}
+            style={{ minWidth: 150 }}
+          />
+          <Select
+            size="small"
+            value={roleFilter}
+            onChange={(value: HistorySearchRoleFilter) => setRoleFilter(value)}
+            options={ROLE_OPTIONS}
+            style={{ minWidth: 150 }}
+          />
+          <Select
+            size="small"
+            value={dateRange}
+            onChange={(value: HistorySearchDateRange) => setDateRange(value)}
+            options={DATE_RANGE_OPTIONS}
+            style={{ minWidth: 130 }}
+          />
+          <ExactPhraseToggle>
+            <Switch
+              size="small"
+              checked={exactPhraseOnly}
+              onChange={setExactPhraseOnly}
+              disabled={!exactPhraseNeedle.length}
+            />
+            <span>Exact phrase</span>
+          </ExactPhraseToggle>
+        </FilterRow>
         {searchResults.length > 0 && (
           <SearchStats>
-            Found {searchStats.count} results in {searchStats.time.toFixed(3)} seconds
+            Showing {visibleResults.length} / {searchStats.count} results in {searchStats.time.toFixed(3)} seconds
           </SearchStats>
         )}
         <List
           itemLayout="vertical"
-          dataSource={searchResults}
+          dataSource={visibleResults}
           pagination={{
             pageSize: 10,
             hideOnSinglePage: true
@@ -357,11 +487,27 @@ const Container = styled.div`
 const SearchStats = styled.div`
   font-size: 13px;
   color: var(--color-text-3);
+  margin-top: 8px;
 `
 
 const SearchResultTime = styled.div`
   margin-top: 10px;
   text-align: right;
+`
+
+const FilterRow = styled.div`
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+`
+
+const ExactPhraseToggle = styled.label`
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--color-text-2);
+  font-size: 12px;
 `
 
 export default memo(SearchResults)

@@ -1,0 +1,5 @@
+export * from './backends/BM25HistorySearchBackend'
+export * from './HistorySearchEngine'
+export * from './queryParser'
+export * from './resultPostProcessing'
+export * from './types'
