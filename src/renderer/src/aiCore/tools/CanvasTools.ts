@@ -15,6 +15,8 @@ import * as z from 'zod'
 import { applyLiteralReplace, buildUnifiedDiffPatch, sanitizeFileNameBase } from './canvasToolUtils'
 
 const logger = loggerService.withContext('CanvasTools')
+const DEFAULT_CANVAS_FILE_EXTENSION = '.md'
+const CANVAS_FILE_EXTENSION_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9._-]{0,31}$/
 
 /**
  * Target selection rules (used by tools):
@@ -41,6 +43,24 @@ type CanvasResolvedTarget = {
 
 function isNonEmptyString(value: unknown): value is string {
   return typeof value === 'string' && value.trim().length > 0
+}
+
+function normalizeCanvasFileExtension(fileExtension?: string): string {
+  if (fileExtension === undefined) return DEFAULT_CANVAS_FILE_EXTENSION
+
+  const trimmed = fileExtension.trim()
+  if (!trimmed) {
+    throw new Error('fileExtension cannot be empty. Example values: "md", ".md", "txt".')
+  }
+
+  const normalized = trimmed.startsWith('.') ? trimmed.slice(1) : trimmed
+  if (!normalized || !CANVAS_FILE_EXTENSION_PATTERN.test(normalized)) {
+    throw new Error(
+      'Invalid fileExtension. Use only letters, numbers, dot, underscore, or hyphen (e.g. "md", ".mdx", "txt").'
+    )
+  }
+
+  return `.${normalized}`
 }
 
 async function resolveCanvasTarget(args: {
@@ -124,7 +144,7 @@ async function getAvailableNewFilePath(args: {
   baseName: string
   ext?: string
 }): Promise<string> {
-  const ext = args.ext || '.md'
+  const ext = args.ext || DEFAULT_CANVAS_FILE_EXTENSION
   const base = sanitizeFileNameBase(args.baseName)
   const dir = joinFsPath(normalizeFsPath(args.notesPath), args.relDir)
 
@@ -175,8 +195,7 @@ export const canvasListTool = (args: { notesPath: string }) => {
   const { notesPath } = args
   return tool({
     name: 'builtin_canvas_list',
-    description:
-      'List canvases known to the portable mapping index. Use this to choose a target canvas when multiple canvases exist.',
+    description: 'List all canvases. Use this to choose a target canvas when multiple canvases exist.',
     inputSchema: z.object({
       query: z.string().optional().describe('Optional substring to filter by path/canvasId'),
       limit: z.number().int().min(1).max(200).optional().describe('Max number of canvases to return (default 50)')
@@ -197,20 +216,25 @@ export const canvasCreateTool = (args: {
   return tool({
     name: 'builtin_canvas_create',
     description:
-      'Create a new Canvas (markdown file) inside the notes folder. Returns canvasId for later edits. Useful when a chat wants to create multiple canvases.',
+      'Create a new Canvas file. Supports optional fileExtension (defaults to ".md"). Returns canvasId for later edits.',
     inputSchema: z.object({
       title: z.string().describe('Title used for the filename'),
       folderRelPath: z.string().optional().describe('Folder relative to notes root. Defaults to "From Chat".'),
-      content: z.string().optional().describe('Initial markdown content (optional)'),
+      fileExtension: z
+        .string()
+        .optional()
+        .describe('Optional file extension such as "md", ".md", "mdx", "txt". Defaults to ".md".'),
+      content: z.string().optional().describe('Initial file content (optional)'),
       reason: z.string().optional().describe('Optional reason saved into Canvas history')
     }),
-    execute: async ({ title, folderRelPath, content, reason }) => {
+    execute: async ({ title, folderRelPath, fileExtension, content, reason }) => {
       const safeTitle = sanitizeFileNameBase(title)
+      const ext = normalizeCanvasFileExtension(fileExtension)
       const filePath = await getAvailableNewFilePath({
         notesPath,
         relDir: folderRelPath?.trim() || defaultFolderRelPath,
         baseName: safeTitle,
-        ext: '.md'
+        ext
       })
 
       const nextContent = content ?? `# ${safeTitle}\n\n`
@@ -256,8 +280,7 @@ export const canvasAppendTool = (args: {
   const { notesPath, defaultTarget } = args
   return tool({
     name: 'builtin_canvas_append',
-    description:
-      'Append markdown to the end of a Canvas. Applies immediately (writes file) and saves a history version.',
+    description: 'Append markdown to the end of a Canvas document.',
     inputSchema: z.object({
       target: CanvasTargetSchema,
       text: z.string().describe('Markdown text to append'),
@@ -309,7 +332,7 @@ export const canvasReplaceTool = (args: {
   return tool({
     name: 'builtin_canvas_replace',
     description:
-      'Replace a specific text snippet in a Canvas. By default requires exactly one match (safe replace); set replaceAll=true to replace multiple matches. Applies immediately and saves a history version.',
+      'Replace a specific text snippet in a Canvas. By default, requires exactly one match (safe replace); set replaceAll=true to replace multiple matches.',
     inputSchema: z.object({
       target: CanvasTargetSchema,
       pattern: z.string().describe('Exact text snippet to replace (literal match)'),
