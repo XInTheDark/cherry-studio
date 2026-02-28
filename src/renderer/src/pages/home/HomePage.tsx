@@ -20,6 +20,7 @@ import styled from 'styled-components'
 import Chat, { type ConversationTabItem } from './Chat'
 import Navbar from './Navbar'
 import HomeTabs from './Tabs'
+import type { SetActiveTopicHandler, SetActiveTopicOptions } from './types'
 
 let _activeAssistant: Assistant
 const logger = loggerService.withContext('HomePage')
@@ -29,6 +30,13 @@ const CONVERSATION_TABS_STORAGE_KEY = 'home:conversation-tabs:v1'
 interface PersistedConversationTabs {
   topicIds: string[]
   activeTopicId?: string
+}
+
+interface UpdateConversationTabsParams {
+  topicIds: string[]
+  currentTopicId?: string
+  nextTopicId: string
+  openInNewTab: boolean
 }
 
 const areTopicIdsEqual = (left: string[], right: string[]) => {
@@ -47,6 +55,41 @@ const normalizeTopicIds = (topicIds: unknown): string[] => {
     (topicId): topicId is string => typeof topicId === 'string' && topicId.length > 0
   )
   return Array.from(new Set(filteredTopicIds))
+}
+
+const updateConversationTabs = ({
+  topicIds,
+  currentTopicId,
+  nextTopicId,
+  openInNewTab
+}: UpdateConversationTabsParams): string[] => {
+  const uniqueTopicIds = normalizeTopicIds(topicIds)
+
+  if (uniqueTopicIds.length === 0) {
+    return [nextTopicId]
+  }
+
+  if (!openInNewTab && currentTopicId === nextTopicId && uniqueTopicIds.includes(nextTopicId)) {
+    return uniqueTopicIds
+  }
+
+  const topicIdsWithoutTarget = uniqueTopicIds.filter((topicId) => topicId !== nextTopicId)
+  const currentTopicIndex = currentTopicId ? topicIdsWithoutTarget.indexOf(currentTopicId) : -1
+
+  if (openInNewTab) {
+    const insertIndex = currentTopicIndex === -1 ? topicIdsWithoutTarget.length : currentTopicIndex + 1
+    const nextTopicIds = [...topicIdsWithoutTarget]
+    nextTopicIds.splice(insertIndex, 0, nextTopicId)
+    return nextTopicIds
+  }
+
+  if (currentTopicIndex !== -1) {
+    const nextTopicIds = [...topicIdsWithoutTarget]
+    nextTopicIds[currentTopicIndex] = nextTopicId
+    return nextTopicIds
+  }
+
+  return [...topicIdsWithoutTarget, nextTopicId]
 }
 
 const loadPersistedConversationTabs = (): PersistedConversationTabs => {
@@ -110,19 +153,38 @@ const HomePage: FC = () => {
     return lookup
   }, [assistants])
 
+  const setActiveTopic = useCallback<SetActiveTopicHandler>(
+    (newTopic, options = {}) => {
+      const { openInNewTab = false, preserveTabState = false } = options
+
+      if (!preserveTabState) {
+        setConversationTabTopicIds((previousTopicIds) => {
+          const nextTopicIds = updateConversationTabs({
+            topicIds: previousTopicIds,
+            currentTopicId: activeTopic?.id,
+            nextTopicId: newTopic.id,
+            openInNewTab
+          })
+          return areTopicIdsEqual(previousTopicIds, nextTopicIds) ? previousTopicIds : nextTopicIds
+        })
+      }
+
+      startTransition(() => {
+        _setActiveTopic((prev) => (newTopic.id === prev.id ? prev : newTopic))
+        dispatch(newMessagesActions.setTopicFulfilled({ topicId: newTopic.id, fulfilled: false }))
+        dispatch(setActiveTopicOrSessionAction('topic'))
+      })
+    },
+    [_setActiveTopic, activeTopic?.id, dispatch]
+  )
+
   const setActiveAssistant = useCallback(
     // TODO: allow to set it as null.
-    (newAssistant: Assistant, preferredTopic?: Topic) => {
+    (newAssistant: Assistant, preferredTopic?: Topic, topicOptions?: SetActiveTopicOptions) => {
       const nextTopic = preferredTopic || newAssistant.topics[0]
 
       if (newAssistant.id === activeAssistant?.id) {
-        if (preferredTopic && nextTopic) {
-          startTransition(() => {
-            _setActiveTopic((prev) => (nextTopic.id === prev.id ? prev : nextTopic))
-            dispatch(newMessagesActions.setTopicFulfilled({ topicId: nextTopic.id, fulfilled: false }))
-            dispatch(setActiveTopicOrSessionAction('topic'))
-          })
-        }
+        nextTopic && setActiveTopic(nextTopic, topicOptions)
         return
       }
 
@@ -131,24 +193,11 @@ const HomePage: FC = () => {
         if (newAssistant.id !== 'fake') {
           dispatch(setActiveAgentId(null))
         }
-        // 同步更新 active topic，避免不必要的重新渲染
-        if (nextTopic) {
-          _setActiveTopic((prev) => (nextTopic.id === prev.id ? prev : nextTopic))
-        }
       })
-    },
-    [_setActiveTopic, activeAssistant?.id, dispatch]
-  )
 
-  const setActiveTopic = useCallback(
-    (newTopic: Topic) => {
-      startTransition(() => {
-        _setActiveTopic((prev) => (newTopic?.id === prev.id ? prev : newTopic))
-        dispatch(newMessagesActions.setTopicFulfilled({ topicId: newTopic.id, fulfilled: false }))
-        dispatch(setActiveTopicOrSessionAction('topic'))
-      })
+      nextTopic && setActiveTopic(nextTopic, topicOptions)
     },
-    [_setActiveTopic, dispatch]
+    [activeAssistant?.id, dispatch, setActiveTopic]
   )
 
   const switchConversationTab = useCallback(
@@ -159,11 +208,11 @@ const HomePage: FC = () => {
       }
 
       if (target.assistant.id === activeAssistant?.id) {
-        setActiveTopic(target.topic)
+        setActiveTopic(target.topic, { preserveTabState: true })
         return
       }
 
-      setActiveAssistant(target.assistant, target.topic)
+      setActiveAssistant(target.assistant, target.topic, { preserveTabState: true })
     },
     [activeAssistant?.id, setActiveAssistant, setActiveTopic, topicLookup]
   )
@@ -188,6 +237,67 @@ const HomePage: FC = () => {
 
       const fallbackTopicId = nextTopicIds[closingIndex] ?? nextTopicIds[closingIndex - 1] ?? nextTopicIds[0]
       fallbackTopicId && switchConversationTab(fallbackTopicId)
+    },
+    [activeTopic?.id, conversationTabTopicIds, switchConversationTab]
+  )
+
+  const closeOtherConversationTabs = useCallback(
+    (topicId: string) => {
+      if (!conversationTabTopicIds.includes(topicId)) {
+        return
+      }
+
+      setConversationTabTopicIds([topicId])
+      if (activeTopic?.id !== topicId) {
+        switchConversationTab(topicId)
+      }
+    },
+    [activeTopic?.id, conversationTabTopicIds, switchConversationTab]
+  )
+
+  const closeConversationTabsToLeft = useCallback(
+    (topicId: string) => {
+      const topicIndex = conversationTabTopicIds.indexOf(topicId)
+      if (topicIndex <= 0) {
+        return
+      }
+
+      const nextTopicIds = conversationTabTopicIds.slice(topicIndex)
+      setConversationTabTopicIds(nextTopicIds)
+      if (!nextTopicIds.includes(activeTopic?.id ?? '')) {
+        switchConversationTab(nextTopicIds[0])
+      }
+    },
+    [activeTopic?.id, conversationTabTopicIds, switchConversationTab]
+  )
+
+  const closeConversationTabsToRight = useCallback(
+    (topicId: string) => {
+      const topicIndex = conversationTabTopicIds.indexOf(topicId)
+      if (topicIndex === -1 || topicIndex >= conversationTabTopicIds.length - 1) {
+        return
+      }
+
+      const nextTopicIds = conversationTabTopicIds.slice(0, topicIndex + 1)
+      setConversationTabTopicIds(nextTopicIds)
+      if (!nextTopicIds.includes(activeTopic?.id ?? '')) {
+        switchConversationTab(nextTopicIds[nextTopicIds.length - 1])
+      }
+    },
+    [activeTopic?.id, conversationTabTopicIds, switchConversationTab]
+  )
+
+  const closeAllConversationTabs = useCallback(
+    (fallbackTopicId?: string) => {
+      const topicIdToKeep = fallbackTopicId || activeTopic?.id || conversationTabTopicIds[0]
+      if (!topicIdToKeep) {
+        return
+      }
+
+      setConversationTabTopicIds([topicIdToKeep])
+      if (activeTopic?.id !== topicIdToKeep) {
+        switchConversationTab(topicIdToKeep)
+      }
     },
     [activeTopic?.id, conversationTabTopicIds, switchConversationTab]
   )
@@ -226,24 +336,15 @@ const HomePage: FC = () => {
       return
     }
 
-    setConversationTabTopicIds((previousTopicIds) =>
-      previousTopicIds.includes(activeTopic.id) ? previousTopicIds : [...previousTopicIds, activeTopic.id]
-    )
-  }, [activeTopic?.id])
-
-  useEffect(() => {
-    if (!activeTopic?.id) {
-      return
-    }
-
     setConversationTabTopicIds((previousTopicIds) => {
       const validTopicIds = previousTopicIds.filter((topicId) => topicLookup.has(topicId))
+      const nextTopicIds = validTopicIds.length > 0 ? validTopicIds : [activeTopic.id]
 
-      if (!validTopicIds.includes(activeTopic.id)) {
-        validTopicIds.push(activeTopic.id)
+      if (!nextTopicIds.includes(activeTopic.id)) {
+        nextTopicIds.push(activeTopic.id)
       }
 
-      return areTopicIdsEqual(previousTopicIds, validTopicIds) ? previousTopicIds : validTopicIds
+      return areTopicIdsEqual(previousTopicIds, nextTopicIds) ? previousTopicIds : nextTopicIds
     })
   }, [activeTopic?.id, topicLookup])
 
@@ -268,7 +369,7 @@ const HomePage: FC = () => {
       return
     }
 
-    setActiveAssistant(target.assistant, target.topic)
+    setActiveAssistant(target.assistant, target.topic, { preserveTabState: true })
   }, [activeAssistant?.id, activeTopic?.id, assistants.length, setActiveAssistant, setActiveTopic, topicLookup])
 
   useEffect(() => {
@@ -329,6 +430,10 @@ const HomePage: FC = () => {
             conversationTabs={conversationTabs}
             onSwitchConversationTab={switchConversationTab}
             onCloseConversationTab={closeConversationTab}
+            onCloseOtherConversationTabs={closeOtherConversationTabs}
+            onCloseConversationTabsToLeft={closeConversationTabsToLeft}
+            onCloseConversationTabsToRight={closeConversationTabsToRight}
+            onCloseAllConversationTabs={closeAllConversationTabs}
           />
         </ErrorBoundary>
       </ContentContainer>

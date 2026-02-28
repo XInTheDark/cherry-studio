@@ -16,7 +16,8 @@ import { useTimer } from '@renderer/hooks/useTimer'
 import { EVENT_NAMES, EventEmitter } from '@renderer/services/EventService'
 import type { Assistant, Topic } from '@renderer/types'
 import { classNames } from '@renderer/utils'
-import { Alert, Flex } from 'antd'
+import type { MenuProps } from 'antd'
+import { Alert, Dropdown, Flex } from 'antd'
 import { debounce } from 'lodash'
 import { X } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
@@ -55,14 +56,31 @@ interface Props {
   conversationTabs: ConversationTabItem[]
   onSwitchConversationTab: (topicId: string) => void
   onCloseConversationTab: (topicId: string) => void
+  onCloseOtherConversationTabs: (topicId: string) => void
+  onCloseConversationTabsToLeft: (topicId: string) => void
+  onCloseConversationTabsToRight: (topicId: string) => void
+  onCloseAllConversationTabs: (fallbackTopicId?: string) => void
 }
 
 const Chat: FC<Props> = (props) => {
-  const { assistant, updateTopic } = useAssistant(props.assistant.id)
+  const {
+    assistant: activeAssistant,
+    activeTopic,
+    setActiveTopic,
+    setActiveAssistant,
+    conversationTabs,
+    onSwitchConversationTab,
+    onCloseConversationTab,
+    onCloseOtherConversationTabs,
+    onCloseConversationTabsToLeft,
+    onCloseConversationTabsToRight,
+    onCloseAllConversationTabs
+  } = props
+  const { assistant, updateTopic } = useAssistant(activeAssistant.id)
   const { t } = useTranslation()
   const { topicPosition, messageStyle, messageNavigation } = useSettings()
   const { showTopics } = useShowTopics()
-  const { isMultiSelectMode } = useChatContext(props.activeTopic)
+  const { isMultiSelectMode } = useChatContext(activeTopic)
   const { isTopNavbar } = useNavbarPosition()
   const chatMaxWidth = useChatMaxWidth()
   const { chat } = useRuntime()
@@ -94,7 +112,7 @@ const Chat: FC<Props> = (props) => {
   })
 
   useShortcut('rename_topic', async () => {
-    const topic = props.activeTopic
+    const topic = activeTopic
     if (!topic) return
 
     EventEmitter.emit(EVENT_NAMES.SHOW_TOPIC_SIDEBAR)
@@ -177,7 +195,60 @@ const Chat: FC<Props> = (props) => {
   }
 
   const mainHeight = isTopNavbar ? 'calc(100vh - var(--navbar-height) - 6px)' : 'calc(100vh - var(--navbar-height))'
-  const canCloseConversationTab = props.conversationTabs.length > 1
+  const canCloseConversationTab = conversationTabs.length > 1
+  const showConversationTabs = conversationTabs.length > 1
+  const activeConversationIndex = conversationTabs.findIndex((tab) => tab.topicId === activeTopic.id)
+
+  const getConversationTabMenuItems = useCallback(
+    (topicId: string): MenuProps['items'] => {
+      const topicIndex = conversationTabs.findIndex((tab) => tab.topicId === topicId)
+      const hasTabsOnLeft = topicIndex > 0
+      const hasTabsOnRight = topicIndex !== -1 && topicIndex < conversationTabs.length - 1
+
+      return [
+        {
+          key: 'close',
+          label: t('common.close'),
+          disabled: !canCloseConversationTab,
+          onClick: () => onCloseConversationTab(topicId)
+        },
+        {
+          key: 'closeOthers',
+          label: 'Close Others',
+          disabled: !canCloseConversationTab,
+          onClick: () => onCloseOtherConversationTabs(topicId)
+        },
+        {
+          key: 'closeLeft',
+          label: 'Close Tabs to the Left',
+          disabled: !canCloseConversationTab || !hasTabsOnLeft,
+          onClick: () => onCloseConversationTabsToLeft(topicId)
+        },
+        {
+          key: 'closeRight',
+          label: 'Close Tabs to the Right',
+          disabled: !canCloseConversationTab || !hasTabsOnRight,
+          onClick: () => onCloseConversationTabsToRight(topicId)
+        },
+        {
+          key: 'closeAll',
+          label: 'Close All Tabs',
+          disabled: !canCloseConversationTab,
+          onClick: () => onCloseAllConversationTabs(topicId)
+        }
+      ]
+    },
+    [
+      canCloseConversationTab,
+      conversationTabs,
+      onCloseAllConversationTabs,
+      onCloseConversationTab,
+      onCloseConversationTabsToLeft,
+      onCloseConversationTabsToRight,
+      onCloseOtherConversationTabs,
+      t
+    ]
+  )
 
   // TODO: more info
   const AgentInvalid = useCallback(() => {
@@ -192,6 +263,26 @@ const Chat: FC<Props> = (props) => {
       </div>
     )
   }, [])
+
+  useHotkeys(
+    'meta+w,ctrl+w',
+    (event) => {
+      if (canCloseConversationTab && activeConversationIndex !== -1) {
+        event.preventDefault()
+        event.stopPropagation()
+        onCloseConversationTab(activeTopic.id)
+        return
+      }
+
+      event.preventDefault()
+      event.stopPropagation()
+      void window.api.windowControls.close()
+    },
+    {
+      enableOnFormTags: true
+    },
+    [activeConversationIndex, activeTopic.id, canCloseConversationTab, onCloseConversationTab]
+  )
 
   return (
     <Container id="chat" className={classNames([messageStyle, { 'multi-select-mode': isMultiSelectMode }])}>
@@ -211,55 +302,57 @@ const Chat: FC<Props> = (props) => {
             justify="space-between"
             style={{ maxWidth: chatMaxWidth, height: mainHeight }}>
             <ChatNavbar
-              activeAssistant={props.assistant}
-              activeTopic={props.activeTopic}
-              setActiveTopic={props.setActiveTopic}
-              setActiveAssistant={props.setActiveAssistant}
+              activeAssistant={activeAssistant}
+              activeTopic={activeTopic}
+              setActiveTopic={setActiveTopic}
+              setActiveAssistant={setActiveAssistant}
               position="left"
               messagesTocOpen={isMessagesTocOpen}
               onToggleMessagesToc={() => setIsMessagesTocOpen((prev) => !prev)}
             />
-            {activeTopicOrSession === 'topic' && (
+            {activeTopicOrSession === 'topic' && showConversationTabs && (
               <ConversationTabsContainer>
-                <HorizontalScrollContainer dependencies={[props.conversationTabs, props.activeTopic.id]} gap="6px">
-                  {props.conversationTabs.map((tab) => (
-                    <ConversationTabButton
+                <HorizontalScrollContainer dependencies={[conversationTabs, activeTopic.id]} gap="6px">
+                  {conversationTabs.map((tab) => (
+                    <Dropdown
                       key={tab.topicId}
-                      $active={tab.topicId === props.activeTopic.id}
-                      title={`${tab.topicName}${tab.assistantName ? ` · ${tab.assistantName}` : ''}`}
-                      onClick={() => props.onSwitchConversationTab(tab.topicId)}
-                      onAuxClick={(event) => {
-                        if (event.button !== 1 || !canCloseConversationTab) {
-                          return
-                        }
-                        event.preventDefault()
-                        event.stopPropagation()
-                        props.onCloseConversationTab(tab.topicId)
-                      }}>
-                      <ConversationTabTitle>{tab.topicName}</ConversationTabTitle>
-                      {canCloseConversationTab && (
-                        <ConversationTabCloseButton
-                          onClick={(event) => {
-                            event.stopPropagation()
-                            props.onCloseConversationTab(tab.topicId)
-                          }}>
-                          <X size={12} />
-                        </ConversationTabCloseButton>
-                      )}
-                    </ConversationTabButton>
+                      menu={{ items: getConversationTabMenuItems(tab.topicId) }}
+                      trigger={['contextMenu']}>
+                      <ConversationTabButton
+                        $active={tab.topicId === activeTopic.id}
+                        title={`${tab.topicName}${tab.assistantName ? ` · ${tab.assistantName}` : ''}`}
+                        onClick={() => onSwitchConversationTab(tab.topicId)}
+                        onAuxClick={(event) => {
+                          if (event.button !== 1 || !canCloseConversationTab) {
+                            return
+                          }
+                          event.preventDefault()
+                          event.stopPropagation()
+                          onCloseConversationTab(tab.topicId)
+                        }}>
+                        <ConversationTabTitle>{tab.topicName}</ConversationTabTitle>
+                        {canCloseConversationTab && (
+                          <ConversationTabCloseButton
+                            onClick={(event) => {
+                              event.stopPropagation()
+                              onCloseConversationTab(tab.topicId)
+                            }}>
+                            <X size={12} />
+                          </ConversationTabCloseButton>
+                        )}
+                      </ConversationTabButton>
+                    </Dropdown>
                   ))}
                 </HorizontalScrollContainer>
               </ConversationTabsContainer>
             )}
-            <div
-              className="flex flex-1 flex-col justify-between"
-              style={{ height: `calc(${mainHeight} - var(--navbar-height))` }}>
+            <div className="flex flex-1 flex-col justify-between" style={{ minHeight: 0 }}>
               {activeTopicOrSession === 'topic' && (
                 <>
                   <div style={{ display: 'flex', flex: 1, minHeight: 0, minWidth: 0 }}>
                     {isMessagesTocOpen && (
                       <MessagesTocPanel
-                        topic={props.activeTopic}
+                        topic={activeTopic}
                         onClose={() => setIsMessagesTocOpen(false)}
                         containerId="messages"
                       />
@@ -267,10 +360,10 @@ const Chat: FC<Props> = (props) => {
                     <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, minWidth: 0 }}>
                       <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, minWidth: 0 }}>
                         <Messages
-                          key={props.activeTopic.id}
+                          key={activeTopic.id}
                           assistant={assistant}
-                          topic={props.activeTopic}
-                          setActiveTopic={props.setActiveTopic}
+                          topic={activeTopic}
+                          setActiveTopic={setActiveTopic}
                           onComponentUpdate={messagesComponentUpdateHandler}
                           onFirstUpdate={messagesComponentFirstUpdateHandler}
                           autoExpandForSearch={isChatFindActive}
@@ -288,11 +381,7 @@ const Chat: FC<Props> = (props) => {
                       {messageNavigation === 'buttons' && <ChatNavigation containerId="messages" />}
 
                       <div style={{ marginTop: 'auto' }}>
-                        <Inputbar
-                          assistant={assistant}
-                          setActiveTopic={props.setActiveTopic}
-                          topic={props.activeTopic}
-                        />
+                        <Inputbar assistant={assistant} setActiveTopic={setActiveTopic} topic={activeTopic} />
                       </div>
                     </div>
                     <ThreadSidebar />
@@ -314,7 +403,7 @@ const Chat: FC<Props> = (props) => {
                   <AgentSessionInputbar agentId={activeAgentId} sessionId={activeSessionId} />
                 </>
               )}
-              {isMultiSelectMode && <MultiSelectActionPopup topic={props.activeTopic} />}
+              {isMultiSelectMode && <MultiSelectActionPopup topic={activeTopic} />}
             </div>
           </Main>
         </motion.div>
@@ -336,9 +425,9 @@ const Chat: FC<Props> = (props) => {
               }}>
               <Tabs
                 activeAssistant={assistant}
-                activeTopic={props.activeTopic}
-                setActiveAssistant={props.setActiveAssistant}
-                setActiveTopic={props.setActiveTopic}
+                activeTopic={activeTopic}
+                setActiveAssistant={setActiveAssistant}
+                setActiveTopic={setActiveTopic}
                 position="right"
               />
             </motion.div>

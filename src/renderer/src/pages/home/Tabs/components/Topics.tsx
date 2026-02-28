@@ -59,6 +59,7 @@ import { useTranslation } from 'react-i18next'
 import { useDispatch, useSelector } from 'react-redux'
 import styled from 'styled-components'
 
+import type { SetActiveTopicHandler, SetActiveTopicOptions } from '../../types'
 import AddButton from './AddButton'
 import { TopicManagePanel, useTopicManageMode } from './TopicManageMode'
 import TrashDrawer from './TrashDrawer'
@@ -66,7 +67,7 @@ import TrashDrawer from './TrashDrawer'
 interface Props {
   assistant: Assistant
   activeTopic: Topic
-  setActiveTopic: (topic: Topic) => void
+  setActiveTopic: SetActiveTopicHandler
   position: 'left' | 'right'
 }
 
@@ -200,9 +201,8 @@ export const Topics: React.FC<Props> = ({ assistant: _assistant, activeTopic, se
   )
 
   const onSwitchTopic = useCallback(
-    async (topic: Topic) => {
-      // await modelGenerating()
-      setActiveTopic(topic)
+    async (topic: Topic, options?: SetActiveTopicOptions) => {
+      setActiveTopic(topic, options)
     },
     [setActiveTopic]
   )
@@ -216,6 +216,14 @@ export const Topics: React.FC<Props> = ({ assistant: _assistant, activeTopic, se
     if (!topic) return []
 
     const menus: MenuProps['items'] = [
+      {
+        label: 'Open in New Tab',
+        key: 'open-in-new-tab',
+        icon: <PackagePlus size={14} />,
+        onClick() {
+          onSwitchTopic(topic, { openInNewTab: true })
+        }
+      },
       {
         label: t('chat.topics.auto_rename'),
         key: 'auto-rename',
@@ -495,7 +503,8 @@ export const Topics: React.FC<Props> = ({ assistant: _assistant, activeTopic, se
     onClearMessages,
     setTopicPosition,
     onMoveTopic,
-    onDeleteTopic
+    onDeleteTopic,
+    onSwitchTopic
   ])
 
   // Sort topics based on pinned status if pinTopicsToTop is enabled
@@ -576,13 +585,13 @@ export const Topics: React.FC<Props> = ({ assistant: _assistant, activeTopic, se
             return ''
           }
 
-          const handleItemClick = () => {
+          const handleItemClick = (event: React.MouseEvent) => {
             if (isManageMode) {
               if (canSelect) {
                 toggleSelectTopic(topic.id)
               }
             } else {
-              onSwitchTopic(topic)
+              onSwitchTopic(topic, { openInNewTab: event.metaKey || event.ctrlKey })
             }
           }
 
@@ -596,7 +605,7 @@ export const Topics: React.FC<Props> = ({ assistant: _assistant, activeTopic, se
                   isManageMode && isSelected ? 'selected' : '',
                   isManageMode && !canSelect ? 'disabled' : ''
                 )}
-                onClick={editingTopicId === topic.id && isEditing ? undefined : handleItemClick}
+                onClick={editingTopicId === topic.id && isEditing ? undefined : (event) => handleItemClick(event)}
                 style={{
                   borderRadius,
                   cursor:
