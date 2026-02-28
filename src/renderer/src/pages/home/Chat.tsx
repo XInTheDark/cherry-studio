@@ -1,6 +1,7 @@
 import { loggerService } from '@logger'
 import type { ContentSearchRef } from '@renderer/components/ContentSearch'
 import { ContentSearch } from '@renderer/components/ContentSearch'
+import HorizontalScrollContainer from '@renderer/components/HorizontalScrollContainer'
 import { HStack } from '@renderer/components/Layout'
 import MultiSelectActionPopup from '@renderer/components/Popups/MultiSelectionPopup'
 import PromptPopup from '@renderer/components/Popups/PromptPopup'
@@ -17,6 +18,7 @@ import type { Assistant, Topic } from '@renderer/types'
 import { classNames } from '@renderer/utils'
 import { Alert, Flex } from 'antd'
 import { debounce } from 'lodash'
+import { X } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
 import type { FC } from 'react'
 import React, { useCallback, useState } from 'react'
@@ -38,11 +40,21 @@ import Tabs from './Tabs'
 
 const logger = loggerService.withContext('Chat')
 
+export interface ConversationTabItem {
+  topicId: string
+  assistantId: string
+  topicName: string
+  assistantName: string
+}
+
 interface Props {
   assistant: Assistant
   activeTopic: Topic
   setActiveTopic: (topic: Topic) => void
   setActiveAssistant: (assistant: Assistant) => void
+  conversationTabs: ConversationTabItem[]
+  onSwitchConversationTab: (topicId: string) => void
+  onCloseConversationTab: (topicId: string) => void
 }
 
 const Chat: FC<Props> = (props) => {
@@ -165,6 +177,7 @@ const Chat: FC<Props> = (props) => {
   }
 
   const mainHeight = isTopNavbar ? 'calc(100vh - var(--navbar-height) - 6px)' : 'calc(100vh - var(--navbar-height))'
+  const canCloseConversationTab = props.conversationTabs.length > 1
 
   // TODO: more info
   const AgentInvalid = useCallback(() => {
@@ -206,6 +219,38 @@ const Chat: FC<Props> = (props) => {
               messagesTocOpen={isMessagesTocOpen}
               onToggleMessagesToc={() => setIsMessagesTocOpen((prev) => !prev)}
             />
+            {activeTopicOrSession === 'topic' && (
+              <ConversationTabsContainer>
+                <HorizontalScrollContainer dependencies={[props.conversationTabs, props.activeTopic.id]} gap="6px">
+                  {props.conversationTabs.map((tab) => (
+                    <ConversationTabButton
+                      key={tab.topicId}
+                      $active={tab.topicId === props.activeTopic.id}
+                      title={`${tab.topicName}${tab.assistantName ? ` · ${tab.assistantName}` : ''}`}
+                      onClick={() => props.onSwitchConversationTab(tab.topicId)}
+                      onAuxClick={(event) => {
+                        if (event.button !== 1 || !canCloseConversationTab) {
+                          return
+                        }
+                        event.preventDefault()
+                        event.stopPropagation()
+                        props.onCloseConversationTab(tab.topicId)
+                      }}>
+                      <ConversationTabTitle>{tab.topicName}</ConversationTabTitle>
+                      {canCloseConversationTab && (
+                        <ConversationTabCloseButton
+                          onClick={(event) => {
+                            event.stopPropagation()
+                            props.onCloseConversationTab(tab.topicId)
+                          }}>
+                          <X size={12} />
+                        </ConversationTabCloseButton>
+                      )}
+                    </ConversationTabButton>
+                  ))}
+                </HorizontalScrollContainer>
+              </ConversationTabsContainer>
+            )}
             <div
               className="flex flex-1 flex-col justify-between"
               style={{ height: `calc(${mainHeight} - var(--navbar-height))` }}>
@@ -336,6 +381,60 @@ const Main = styled(Flex)`
   }
   transform: translateZ(0);
   position: relative;
+`
+
+const ConversationTabsContainer = styled.div`
+  display: flex;
+  align-items: center;
+  min-height: 36px;
+  padding: 0 10px 6px;
+`
+
+const ConversationTabButton = styled.button<{ $active: boolean }>`
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 88px;
+  max-width: 220px;
+  height: 30px;
+  padding: 0 6px 0 10px;
+  border: none;
+  border-radius: var(--list-item-border-radius);
+  background: ${({ $active }) => ($active ? 'var(--color-list-item)' : 'transparent')};
+  color: var(--color-text);
+  cursor: pointer;
+  transition: background 0.2s;
+
+  &:hover {
+    background: var(--color-list-item);
+  }
+`
+
+const ConversationTabTitle = styled.span`
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+`
+
+const ConversationTabCloseButton = styled.button`
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--color-text-2);
+  cursor: pointer;
+
+  &:hover {
+    background: var(--color-background-mute);
+    color: var(--color-text);
+  }
 `
 
 export default Chat

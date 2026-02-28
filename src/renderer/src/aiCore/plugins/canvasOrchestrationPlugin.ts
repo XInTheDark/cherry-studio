@@ -50,11 +50,11 @@ function buildCanvasContextMessage(args: {
 
   return [
     CANVAS_CONTEXT_MARKER,
-    'You have Canvas context for this request. Keep edits consistent with the current markdown and open comments.',
+    'You have Canvas context for this conversation. To make edits, you must use the builtin_canvas tools..',
     `canvasId: ${canvasId}`,
     `relPath: ${relPath}`,
     '',
-    'Current markdown:',
+    'Current markdown content:',
     '```markdown',
     markdown,
     '```',
@@ -91,7 +91,9 @@ function buildSelectedCanvasContextMessage(args: {
             })
             .join('\n')
 
-    const truncatedHint = canvas.truncated ? '\n(Note: markdown was truncated for prompt budget.)' : ''
+    const truncatedHint = canvas.truncated
+      ? '\n(Note: markdown content was truncated. You can use builtin_canvas tools to read the full text.)'
+      : ''
 
     return [
       `### ${idx + 1}. ${canvas.relPath}`,
@@ -109,7 +111,7 @@ function buildSelectedCanvasContextMessage(args: {
 
   return [
     CANVAS_SELECTED_CONTEXT_MARKER,
-    'The user selected specific canvases for this chat. Prefer these canvases when resolving references.',
+    'The user selected specific canvases for this chat. Focus on these canvases when resolving references.',
     ...sections
   ].join('\n\n')
 }
