@@ -2,7 +2,7 @@ import 'katex/dist/katex.min.css'
 
 import type { MainTextMessageBlock, ThinkingMessageBlock, TranslationMessageBlock } from '@renderer/types/newMessage'
 import { MessageBlockStatus, MessageBlockType } from '@renderer/types/newMessage'
-import { render, screen } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import Markdown from '../Markdown'
@@ -10,10 +10,76 @@ import Markdown from '../Markdown'
 // Mock dependencies
 const mockUseSettings = vi.fn()
 const mockUseTranslation = vi.fn()
+const { mockLogger, mockReactMarkdown, mockReactMarkdownControl, mockRehypeKatex, mockRehypeMathjax, mockRemarkMath } =
+  vi.hoisted(() => {
+    const mockLogger = {
+      debug: vi.fn(),
+      error: vi.fn(),
+      warn: vi.fn(),
+      info: vi.fn()
+    }
+    const mockRemarkMath = vi.fn()
+    const mockRehypeKatex = vi.fn()
+    const mockRehypeMathjax = vi.fn()
+    const mockReactMarkdownControl = {
+      throwOnMath: false
+    }
+    const hasPlugin = (plugins: any[] | undefined, plugin: any) =>
+      Boolean(plugins?.some((entry) => entry === plugin || entry?.[0] === plugin))
+
+    const mockReactMarkdown = vi.fn(({ children, components, className, rehypePlugins, remarkPlugins }: any) => {
+      const usesMathPlugin =
+        hasPlugin(remarkPlugins, mockRemarkMath) ||
+        hasPlugin(rehypePlugins, mockRehypeKatex) ||
+        hasPlugin(rehypePlugins, mockRehypeMathjax)
+
+      if (mockReactMarkdownControl.throwOnMath && usesMathPlugin) {
+        throw new Error('Math render exploded')
+      }
+
+      return (
+        <div data-testid="markdown-content" className={className}>
+          {children}
+          {/* Simulate component rendering */}
+          {components?.a && <span data-testid="has-link-component">link</span>}
+          {components?.code && (
+            <div data-testid="has-code-component">
+              {components.code({ children: 'test code', node: { position: { start: { line: 1 } } } })}
+            </div>
+          )}
+          {components?.table && (
+            <div data-testid="has-table-component">
+              {components.table({ children: 'test table', node: { position: { start: { line: 1 } } } })}
+            </div>
+          )}
+          {components?.img && <span data-testid="has-img-component">img</span>}
+          {components?.style && <span data-testid="has-style-component">style</span>}
+        </div>
+      )
+    })
+
+    return {
+      mockLogger,
+      mockReactMarkdown,
+      mockReactMarkdownControl,
+      mockRehypeKatex,
+      mockRehypeMathjax,
+      mockRemarkMath
+    }
+  })
+
+const hasPlugin = (plugins: any[] | undefined, plugin: any) =>
+  Boolean(plugins?.some((entry) => entry === plugin || entry?.[0] === plugin))
 
 // Mock hooks
 vi.mock('@renderer/hooks/useSettings', () => ({
   useSettings: () => mockUseSettings()
+}))
+
+vi.mock('@logger', () => ({
+  loggerService: {
+    withContext: () => mockLogger
+  }
 }))
 
 vi.mock('react-i18next', () => ({
@@ -105,9 +171,9 @@ vi.mock('@renderer/components/MarkdownShadowDOMRenderer', () => ({
 vi.mock('remark-alert', () => ({ __esModule: true, default: vi.fn() }))
 vi.mock('remark-gfm', () => ({ __esModule: true, default: vi.fn() }))
 vi.mock('remark-cjk-friendly', () => ({ __esModule: true, default: vi.fn() }))
-vi.mock('remark-math', () => ({ __esModule: true, default: vi.fn() }))
-vi.mock('rehype-katex', () => ({ __esModule: true, default: vi.fn() }))
-vi.mock('rehype-mathjax', () => ({ __esModule: true, default: vi.fn() }))
+vi.mock('remark-math', () => ({ __esModule: true, default: mockRemarkMath }))
+vi.mock('rehype-katex', () => ({ __esModule: true, default: mockRehypeKatex }))
+vi.mock('rehype-mathjax', () => ({ __esModule: true, default: mockRehypeMathjax }))
 vi.mock('rehype-raw', () => ({ __esModule: true, default: vi.fn() }))
 
 // Mock custom plugins
@@ -129,30 +195,13 @@ vi.mock('../plugins/rehypeScalableSvg', () => ({
 // Mock ReactMarkdown with realistic rendering
 vi.mock('react-markdown', () => ({
   __esModule: true,
-  default: ({ children, components, className }: any) => (
-    <div data-testid="markdown-content" className={className}>
-      {children}
-      {/* Simulate component rendering */}
-      {components?.a && <span data-testid="has-link-component">link</span>}
-      {components?.code && (
-        <div data-testid="has-code-component">
-          {components.code({ children: 'test code', node: { position: { start: { line: 1 } } } })}
-        </div>
-      )}
-      {components?.table && (
-        <div data-testid="has-table-component">
-          {components.table({ children: 'test table', node: { position: { start: { line: 1 } } } })}
-        </div>
-      )}
-      {components?.img && <span data-testid="has-img-component">img</span>}
-      {components?.style && <span data-testid="has-style-component">style</span>}
-    </div>
-  )
+  default: mockReactMarkdown
 }))
 
 describe('Markdown', () => {
   beforeEach(async () => {
     vi.clearAllMocks()
+    mockReactMarkdownControl.throwOnMath = false
 
     // Default settings
     mockUseSettings.mockReturnValue({ mathEngine: 'KaTeX', mathEnableSingleDollar: true })
@@ -301,6 +350,63 @@ describe('Markdown', () => {
 
       // Component should render successfully without math plugins
       expect(screen.getByTestId('markdown-content')).toBeInTheDocument()
+    })
+
+    it('should retry without math when math rendering throws', async () => {
+      mockReactMarkdownControl.throwOnMath = true
+      const block = createMainTextBlock({ content: 'Before $broken$ after' })
+
+      expect(() => render(<Markdown block={block} />)).not.toThrow()
+
+      expect(screen.getByText('Before $broken$ after')).toBeInTheDocument()
+
+      await waitFor(() => expect(screen.getByTestId('markdown-content')).toBeInTheDocument())
+
+      const markdown = screen.getByTestId('markdown-content')
+      expect(markdown).toBeInTheDocument()
+      expect(markdown).toHaveTextContent('Before $broken$ after')
+
+      const renderCalls = mockReactMarkdown.mock.calls.map(([props]) => props).filter(Boolean)
+      expect(renderCalls.some((props) => hasPlugin(props.remarkPlugins, mockRemarkMath))).toBe(true)
+      expect(renderCalls.some((props) => !hasPlugin(props.remarkPlugins, mockRemarkMath))).toBe(true)
+      expect(mockLogger.warn).toHaveBeenCalledWith(
+        'Markdown math rendering failed; retrying without math rendering',
+        expect.objectContaining({
+          blockId: 'test-block-1',
+          mathEngine: 'KaTeX',
+          error: 'Math render exploded'
+        })
+      )
+    })
+
+    it('should retry math rendering after streaming completes', async () => {
+      mockReactMarkdownControl.throwOnMath = true
+      const { rerender } = render(
+        <Markdown
+          block={createMainTextBlock({
+            content: 'Before $broken',
+            status: MessageBlockStatus.STREAMING
+          })}
+        />
+      )
+
+      expect(screen.getByText('Before $broken')).toBeInTheDocument()
+
+      mockReactMarkdownControl.throwOnMath = false
+      rerender(
+        <Markdown
+          block={createMainTextBlock({
+            content: 'Before $fixed$',
+            status: MessageBlockStatus.SUCCESS
+          })}
+        />
+      )
+
+      await waitFor(() => expect(screen.getByTestId('markdown-content')).toBeInTheDocument())
+
+      const lastRenderProps = mockReactMarkdown.mock.calls.at(-1)?.[0]
+      expect(hasPlugin(lastRenderProps?.remarkPlugins, mockRemarkMath)).toBe(true)
+      expect(screen.getByTestId('markdown-content')).toHaveTextContent('Before $fixed$')
     })
   })
 

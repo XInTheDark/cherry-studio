@@ -3,6 +3,7 @@ import 'katex/dist/contrib/copy-tex'
 import 'katex/dist/contrib/mhchem'
 import 'remark-github-blockquote-alert/alert.css'
 
+import { loggerService } from '@logger'
 import ImageViewer from '@renderer/components/ImageViewer'
 import MarkdownShadowDOMRenderer from '@renderer/components/MarkdownShadowDOMRenderer'
 import { useSettings } from '@renderer/hooks/useSettings'
@@ -19,7 +20,7 @@ import type { ThreadAnchor } from '@renderer/types/thread'
 import { removeSvgEmptyLines } from '@renderer/utils/formats'
 import { processLatexBrackets } from '@renderer/utils/markdown'
 import { isEmpty } from 'lodash'
-import { type FC, memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import React, { type FC, memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import ReactMarkdown, { type Components, defaultUrlTransform } from 'react-markdown'
 import rehypeKatex from 'rehype-katex'
@@ -43,6 +44,39 @@ import Table from './Table'
 const ALLOWED_ELEMENTS =
   /<(style|p|div|span|b|i|strong|em|ul|ol|li|table|tr|td|th|thead|tbody|h[1-6]|blockquote|pre|code|br|hr|svg|path|circle|rect|line|polyline|polygon|text|g|defs|title|desc|tspan|sub|sup|details|summary)/i
 const DISALLOWED_ELEMENTS = ['iframe', 'script']
+const logger = loggerService.withContext('Markdown')
+
+type MarkdownRenderMode = 'normal' | 'noMath' | 'plainText'
+
+interface MarkdownRenderBoundaryProps {
+  children: React.ReactNode
+  fallback: React.ReactNode
+  onError: (error: Error) => void
+}
+
+interface MarkdownRenderBoundaryState {
+  hasError: boolean
+}
+
+class MarkdownRenderBoundary extends React.Component<MarkdownRenderBoundaryProps, MarkdownRenderBoundaryState> {
+  state: MarkdownRenderBoundaryState = { hasError: false }
+
+  static getDerivedStateFromError() {
+    return { hasError: true }
+  }
+
+  componentDidCatch(error: Error) {
+    this.props.onError(error)
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return this.props.fallback
+    }
+
+    return this.props.children
+  }
+}
 
 interface Props {
   // message: Message & { content: string }
@@ -57,6 +91,42 @@ interface Props {
   }>
 }
 
+interface MarkdownRendererProps {
+  components: Partial<Components>
+  messageContent: string
+  rehypePlugins: Pluggable[]
+  remarkPlugins: Pluggable[]
+  t: (key: string) => string
+  urlTransform: (value: string) => string
+}
+
+const PlainTextFallback: FC<{ content: string }> = ({ content }) => (
+  <div style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{content}</div>
+)
+
+const MarkdownRenderer: FC<MarkdownRendererProps> = ({
+  components,
+  messageContent,
+  rehypePlugins,
+  remarkPlugins,
+  t,
+  urlTransform
+}) => (
+  <ReactMarkdown
+    rehypePlugins={rehypePlugins}
+    remarkPlugins={remarkPlugins}
+    components={components}
+    disallowedElements={DISALLOWED_ELEMENTS}
+    urlTransform={urlTransform}
+    remarkRehypeOptions={{
+      footnoteLabel: t('common.footnotes'),
+      footnoteLabelTagName: 'h4',
+      footnoteBackContent: ' '
+    }}>
+    {messageContent}
+  </ReactMarkdown>
+)
+
 const Markdown: FC<Props> = ({ block, postProcess, threadHighlights }) => {
   const { t } = useTranslation()
   const { mathEngine, mathEnableSingleDollar } = useSettings()
@@ -69,6 +139,9 @@ const Markdown: FC<Props> = ({ block, postProcess, threadHighlights }) => {
   const prevBlockIdRef = useRef(block.id)
   const containerRef = useRef<HTMLDivElement | null>(null)
   const lastHoverElRef = useRef<HTMLElement | null>(null)
+  const didInitRenderModeRef = useRef(false)
+  const mathEnabled = mathEngine !== 'none'
+  const [renderMode, setRenderMode] = useState<MarkdownRenderMode>(mathEnabled ? 'normal' : 'noMath')
 
   const { addChunk, reset } = useSmoothStream({
     onUpdate: (rawText) => {
@@ -187,19 +260,6 @@ const Markdown: FC<Props> = ({ block, postProcess, threadHighlights }) => {
     EventEmitter.emit(EVENT_NAMES.OPEN_THREAD_PANEL, { parentMessageId, threadTopicId })
   }, [])
 
-  const remarkPlugins = useMemo(() => {
-    const plugins = [
-      [remarkGfm, { singleTilde: false }] as Pluggable,
-      [remarkAlert] as Pluggable,
-      remarkCjkFriendly,
-      remarkDisableConstructs(['codeIndented'])
-    ]
-    if (mathEngine !== 'none') {
-      plugins.push([remarkMath, { singleDollarTextMath: mathEnableSingleDollar }])
-    }
-    return plugins
-  }, [mathEngine, mathEnableSingleDollar])
-
   const messageContent = useMemo(() => {
     if ('status' in block && block.status === 'paused' && isEmpty(block.content)) {
       return t('message.chat.completion.paused')
@@ -207,19 +267,52 @@ const Markdown: FC<Props> = ({ block, postProcess, threadHighlights }) => {
     return removeSvgEmptyLines(processLatexBrackets(displayedContent))
   }, [block, displayedContent, t])
 
+  // Retry math rendering when the block/settings change or when a stream finishes.
+  const renderRetryKey = useMemo(
+    () =>
+      [block.id, mathEngine, mathEnableSingleDollar, isStreamDone ? messageContent : (block.status ?? 'unknown')].join(
+        '::'
+      ),
+    [block.id, mathEnableSingleDollar, mathEngine, isStreamDone, messageContent, block.status]
+  )
+
+  useEffect(() => {
+    if (!didInitRenderModeRef.current) {
+      didInitRenderModeRef.current = true
+      return
+    }
+
+    setRenderMode(mathEnabled ? 'normal' : 'noMath')
+  }, [mathEnabled, renderRetryKey])
+
+  const shouldUseMathPlugins = mathEnabled && renderMode === 'normal'
+
+  const remarkPlugins = useMemo(() => {
+    const plugins = [
+      [remarkGfm, { singleTilde: false }] as Pluggable,
+      [remarkAlert] as Pluggable,
+      remarkCjkFriendly,
+      remarkDisableConstructs(['codeIndented'])
+    ]
+    if (shouldUseMathPlugins) {
+      plugins.push([remarkMath, { singleDollarTextMath: mathEnableSingleDollar }])
+    }
+    return plugins
+  }, [mathEnableSingleDollar, shouldUseMathPlugins])
+
   const rehypePlugins = useMemo(() => {
     const plugins: Pluggable[] = []
     if (ALLOWED_ELEMENTS.test(messageContent)) {
       plugins.push(rehypeRaw, rehypeScalableSvg)
     }
     plugins.push([rehypeHeadingIds, { prefix: `heading-${block.id}` }])
-    if (mathEngine === 'KaTeX') {
+    if (shouldUseMathPlugins && mathEngine === 'KaTeX') {
       plugins.push(rehypeKatex)
-    } else if (mathEngine === 'MathJax') {
+    } else if (shouldUseMathPlugins && mathEngine === 'MathJax') {
       plugins.push(rehypeMathjax)
     }
     return plugins
-  }, [mathEngine, messageContent, block.id])
+  }, [block.id, mathEngine, messageContent, shouldUseMathPlugins])
 
   const components = useMemo(() => {
     return {
@@ -246,6 +339,31 @@ const Markdown: FC<Props> = ({ block, postProcess, threadHighlights }) => {
     return defaultUrlTransform(value)
   }, [])
 
+  const handleMarkdownRenderError = useCallback(
+    (error: Error) => {
+      if (shouldUseMathPlugins) {
+        logger.warn('Markdown math rendering failed; retrying without math rendering', {
+          blockId: block.id,
+          messageId: block.messageId,
+          mathEngine,
+          error: error.message
+        })
+        setRenderMode('noMath')
+        return
+      }
+
+      logger.error('Markdown rendering failed; falling back to plain text', {
+        blockId: block.id,
+        messageId: block.messageId,
+        mathEngine,
+        renderMode,
+        error: error.message
+      })
+      setRenderMode('plainText')
+    },
+    [block.id, block.messageId, mathEngine, renderMode, shouldUseMathPlugins]
+  )
+
   return (
     <div
       className="markdown"
@@ -253,19 +371,23 @@ const Markdown: FC<Props> = ({ block, postProcess, threadHighlights }) => {
       onMouseOver={handleMouseOver}
       onMouseLeave={handleMouseLeave}
       onClick={handleClick}>
-      <ReactMarkdown
-        rehypePlugins={rehypePlugins}
-        remarkPlugins={remarkPlugins}
-        components={components}
-        disallowedElements={DISALLOWED_ELEMENTS}
-        urlTransform={urlTransform}
-        remarkRehypeOptions={{
-          footnoteLabel: t('common.footnotes'),
-          footnoteLabelTagName: 'h4',
-          footnoteBackContent: ' '
-        }}>
-        {messageContent}
-      </ReactMarkdown>
+      {renderMode === 'plainText' ? (
+        <PlainTextFallback content={messageContent} />
+      ) : (
+        <MarkdownRenderBoundary
+          key={`${renderMode}::${renderRetryKey}`}
+          fallback={<PlainTextFallback content={messageContent} />}
+          onError={handleMarkdownRenderError}>
+          <MarkdownRenderer
+            components={components}
+            messageContent={messageContent}
+            rehypePlugins={rehypePlugins}
+            remarkPlugins={remarkPlugins}
+            t={t}
+            urlTransform={urlTransform}
+          />
+        </MarkdownRenderBoundary>
+      )}
     </div>
   )
 }
